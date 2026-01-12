@@ -2,43 +2,27 @@
 // Marketplace home page - Intent router with featured section
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { ManageListingDrawer } from "../../management/components/ManageListingDrawer";
-
 import {
-  getAllMockListings,
-  getMockPrograms,
-  getMockServices,
-  simulateDelay,
-  type MockService,
-} from "../../demo/mockData";
+  getPrograms,
+  getPublicOffspringGroups,
+  getPublicServices,
+} from "../../api/client";
 import { formatCents } from "../../utils/format";
-import type {
-  PublicOffspringGroupListingDTO,
-  PublicProgramSummaryDTO,
-} from "../../api/types";
 
 type FeaturedCategory = "animals" | "breeders" | "services";
 
 /**
  * Marketplace home page - Intent router.
  * Section A: Three intent cards (Animals, Breeders, Services)
- * Section B: Featured items (rotates category in demo mode)
+ * Section B: Featured items (rotates category based on what's available)
  */
 export function HomePage() {
-  const demoMode = isDemoMode();
-
-  // Rotate featured category on each page load in demo mode
+  // Rotate featured category on each page load
   const [featuredCategory] = React.useState<FeaturedCategory>(() => {
     const categories: FeaturedCategory[] = ["animals", "breeders", "services"];
     return categories[Math.floor(Math.random() * categories.length)];
   });
-
-  // Handle enabling demo mode
-  const handleEnableDemo = () => {
-    setDemoMode(true);
-    window.location.reload();
-  };
 
   // Check if user is a breeder (has tenant ID)
   const isBreeder = React.useMemo(() => {
@@ -116,11 +100,7 @@ export function HomePage() {
       </section>
 
       {/* Section B: Featured */}
-      <FeaturedSection
-        demoMode={demoMode}
-        category={featuredCategory}
-        onEnableDemo={handleEnableDemo}
-      />
+      <FeaturedSection category={featuredCategory} />
     </div>
   );
 }
@@ -242,96 +222,87 @@ function ServiceIcon() {
 // FEATURED SECTION
 // ============================================================================
 
-function FeaturedSection({
-  demoMode,
-  category,
-  onEnableDemo,
-}: {
-  demoMode: boolean;
-  category: FeaturedCategory;
-  onEnableDemo: () => void;
-}) {
+function FeaturedSection({ category }: { category: FeaturedCategory }) {
   const [items, setItems] = React.useState<FeaturedItem[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [hasItems, setHasItems] = React.useState(false);
 
   React.useEffect(() => {
-    if (!demoMode) {
-      setLoading(false);
-      return;
-    }
+    let dead = false;
 
     const fetchData = async () => {
       setLoading(true);
-      await simulateDelay(200);
 
       let featured: FeaturedItem[] = [];
 
-      if (category === "animals") {
-        const listings = getAllMockListings().filter((l) => l.countAvailable > 0);
-        featured = listings.slice(0, 4).map((l) => ({
-          id: `${l.programSlug}-${l.slug}`,
-          type: "animal" as const,
-          title: l.title || "Untitled",
-          subtitle: l.breed || l.species,
-          href: `/programs/${l.programSlug}/offspring-groups/${l.slug}`,
-          price: l.priceRange ? formatCents(l.priceRange.min) : null,
-        }));
-      } else if (category === "breeders") {
-        const { items: breeders } = getMockPrograms({ limit: 4 });
-        featured = breeders.map((b) => ({
-          id: b.slug,
-          type: "breeder" as const,
-          title: b.name,
-          subtitle: `${b.breed} · ${b.location}`,
-          href: `/programs/${b.slug}`,
-          price: null,
-        }));
-      } else {
-        const services = getMockServices().slice(0, 4);
-        featured = services.map((s) => ({
-          id: s.id,
-          type: "service" as const,
-          title: s.name,
-          subtitle: s.programName,
-          href: `/programs/${s.programSlug}`,
-          price: s.priceRange ? formatCents(s.priceRange.min) : null,
-        }));
+      try {
+        if (category === "animals") {
+          const result = await getPublicOffspringGroups({ limit: 4 });
+          featured = (result.items || []).map((l) => ({
+            id: String(l.id),
+            type: "animal" as const,
+            title: l.title || `${l.breed || l.species} Offspring`,
+            subtitle: l.breed || l.species || "Animal",
+            href:
+              l.breeder?.slug && l.listingSlug
+                ? `/programs/${l.breeder.slug}/offspring-groups/${l.listingSlug}`
+                : "/animals",
+            price: l.priceMinCents ? formatCents(l.priceMinCents) : null,
+          }));
+        } else if (category === "breeders") {
+          const result = await getPrograms({ limit: 4 });
+          featured = (result.items || []).map((b) => {
+            const parts = [b.breed, b.location].filter((x): x is string => !!x);
+            const speciesStr = Array.isArray(b.species) ? b.species.join(", ") : (b.species || "");
+            return {
+              id: b.slug,
+              type: "breeder" as const,
+              title: b.name,
+              subtitle: parts.length > 0 ? parts.join(" · ") : (speciesStr || "Breeder"),
+              href: `/programs/${b.slug}`,
+              price: null,
+            };
+          });
+        } else {
+          const result = await getPublicServices({ limit: 4 });
+          featured = (result.items || []).map((s) => ({
+            id: String(s.id),
+            type: "service" as const,
+            title: s.title,
+            subtitle: s.provider?.name || "Service Provider",
+            href: s.provider?.slug ? `/breeders/${s.provider.slug}` : "/services",
+            price: s.priceCents ? formatCents(s.priceCents) : null,
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch featured items:", err);
+        featured = [];
       }
 
-      setItems(featured);
-      setLoading(false);
+      if (!dead) {
+        setItems(featured);
+        setHasItems(featured.length > 0);
+        setLoading(false);
+      }
     };
 
     fetchData();
-  }, [demoMode, category]);
+    return () => {
+      dead = true;
+    };
+  }, [category]);
 
-  // Non-demo mode: show subtle placeholder
-  if (!demoMode) {
-    return (
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">Featured right now</h2>
-        <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
-          <p className="text-sm text-text-tertiary mb-4">
-            Featured listings will appear here once the marketplace is live.
-          </p>
-          <button
-            type="button"
-            onClick={onEnableDemo}
-            className="text-sm text-text-secondary hover:text-white transition-colors"
-          >
-            Preview with demo data
-          </button>
-        </div>
-      </section>
-    );
+  // No items to show - hide the section entirely
+  if (!loading && !hasItems) {
+    return null;
   }
 
   const categoryLabel =
     category === "animals"
       ? "Animals"
       : category === "breeders"
-      ? "Breeders"
-      : "Services";
+        ? "Breeders"
+        : "Services";
 
   return (
     <section className="space-y-4">

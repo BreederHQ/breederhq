@@ -1,34 +1,43 @@
-// apps/portal/src/pages/PortalTasksPageNew.tsx
+// apps/portal/src/pages/PortalActivityPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { usePortalTasks, type TaskCard } from "../tasks/taskSources";
-import { SubjectHeader, type StatusVariant } from "../components/SubjectHeader";
+import { usePortalNotifications, type Notification } from "../notifications/notificationSources";
+import { SubjectHeader } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Task Type Icon
+ * Activity Item Type (unified Tasks + Notifications)
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function TaskIcon({ type }: { type: TaskCard["type"] }) {
-  const iconMap: Record<TaskCard["type"], { emoji: string; bg: string }> = {
-    invoice: { emoji: "💳", bg: "var(--portal-accent-soft)" },
-    contract: { emoji: "📝", bg: "var(--portal-info-soft)" },
-    appointment: { emoji: "📅", bg: "var(--portal-success-soft)" },
-    document: { emoji: "📄", bg: "var(--portal-warning-soft)" },
-    offspring: { emoji: "🐕", bg: "var(--portal-accent-muted)" },
-  };
+interface ActivityItem {
+  id: string;
+  type: "invoice" | "agreement" | "offspring" | "message" | "document";
+  urgency: "overdue" | "action_required" | "update" | "completed";
+  icon: { emoji: string; bg: string };
+  title: string;
+  subtitle: string;
+  statusLabel: string;
+  statusVariant: "error" | "action" | "neutral" | "success";
+  href: string;
+  timestamp?: string;
+  note?: string;
+}
 
-  const config = iconMap[type] || iconMap.document;
+/* ────────────────────────────────────────────────────────────────────────────
+ * Activity Icon Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
+function ActivityIcon({ icon }: { icon: { emoji: string; bg: string } }) {
   return (
     <div
       style={{
         width: "44px",
         height: "44px",
         borderRadius: "var(--portal-radius-lg)",
-        background: config.bg,
+        background: icon.bg,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -36,143 +45,92 @@ function TaskIcon({ type }: { type: TaskCard["type"] }) {
         flexShrink: 0,
       }}
     >
-      {config.emoji}
+      {icon.emoji}
     </div>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Task Status Badge
+ * Activity Status Badge
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function TaskStatusBadge({ status, urgency }: { status: TaskCard["status"]; urgency: TaskCard["urgency"] }) {
-  if (urgency === "completed") {
-    return (
+function ActivityStatusBadge({ variant, label }: { variant: ActivityItem["statusVariant"]; label: string }) {
+  const variantStyles = {
+    error: {
+      bg: "var(--portal-error-soft)",
+      color: "var(--portal-error)",
+      dotColor: "var(--portal-error)",
+    },
+    action: {
+      bg: "var(--portal-accent-muted)",
+      color: "var(--portal-accent)",
+      dotColor: "var(--portal-accent)",
+    },
+    neutral: {
+      bg: "var(--portal-bg-elevated)",
+      color: "var(--portal-text-secondary)",
+      dotColor: "var(--portal-text-secondary)",
+    },
+    success: {
+      bg: "var(--portal-success-soft)",
+      color: "var(--portal-success)",
+      dotColor: "var(--portal-success)",
+    },
+  };
+
+  const style = variantStyles[variant];
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "4px 10px",
+        background: style.bg,
+        borderRadius: "var(--portal-radius-full)",
+      }}
+    >
       <div
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "4px 10px",
-          background: "var(--portal-success-soft)",
-          borderRadius: "var(--portal-radius-full)",
+          width: "6px",
+          height: "6px",
+          borderRadius: "50%",
+          background: style.dotColor,
         }}
-      >
-        <div
-          style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            background: "var(--portal-success)",
-          }}
-        />
-        <span
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-success)",
-            textTransform: "uppercase",
-            letterSpacing: "0.02em",
-          }}
-        >
-          Complete
-        </span>
-      </div>
-    );
-  }
-
-  if (status === "overdue") {
-    return (
-      <div
+      />
+      <span
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "4px 10px",
-          background: "var(--portal-error-soft)",
-          borderRadius: "var(--portal-radius-full)",
+          fontSize: "var(--portal-font-size-xs)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: style.color,
+          textTransform: "uppercase",
+          letterSpacing: "0.02em",
         }}
       >
-        <div
-          style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            background: "var(--portal-error)",
-            boxShadow: "0 0 6px var(--portal-error)",
-          }}
-        />
-        <span
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-error)",
-            textTransform: "uppercase",
-            letterSpacing: "0.02em",
-          }}
-        >
-          Overdue
-        </span>
-      </div>
-    );
-  }
-
-  if (urgency === "action_required") {
-    return (
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "4px 10px",
-          background: "var(--portal-accent-muted)",
-          borderRadius: "var(--portal-radius-full)",
-        }}
-      >
-        <div
-          style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            background: "var(--portal-accent)",
-            boxShadow: "0 0 6px var(--portal-accent)",
-          }}
-        />
-        <span
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-accent)",
-            textTransform: "uppercase",
-            letterSpacing: "0.02em",
-          }}
-        >
-          Action Required
-        </span>
-      </div>
-    );
-  }
-
-  return null;
+        {label}
+      </span>
+    </div>
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Task Row Component
+ * Activity Row Component
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface TaskRowProps {
-  task: TaskCard;
+interface ActivityRowProps {
+  activity: ActivityItem;
 }
 
-function TaskRow({ task }: TaskRowProps) {
+function ActivityRow({ activity }: ActivityRowProps) {
   const handleClick = () => {
-    window.location.href = task.href;
+    window.location.href = activity.href;
   };
 
   return (
     <CardRow onClick={handleClick}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-        <TaskIcon type={task.type} />
+        <ActivityIcon icon={activity.icon} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -191,30 +149,30 @@ function TaskRow({ task }: TaskRowProps) {
                 color: "var(--portal-text-primary)",
               }}
             >
-              {task.title}
+              {activity.title}
             </div>
-            <TaskStatusBadge status={task.status} urgency={task.urgency} />
+            <ActivityStatusBadge variant={activity.statusVariant} label={activity.statusLabel} />
           </div>
 
           <div
             style={{
               fontSize: "var(--portal-font-size-sm)",
               color: "var(--portal-text-secondary)",
-              marginBottom: task.note ? "6px" : 0,
+              marginBottom: activity.note ? "6px" : 0,
             }}
           >
-            {task.subtitle}
+            {activity.subtitle}
           </div>
 
-          {task.note && (
+          {activity.note && (
             <div
               style={{
                 fontSize: "var(--portal-font-size-sm)",
-                color: task.status === "overdue" ? "var(--portal-error)" : "var(--portal-accent)",
+                color: activity.urgency === "overdue" ? "var(--portal-error)" : "var(--portal-accent)",
                 fontWeight: "var(--portal-font-weight-medium)",
               }}
             >
-              {task.note}
+              {activity.note}
             </div>
           )}
         </div>
@@ -235,20 +193,20 @@ function TaskRow({ task }: TaskRowProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Task Group Section
+ * Activity Group Section
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface TaskGroupProps {
+interface ActivityGroupProps {
   title: string;
-  tasks: TaskCard[];
+  activities: ActivityItem[];
   collapsible?: boolean;
   defaultCollapsed?: boolean;
 }
 
-function TaskGroup({ title, tasks, collapsible = false, defaultCollapsed = false }: TaskGroupProps) {
+function ActivityGroup({ title, activities, collapsible = false, defaultCollapsed = false }: ActivityGroupProps) {
   const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
 
-  if (tasks.length === 0) return null;
+  if (activities.length === 0) return null;
 
   return (
     <div style={{ marginBottom: "var(--portal-space-5)" }}>
@@ -286,7 +244,7 @@ function TaskGroup({ title, tasks, collapsible = false, defaultCollapsed = false
               borderRadius: "var(--portal-radius-full)",
             }}
           >
-            {tasks.length}
+            {activities.length}
           </span>
           <span
             style={{
@@ -327,15 +285,15 @@ function TaskGroup({ title, tasks, collapsible = false, defaultCollapsed = false
               borderRadius: "var(--portal-radius-full)",
             }}
           >
-            {tasks.length}
+            {activities.length}
           </span>
         </div>
       )}
 
       {!isCollapsed && (
         <PortalCard variant="elevated" padding="none">
-          {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} />
+          {activities.map((activity) => (
+            <ActivityRow key={activity.id} activity={activity} />
           ))}
         </PortalCard>
       )}
@@ -347,7 +305,7 @@ function TaskGroup({ title, tasks, collapsible = false, defaultCollapsed = false
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyTasks() {
+function EmptyActivity() {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -383,7 +341,7 @@ function EmptyTasks() {
             margin: 0,
           }}
         >
-          You're all caught up!
+          No action needed right now
         </h3>
         <p
           style={{
@@ -393,7 +351,7 @@ function EmptyTasks() {
             maxWidth: "320px",
           }}
         >
-          No pending tasks. We'll notify you when something needs your attention.
+          We'll notify you when something requires your attention.
         </p>
       </div>
     </PortalCard>
@@ -469,7 +427,7 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
             margin: 0,
           }}
         >
-          Unable to load tasks
+          Unable to load activity
         </h3>
         <p
           style={{
@@ -504,12 +462,100 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Convert Tasks & Notifications to Unified Activity Items
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function convertTaskToActivity(task: TaskCard): ActivityItem {
+  const iconMap: Record<TaskCard["type"], { emoji: string; bg: string }> = {
+    invoice: { emoji: "💳", bg: "var(--portal-accent-soft)" },
+    contract: { emoji: "📝", bg: "var(--portal-info-soft)" },
+    appointment: { emoji: "📅", bg: "var(--portal-success-soft)" },
+    document: { emoji: "📄", bg: "var(--portal-warning-soft)" },
+    offspring: { emoji: "🐕", bg: "var(--portal-accent-muted)" },
+  };
+
+  const icon = iconMap[task.type] || iconMap.document;
+
+  // Map task status to activity status variant
+  let statusVariant: ActivityItem["statusVariant"];
+  let statusLabel: string;
+
+  if (task.status === "overdue") {
+    statusVariant = "error";
+    statusLabel = "Overdue";
+  } else if (task.urgency === "completed") {
+    statusVariant = "success";
+    statusLabel = "Complete";
+  } else if (task.urgency === "action_required") {
+    statusVariant = "action";
+    statusLabel = "Action Required";
+  } else {
+    statusVariant = "neutral";
+    statusLabel = "Upcoming";
+  }
+
+  return {
+    id: `task-${task.id}`,
+    type: task.type === "contract" ? "agreement" : task.type,
+    urgency: task.urgency,
+    icon,
+    title: task.title,
+    subtitle: task.subtitle,
+    statusLabel,
+    statusVariant,
+    href: task.href,
+    note: task.note,
+  };
+}
+
+function convertNotificationToActivity(notification: Notification): ActivityItem {
+  const iconMap: Record<Notification["type"], { emoji: string; bg: string }> = {
+    message_received: { emoji: "💬", bg: "var(--portal-accent-soft)" },
+    invoice_issued: { emoji: "💳", bg: "var(--portal-info-soft)" },
+    invoice_overdue: { emoji: "⚠️", bg: "var(--portal-error-soft)" },
+    agreement_sent: { emoji: "📝", bg: "var(--portal-warning-soft)" },
+    agreement_signed: { emoji: "✅", bg: "var(--portal-success-soft)" },
+    offspring_ready: { emoji: "🐕", bg: "var(--portal-accent-muted)" },
+  };
+
+  const icon = iconMap[notification.type] || { emoji: "📌", bg: "var(--portal-bg-elevated)" };
+
+  // All notifications are "updates" unless they're overdue
+  let urgency: ActivityItem["urgency"] = "update";
+  let statusVariant: ActivityItem["statusVariant"] = "neutral";
+  let statusLabel = "Update";
+
+  if (notification.type === "invoice_overdue") {
+    urgency = "overdue";
+    statusVariant = "error";
+    statusLabel = "Overdue";
+  } else if (notification.type.includes("signed") || notification.type.includes("ready")) {
+    statusVariant = "success";
+    statusLabel = "Complete";
+  }
+
+  return {
+    id: `notification-${notification.id}`,
+    type: notification.type.includes("message") ? "message" : notification.type.includes("invoice") ? "invoice" : notification.type.includes("agreement") ? "agreement" : notification.type.includes("offspring") ? "offspring" : "document",
+    urgency,
+    icon,
+    title: notification.title,
+    subtitle: notification.subtitle,
+    statusLabel,
+    statusVariant,
+    href: notification.href,
+    timestamp: notification.timestamp,
+  };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Main Component
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export default function PortalTasksPageNew() {
+export default function PortalActivityPage() {
   const { tenantSlug, isReady } = useTenantContext();
-  const { tasks, loading, error } = usePortalTasks();
+  const { tasks, loading: tasksLoading, error: tasksError } = usePortalTasks();
+  const { notifications, loading: notificationsLoading, error: notificationsError } = usePortalNotifications();
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
   // Animal context - only set if we have real placement data
@@ -537,21 +583,38 @@ export default function PortalTasksPageNew() {
       }
     }
     loadAnimalContext();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [tenantSlug, isReady]);
 
   const handleRetry = () => {
     window.location.reload();
   };
 
-  // Group tasks by urgency
-  const actionRequired = tasks.filter((t) => t.urgency === "action_required");
-  const upcoming = tasks.filter((t) => t.urgency === "upcoming");
-  const completed = tasks.filter((t) => t.urgency === "completed");
+  // Convert tasks and notifications to unified activity items
+  const taskActivities = tasks.map(convertTaskToActivity);
+  const notificationActivities = notifications.map(convertNotificationToActivity);
 
-  const actionCount = actionRequired.length;
+  // Merge and deduplicate by composite ID
+  const allActivities = [...taskActivities, ...notificationActivities];
+  const seenIds = new Set<string>();
+  const uniqueActivities = allActivities.filter((activity) => {
+    if (seenIds.has(activity.id)) return false;
+    seenIds.add(activity.id);
+    return true;
+  });
+
+  // Group activities by urgency
+  const overdue = uniqueActivities.filter((a) => a.urgency === "overdue");
+  const actionRequired = uniqueActivities.filter((a) => a.urgency === "action_required");
+  const updates = uniqueActivities.filter((a) => a.urgency === "update");
+  const completed = uniqueActivities.filter((a) => a.urgency === "completed");
+
+  const actionCount = overdue.length + actionRequired.length;
 
   // Loading state
+  const loading = tasksLoading || notificationsLoading;
   if (loading) {
     return (
       <PageContainer>
@@ -561,6 +624,7 @@ export default function PortalTasksPageNew() {
   }
 
   // Error state
+  const error = tasksError || notificationsError;
   if (error) {
     return (
       <PageContainer>
@@ -575,13 +639,13 @@ export default function PortalTasksPageNew() {
         {/* Hero */}
         <PortalHero
           variant="page"
-          title="Tasks"
+          title="Activity"
           subtitle={animalName ? `What needs your attention for ${animalName}` : "What needs your attention"}
           animalContext={animalName ?? undefined}
           status={actionCount > 0 ? "action" : "success"}
           statusLabel={actionCount > 0 ? `${actionCount} need attention` : "All caught up"}
           actionCount={actionCount > 0 ? actionCount : undefined}
-          actionLabel={actionCount === 1 ? "task needs attention" : "tasks need attention"}
+          actionLabel={actionCount === 1 ? "item needs attention" : "items need attention"}
         />
 
         {/* Subject Header - Only show when we have real placement data */}
@@ -595,18 +659,19 @@ export default function PortalTasksPageNew() {
           />
         )}
 
-        {/* Task Groups */}
-        {tasks.length === 0 ? (
-          <EmptyTasks />
+        {/* Activity Groups */}
+        {uniqueActivities.length === 0 ? (
+          <EmptyActivity />
         ) : (
           <>
-            <TaskGroup title="Action Required" tasks={actionRequired} />
-            <TaskGroup title="Upcoming" tasks={upcoming} />
-            <TaskGroup
+            <ActivityGroup title="Overdue" activities={overdue} />
+            <ActivityGroup title="Action Required" activities={actionRequired} />
+            <ActivityGroup title="Updates" activities={updates} />
+            <ActivityGroup
               title="Completed"
-              tasks={completed}
+              activities={completed}
               collapsible
-              defaultCollapsed={completed.length > 0 && (actionRequired.length > 0 || upcoming.length > 0)}
+              defaultCollapsed={completed.length > 0 && (overdue.length > 0 || actionRequired.length > 0 || updates.length > 0)}
             />
           </>
         )}

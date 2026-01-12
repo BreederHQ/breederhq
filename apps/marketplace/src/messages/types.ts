@@ -28,6 +28,16 @@ export interface ContextRef {
 }
 
 /**
+ * Attachment metadata
+ */
+export interface MessageAttachment {
+  filename: string;
+  mime: string;
+  bytes: number;
+  url: string;
+}
+
+/**
  * A single message in a conversation
  */
 export interface Message {
@@ -38,6 +48,7 @@ export interface Message {
   content: string;
   createdAt: string;
   readAt?: string | null;
+  attachment?: MessageAttachment | null;
 }
 
 /**

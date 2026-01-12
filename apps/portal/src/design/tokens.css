@@ -187,3 +187,13 @@ button {
   background: var(--portal-warning-soft);
   color: var(--portal-warning);
 }
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

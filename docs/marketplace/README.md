@@ -2,6 +2,21 @@
 
 This folder contains documentation for the BreederHQ Marketplace module.
 
+## Current Implementation Status
+
+**See [Implementation Status](./implementation-status.md) for detailed breakdown of what's working vs demo data.**
+
+Quick summary:
+| Feature | Status |
+|---------|--------|
+| Breeders browse (`/breeders`) | Real API |
+| Breeding Programs management (`/me/programs`) | Real API |
+| Breeder Services management (`/me/services`) | Real API |
+| Service Provider Portal (`/provider`) | Real API |
+| Services browse (`/services`) | Demo data only |
+| Litter listings on Animals page | Demo data only |
+| Featured homepage section | Demo data only |
+
 ## Overview
 
 The Marketplace is a public-facing module at `marketplace.breederhq.com` that allows:
@@ -13,6 +28,7 @@ The Marketplace is a public-facing module at `marketplace.breederhq.com` that al
 
 | Document | Description |
 |----------|-------------|
+| [Implementation Status](./implementation-status.md) | What's working, what's demo, what's missing |
 | [Breeding Programs](./breeding-programs.md) | BreedingProgram entity, API, and management UI |
 | [Animal Listings](./animal-listings.md) | Animal listing intents, display logic, and browsing |
 | [Breeder Services](./breeder-services.md) | Service listings for breeders (stud, training, etc.) |

@@ -141,6 +141,14 @@ export async function portalFetch<T>(endpoint: string, options: RequestInit = {}
 }
 
 /**
+ * Get CSRF token from cookie
+ */
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
  * Create a portalFetch function bound to a specific tenant slug.
  * Use this when you have tenant context from React Context.
  * @param tenantSlug - Tenant slug for URL path (e.g., "acme")
@@ -154,6 +162,15 @@ export function createPortalFetch(tenantSlug: string | null) {
       Accept: "application/json",
       "Content-Type": "application/json",
     };
+
+    // Add CSRF token for mutating requests (POST, PUT, PATCH, DELETE)
+    const method = (options.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
+    }
 
     // Merge with any provided headers
     const mergedHeaders = {

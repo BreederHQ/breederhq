@@ -306,7 +306,7 @@ function AgreementGroup({ title, agreements }: AgreementGroupProps) {
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyAgreements({ animalName }: { animalName: string }) {
+function EmptyAgreements() {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -352,7 +352,7 @@ function EmptyAgreements({ animalName }: { animalName: string }) {
             maxWidth: "320px",
           }}
         >
-          Agreements related to {animalName}'s placement will appear here when they're ready.
+          Agreements from your breeder will appear here when they're ready.
         </p>
       </div>
     </PortalCard>
@@ -473,8 +473,8 @@ export default function PortalAgreementsPageNew() {
   const [error, setError] = React.useState(false);
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -553,26 +553,28 @@ export default function PortalAgreementsPageNew() {
         <PortalHero
           variant="page"
           title="Agreements"
-          subtitle={`Contracts and agreements for ${animalName}`}
-          animalContext={animalName}
+          subtitle={animalName ? `Contracts and agreements for ${animalName}` : "Contracts and agreements"}
+          animalContext={animalName ?? undefined}
           status={pendingCount > 0 ? "action" : "success"}
           statusLabel={pendingCount > 0 ? `${pendingCount} pending` : "All signed"}
           actionCount={pendingCount > 0 ? pendingCount : undefined}
           actionLabel={pendingCount === 1 ? "needs your signature" : "need your signature"}
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={pendingCount > 0 ? `${pendingCount} pending` : "All signed"}
-          statusVariant={pendingCount > 0 ? "warning" : "success"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={pendingCount > 0 ? `${pendingCount} pending` : "All signed"}
+            statusVariant={pendingCount > 0 ? "warning" : "success"}
+          />
+        )}
 
         {/* Agreement Groups */}
         {agreements.length === 0 ? (
-          <EmptyAgreements animalName={animalName} />
+          <EmptyAgreements />
         ) : (
           <>
             <AgreementGroup title="Pending Signature" agreements={pending} />

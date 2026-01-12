@@ -1,175 +1,129 @@
 // apps/marketplace/src/marketplace/pages/ServicesPage.tsx
-// Services browse page - demo mode backed
+// Services browse page - wired to real API
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { getMockServices, simulateDelay, getBoostedItem, removeBoostedItem, type MockService } from "../../demo/mockData";
-import { SponsorDisclosure } from "../components/SponsorDisclosure";
+import {
+  getPublicServices,
+  type PublicServiceListing,
+  type ServiceListingType,
+} from "../../api/client";
 import { formatCents } from "../../utils/format";
 
-
 const SERVICE_TYPE_LABELS: Record<string, string> = {
-  stud: "Stud Service",
-  guardianship: "Guardianship",
-  training: "Training",
-  delivery: "Delivery",
-  grooming: "Grooming",
-  boarding: "Boarding",
+  STUD_SERVICE: "Stud Service",
+  TRAINING: "Training",
+  VETERINARY: "Veterinary",
+  PHOTOGRAPHY: "Photography",
+  GROOMING: "Grooming",
+  TRANSPORT: "Transport",
+  BOARDING: "Boarding",
+  PRODUCT: "Product",
+  OTHER_SERVICE: "Other",
 };
 
+const SERVICE_TYPES: ServiceListingType[] = [
+  "STUD_SERVICE",
+  "TRAINING",
+  "VETERINARY",
+  "PHOTOGRAPHY",
+  "GROOMING",
+  "TRANSPORT",
+  "BOARDING",
+  "PRODUCT",
+  "OTHER_SERVICE",
+];
+
 /**
- * Services page - browse breeder services.
- * In demo mode: shows mock services.
- * In real mode: shows coming soon state.
+ * Services page - browse published services from breeders and service providers.
  */
 export function ServicesPage() {
-  const [services, setServices] = React.useState<MockService[]>([]);
-  const [boostedService, setBoostedService] = React.useState<MockService | null>(null);
+  const [services, setServices] = React.useState<PublicServiceListing[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<string>("all");
-  const demoMode = isDemoMode();
+  const [total, setTotal] = React.useState(0);
 
   React.useEffect(() => {
-    if (!demoMode) {
-      setLoading(false);
-      return;
-    }
-
     const fetchData = async () => {
       setLoading(true);
-      await simulateDelay(180);
-      const all = getMockServices();
-
-      // Get boosted item
-      const boosted = getBoostedItem(all, "services");
-      setBoostedService(boosted);
-
-      // Remove boosted from regular list
-      const remaining = removeBoostedItem(all, boosted);
-      setServices(remaining);
-      setLoading(false);
+      setError(null);
+      try {
+        const params = filter === "all" ? {} : { type: filter };
+        const response = await getPublicServices(params);
+        setServices(response.items);
+        setTotal(response.total);
+      } catch (err: any) {
+        console.error("Failed to fetch services:", err);
+        setError(err.message || "Failed to load services");
+        setServices([]);
+        setTotal(0);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
-  }, [demoMode]);
+  }, [filter]);
 
-  // Filter services by type
-  const filteredServices = filter === "all"
-    ? services
-    : services.filter((s) => s.type === filter);
+  // Get available types from current services for showing filter counts
+  const availableTypes = React.useMemo(() => {
+    const types = new Set(services.map((s) => s.listingType));
+    return SERVICE_TYPES.filter((t) => types.has(t));
+  }, [services]);
 
-  // Get unique service types for filter
-  const serviceTypes = Array.from(new Set(services.map((s) => s.type)));
-
-  // Handle enabling demo mode
-  const handleEnableDemo = () => {
-    setDemoMode(true);
-    window.location.reload();
-  };
-
-  // SEO component (rendered regardless of demo mode)
-
-  // Real mode: show coming soon state
-  if (!demoMode) {
-    return (
-      <div className="space-y-6">
-        
-        <div>
-          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            Services
-          </h1>
-          <p className="text-sm text-text-tertiary mt-1">
-            Stud services, guardianship, and breeder offerings.
-          </p>
-        </div>
-
-        <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
-            <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-white mb-2">Services browse is coming soon</h2>
-          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-            Services are published by breeders. Browse breeder profiles to learn about their offerings.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              to="/breeders"
-              className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-            >
-              Browse breeders
-            </Link>
-            <button
-              type="button"
-              onClick={handleEnableDemo}
-              className="text-sm text-text-tertiary hover:text-white transition-colors"
-            >
-              Preview with demo data
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Demo mode: show services grid
   return (
     <div className="space-y-5">
-      
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Services
         </h1>
         <p className="text-sm text-text-tertiary mt-1">
-          Stud services, guardianship, and breeder offerings.
+          Stud services, training, grooming, and other breeder offerings.
         </p>
       </div>
 
       {/* Filter tabs */}
-      {!loading && services.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+            filter === "all"
+              ? "bg-border-default text-white"
+              : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+          }`}
+        >
+          All
+        </button>
+        {SERVICE_TYPES.map((type) => (
           <button
+            key={type}
             type="button"
-            onClick={() => setFilter("all")}
+            onClick={() => setFilter(type)}
             className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-              filter === "all"
+              filter === type
                 ? "bg-border-default text-white"
                 : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
             }`}
           >
-            All
+            {SERVICE_TYPE_LABELS[type] || type}
           </button>
-          {serviceTypes.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setFilter(type)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                filter === type
-                  ? "bg-border-default text-white"
-                  : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-              }`}
-            >
-              {SERVICE_TYPE_LABELS[type] || type}
-            </button>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
       {/* Results count */}
       <div className="text-[13px] text-text-tertiary">
         {loading ? (
           <span className="inline-block h-3.5 w-20 bg-border-default rounded animate-pulse" />
         ) : (
-          `${filteredServices.length} service${filteredServices.length === 1 ? "" : "s"}`
+          `${total} service${total === 1 ? "" : "s"}`
         )}
       </div>
 
-      {/* Boosted service - pinned at top */}
-      {!loading && boostedService && filter === "all" && (
-        <div className="mb-4">
-          <ServiceCard service={boostedService} isBoosted />
+      {/* Error state */}
+      {error && (
+        <div className="rounded-portal border border-red-500/30 bg-red-500/10 p-4">
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       )}
 
@@ -177,7 +131,10 @@ export function ServicesPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse">
+            <div
+              key={i}
+              className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse"
+            >
               <div className="h-4 bg-border-default rounded w-1/4 mb-3" />
               <div className="h-5 bg-border-default rounded w-3/4 mb-3" />
               <div className="h-4 bg-border-default rounded w-full mb-2" />
@@ -185,13 +142,41 @@ export function ServicesPage() {
             </div>
           ))}
         </div>
-      ) : filteredServices.length === 0 ? (
+      ) : services.length === 0 ? (
         <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-          <p className="text-sm text-text-tertiary">No services match your filter.</p>
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-text-muted"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-white mb-2">
+            No services available yet
+          </h2>
+          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
+            {filter === "all"
+              ? "No services have been published yet. Check back later or browse breeders to see their offerings."
+              : `No ${SERVICE_TYPE_LABELS[filter] || filter} services found. Try a different filter.`}
+          </p>
+          <Link
+            to="/breeders"
+            className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+          >
+            Browse breeders
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredServices.map((service) => (
+          {services.map((service) => (
             <ServiceCard key={service.id} service={service} />
           ))}
         </div>
@@ -203,65 +188,77 @@ export function ServicesPage() {
 /**
  * Service card component.
  */
-function ServiceCard({ service, isBoosted = false }: { service: MockService; isBoosted?: boolean }) {
-  const priceText = service.priceRange
-    ? service.priceRange.min === service.priceRange.max
-      ? formatCents(service.priceRange.min)
-      : `${formatCents(service.priceRange.min)} - ${formatCents(service.priceRange.max)}`
-    : "Contact for pricing";
+function ServiceCard({ service }: { service: PublicServiceListing }) {
+  // Format price display
+  let priceText = "Contact for pricing";
+  if (service.priceCents != null) {
+    priceText = formatCents(service.priceCents);
+    if (service.priceType === "starting_at") {
+      priceText = `From ${priceText}`;
+    }
+  }
+
+  // Build location string
+  const location = [service.city, service.state].filter(Boolean).join(", ");
+
+  // Determine link to provider
+  const providerLink =
+    service.provider?.type === "breeder" && service.provider.slug
+      ? `/breeders/${service.provider.slug}`
+      : null;
 
   return (
-    <div className={`rounded-portal border bg-portal-card p-5 h-full flex flex-col ${
-      isBoosted ? "border-accent/30" : "border-border-subtle"
-    }`}>
-      {/* Badges row */}
+    <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full flex flex-col">
+      {/* Type badge */}
       <div className="flex items-center gap-2 mb-2">
-        {isBoosted && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent/15 text-accent">
-            Boosted
-          </span>
-        )}
         <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-border-default text-text-secondary">
-          {SERVICE_TYPE_LABELS[service.type] || service.type}
+          {SERVICE_TYPE_LABELS[service.listingType] || service.listingType}
         </span>
-        {isBoosted && service.sponsorDisclosureText && (
-          <div className="ml-auto">
-            <SponsorDisclosure disclosureText={service.sponsorDisclosureText} />
-          </div>
-        )}
       </div>
 
-      {/* Service name */}
+      {/* Service title */}
       <h3 className="text-[15px] font-semibold text-white mb-2">
-        {service.name}
+        {service.title}
       </h3>
 
       {/* Description */}
-      <p className="text-sm text-text-secondary mb-3 flex-grow">
-        {service.description}
-      </p>
+      {service.description && (
+        <p className="text-sm text-text-secondary mb-3 flex-grow line-clamp-3">
+          {service.description}
+        </p>
+      )}
 
-      {/* Breeder and location */}
+      {/* Provider and location */}
       <div className="text-[13px] text-text-tertiary mb-3">
-        <Link
-          to={`/programs/${service.programSlug}`}
-          className="text-accent hover:text-accent-hover transition-colors"
-        >
-          {service.programName}
-        </Link>
-        <span className="mx-1">·</span>
-        <span>{service.location}</span>
+        {service.provider && (
+          <>
+            {providerLink ? (
+              <Link
+                to={providerLink}
+                className="text-accent hover:text-accent-hover transition-colors"
+              >
+                {service.provider.name}
+              </Link>
+            ) : (
+              <span>{service.provider.name}</span>
+            )}
+            {location && <span className="mx-1">·</span>}
+          </>
+        )}
+        {location && <span>{location}</span>}
       </div>
 
       {/* Price and CTA */}
       <div className="pt-3 border-t border-border-subtle flex items-center justify-between">
         <span className="text-[15px] text-accent font-semibold">{priceText}</span>
-        <Link
-          to={`/programs/${service.programSlug}`}
-          className="text-[13px] text-text-secondary hover:text-white transition-colors"
-        >
-          View breeder
-        </Link>
+        {providerLink && (
+          <Link
+            to={providerLink}
+            className="text-[13px] text-text-secondary hover:text-white transition-colors"
+          >
+            View provider
+          </Link>
+        )}
       </div>
     </div>
   );

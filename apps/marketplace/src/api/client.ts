@@ -1522,3 +1522,139 @@ export async function createProviderBillingPortal(
   if (!data?.portalUrl) throw new ApiError("Failed to create portal session", 500);
   return data;
 }
+
+// =====================================
+// Public Browse API - Services
+// =====================================
+
+export type ServiceListingType =
+  | "STUD_SERVICE"
+  | "TRAINING"
+  | "VETERINARY"
+  | "PHOTOGRAPHY"
+  | "GROOMING"
+  | "TRANSPORT"
+  | "BOARDING"
+  | "PRODUCT"
+  | "OTHER_SERVICE";
+
+export interface PublicServiceListing {
+  id: number;
+  slug: string | null;
+  listingType: ServiceListingType;
+  title: string;
+  description: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  priceCents: number | null;
+  priceType: "fixed" | "starting_at" | "contact" | null;
+  images: string[] | null;
+  publishedAt: string | null;
+  provider: {
+    type: "service_provider" | "breeder";
+    id?: number;
+    slug?: string | null;
+    name: string;
+  } | null;
+}
+
+export interface PublicServicesResponse {
+  items: PublicServiceListing[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GetPublicServicesParams {
+  type?: string;
+  search?: string;
+  city?: string;
+  state?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Browse published service listings (public marketplace).
+ */
+export async function getPublicServices(
+  params: GetPublicServicesParams = {}
+): Promise<PublicServicesResponse> {
+  const query = new URLSearchParams();
+  if (params.type) query.set("type", params.type);
+  if (params.search) query.set("search", params.search);
+  if (params.city) query.set("city", params.city);
+  if (params.state) query.set("state", params.state);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/marketplace/services${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<PublicServicesResponse>(path);
+  return data;
+}
+
+// =====================================
+// Public Browse API - Offspring Groups
+// =====================================
+
+export interface PublicOffspringGroupListing {
+  id: number;
+  listingSlug: string | null;
+  title: string | null;
+  description: string | null;
+  species: string;
+  breed: string | null;
+  expectedBirthOn: string | null;
+  actualBirthOn: string | null;
+  coverImageUrl: string | null;
+  availableCount: number;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  dam: { name: string | null; photoUrl: string | null } | null;
+  sire: { name: string | null; photoUrl: string | null } | null;
+  breeder: {
+    slug: string | null;
+    name: string;
+    location: string | null;
+  } | null;
+}
+
+export interface PublicOffspringGroupsResponse {
+  items: PublicOffspringGroupListing[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GetPublicOffspringGroupsParams {
+  species?: string;
+  breed?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Browse published offspring groups (public marketplace).
+ */
+export async function getPublicOffspringGroups(
+  params: GetPublicOffspringGroupsParams = {}
+): Promise<PublicOffspringGroupsResponse> {
+  const query = new URLSearchParams();
+  if (params.species) query.set("species", params.species);
+  if (params.breed) query.set("breed", params.breed);
+  if (params.search) query.set("search", params.search);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/marketplace/offspring-groups${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<PublicOffspringGroupsResponse>(path);
+  return data;
+}

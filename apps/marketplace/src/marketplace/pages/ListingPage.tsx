@@ -1,11 +1,9 @@
 // apps/marketplace/src/marketplace/pages/ListingPage.tsx
-// Litter listing page with buyer language and messaging integration
+// Offspring group listing page with buyer language and messaging integration
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
-import { isDemoMode } from "../../demo/demoMode";
-import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
@@ -14,7 +12,7 @@ import { getOriginData, setOriginProgramSlug } from "../../utils/origin-tracking
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
- * Litter detail page with buyer-facing language.
+ * Offspring group detail page with buyer-facing language.
  */
 export function ListingPage() {
   const navigate = useNavigate();
@@ -42,16 +40,6 @@ export function ListingPage() {
     setLoading(true);
     setError(null);
 
-    // Demo mode: use mock data
-    if (isDemoMode()) {
-      await simulateDelay(150);
-      const result = getMockListing(programSlug, listingSlug);
-      setData(result);
-      setLoading(false);
-      return;
-    }
-
-    // Real API mode
     try {
       const result = await getListing(programSlug, listingSlug);
       setData(result);
@@ -83,43 +71,6 @@ export function ListingPage() {
 
     const messageText = inquiryMessage.trim();
 
-    // Demo mode: create conversation in messaging system
-    if (isDemoMode()) {
-      try {
-        const conv = await startConversation({
-          context: {
-            type: "listing",
-            programSlug,
-            programName: data.programName,
-            listingSlug,
-            listingTitle: data.title || "Untitled Listing",
-          },
-          participant: {
-            name: data.programName,
-            type: "breeder",
-            slug: programSlug,
-          },
-          initialMessage: messageText,
-        });
-
-        setInquirySuccess(true);
-        setInquiryMessage("");
-        setInquirySending(false);
-
-        // Navigate to conversation after short delay
-        if (conv) {
-          setTimeout(() => {
-            navigate(`/inquiries?c=${conv.conversation.id}`);
-          }, 1500);
-        }
-      } catch (err) {
-        setInquiryError("Failed to send message. Please try again.");
-        setInquirySending(false);
-      }
-      return;
-    }
-
-    // Real API mode - also create local conversation for tracking
     try {
       await submitInquiry(programSlug, listingSlug, {
         message: messageText,
@@ -169,7 +120,7 @@ export function ListingPage() {
   if (error) {
     return (
       <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
-        <p className="text-text-secondary text-sm mb-4">Unable to load litter details.</p>
+        <p className="text-text-secondary text-sm mb-4">Unable to load listing details.</p>
         <button
           type="button"
           onClick={fetchData}
@@ -218,10 +169,10 @@ export function ListingPage() {
 
   const hasOffspring = data.offspring && data.offspring.length > 0;
 
-  const listingTitle = data.title || "Untitled Litter";
+  const listingTitle = data.title || "Untitled Offspring Group";
 
   // AI-quotable summary
-  const aiSummary = `This ${data.species}${data.breed ? ` (${data.breed})` : ""} litter from ${data.programName} includes ${data.countAvailable} animal${data.countAvailable === 1 ? "" : "s"} currently listed${priceText ? `, with pricing ${data.priceRange?.min === data.priceRange?.max ? `at ${priceText}` : `ranging from ${priceText}`}` : ""}.`;
+  const aiSummary = `This ${data.species}${data.breed ? ` (${data.breed})` : ""} offspring group from ${data.programName} includes ${data.countAvailable} animal${data.countAvailable === 1 ? "" : "s"} currently listed${priceText ? `, with pricing ${data.priceRange?.min === data.priceRange?.max ? `at ${priceText}` : `ranging from ${priceText}`}` : ""}.`;
 
   return (
     <div className="space-y-6">
@@ -233,7 +184,7 @@ export function ListingPage() {
         ]}
       />
 
-      {/* Litter hero */}
+      {/* Listing hero */}
       <div>
         {/* Title row with price */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
@@ -348,7 +299,7 @@ export function ListingPage() {
               <div className="mb-3">
                 <h3 className="text-base font-semibold text-white">Message {data.programName}</h3>
                 <p className="text-[13px] text-text-tertiary mt-1">
-                  Start a conversation about this litter. Your email stays private.
+                  Start a conversation about this listing. Your email stays private.
                 </p>
               </div>
 

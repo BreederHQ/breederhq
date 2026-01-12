@@ -1632,8 +1632,8 @@ export default function PortalFinancialsPage() {
     [tenantSlug]
   );
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -1924,20 +1924,22 @@ export default function PortalFinancialsPage() {
           }
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={
-            overdueCount > 0
-              ? `${overdueCount} overdue`
-              : dueCount > 0
-                ? `${dueCount} due`
-                : "All paid"
-          }
-          statusVariant={overdueCount > 0 ? "error" : dueCount > 0 ? "warning" : "success"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={
+              overdueCount > 0
+                ? `${overdueCount} overdue`
+                : dueCount > 0
+                  ? `${dueCount} due`
+                  : "All paid"
+            }
+            statusVariant={overdueCount > 0 ? "error" : dueCount > 0 ? "warning" : "success"}
+          />
+        )}
 
         {/* Summary Card */}
         {summary && <FinancialSummaryCard summary={summary} />}

@@ -251,10 +251,27 @@ interface MessageBubbleProps {
   message: any;
   isOwn: boolean;
   senderName: string;
+  tenantSlug: string | null;
 }
 
-function MessageBubble({ message, isOwn, senderName }: MessageBubbleProps) {
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileIcon(mime: string | null): string {
+  if (!mime) return "📎";
+  if (mime.startsWith("image/")) return "🖼️";
+  if (mime === "application/pdf") return "📄";
+  if (mime.includes("word") || mime.includes("document")) return "📝";
+  if (mime.includes("excel") || mime.includes("spreadsheet")) return "📊";
+  return "📎";
+}
+
+function MessageBubble({ message, isOwn, senderName, tenantSlug }: MessageBubbleProps) {
   const timeStr = formatMessageTime(message.sentAt || message.createdAt);
+  const attachment = message.attachment;
 
   return (
     <div
@@ -286,6 +303,49 @@ function MessageBubble({ message, isOwn, senderName }: MessageBubbleProps) {
           }}
         >
           {message.body}
+          {attachment && (
+            <a
+              href={tenantSlug ? `/api/v1/t/${tenantSlug}${attachment.url}` : attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--portal-space-2)",
+                marginTop: message.body ? "var(--portal-space-2)" : 0,
+                padding: "var(--portal-space-2)",
+                background: isOwn ? "var(--portal-bg-card)" : "var(--portal-bg-elevated)",
+                borderRadius: "var(--portal-radius-md)",
+                textDecoration: "none",
+                color: "var(--portal-text-primary)",
+                border: "1px solid var(--portal-border-subtle)",
+              }}
+            >
+              <span style={{ fontSize: "1.25rem" }}>{getFileIcon(attachment.mime)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-sm)",
+                    fontWeight: "var(--portal-font-weight-medium)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {attachment.filename}
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-xs)",
+                    color: "var(--portal-text-tertiary)",
+                  }}
+                >
+                  {formatFileSize(attachment.bytes)}
+                </div>
+              </div>
+              <span style={{ color: "var(--portal-accent)", fontSize: "0.875rem" }}>↓</span>
+            </a>
+          )}
         </div>
         <div
           style={{
@@ -311,20 +371,23 @@ interface ThreadDetailProps {
   thread: any;
   currentPartyId: number | null;
   onBack: () => void;
-  animalName: string;
+  animalName: string | null;
   species: string | null;
   breed: string | null;
   onMessageSent: (message: any) => void;
   portalFetch: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  tenantSlug: string | null;
 }
 
-function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, breed, onMessageSent, portalFetch }: ThreadDetailProps) {
+function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, breed, onMessageSent, portalFetch, tenantSlug }: ThreadDetailProps) {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const messagesContainerRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [replyText, setReplyText] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
 
   // Scroll to bottom on mount and when new messages arrive
   React.useEffect(() => {
@@ -352,26 +415,78 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
     messagesWithSeparators.push({ type: "message", msg, isOwn });
   }
 
-  // Handle sending a reply
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setSendError("File too large. Maximum size is 10MB.");
+        return;
+      }
+      setSelectedFile(file);
+      setSendError(null);
+    }
+  };
+
+  // Clear selected file
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Handle sending a reply (with optional attachment)
   const handleSendReply = async () => {
     const trimmedText = replyText.trim();
-    if (!trimmedText || sending) return;
+    if ((!trimmedText && !selectedFile) || sending) return;
 
     setSending(true);
     setSendError(null);
 
     try {
-      const response = await portalFetch<{ ok: boolean; message: any }>(
-        `/messages/threads/${thread.id}/messages`,
-        {
+      let response: { ok: boolean; message: any };
+
+      if (selectedFile) {
+        // Send with file attachment using multipart form
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("body", trimmedText);
+
+        const apiUrl = tenantSlug
+          ? `/api/v1/t/${tenantSlug}/messages/threads/${thread.id}/messages/upload`
+          : `/api/v1/messages/threads/${thread.id}/messages/upload`;
+
+        const res = await fetch(apiUrl, {
           method: "POST",
-          body: JSON.stringify({ body: trimmedText }),
+          credentials: "include",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Upload failed: ${res.status}`);
         }
-      );
+
+        response = await res.json();
+      } else {
+        // Text-only message
+        response = await portalFetch<{ ok: boolean; message: any }>(
+          `/messages/threads/${thread.id}/messages`,
+          {
+            method: "POST",
+            body: JSON.stringify({ body: trimmedText }),
+          }
+        );
+      }
 
       if (response?.ok && response.message) {
         // Clear the input
         setReplyText("");
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         // Notify parent to update the thread
         onMessageSent(response.message);
         // Scroll to bottom
@@ -440,15 +555,17 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
         {thread.subject || `Conversation with ${otherName}`}
       </h1>
 
-      {/* Subject Header - Species-aware context */}
-      <SubjectHeader
-        name={animalName}
-        species={species}
-        breed={breed}
-        statusLabel={`with ${otherName}`}
-        statusVariant="neutral"
-        size="compact"
-      />
+      {/* Subject Header - Only show when we have real placement data */}
+      {animalName && (
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={`with ${otherName}`}
+          statusVariant="neutral"
+          size="compact"
+        />
+      )}
 
       {/* Messages Timeline */}
       <PortalCard variant="flat" padding="md">
@@ -494,6 +611,7 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
                     message={item.msg}
                     isOwn={item.isOwn}
                     senderName={otherName}
+                    tenantSlug={tenantSlug}
                   />
                 );
               })}
@@ -513,6 +631,15 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
           overflow: "hidden",
         }}
       >
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileSelect}
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+          style={{ display: "none" }}
+        />
+
         {/* Error message */}
         {sendError && (
           <div
@@ -525,6 +652,53 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
             }}
           >
             {sendError}
+          </div>
+        )}
+
+        {/* Selected file preview */}
+        {selectedFile && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-2)",
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              background: "var(--portal-bg-elevated)",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "1.25rem" }}>{getFileIcon(selectedFile.type)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  fontWeight: "var(--portal-font-weight-medium)",
+                  color: "var(--portal-text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {selectedFile.name}
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-xs)", color: "var(--portal-text-tertiary)" }}>
+                {formatFileSize(selectedFile.size)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearFile}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "var(--portal-space-1)",
+                color: "var(--portal-text-tertiary)",
+                fontSize: "1rem",
+              }}
+              aria-label="Remove file"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -553,7 +727,7 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
           rows={2}
         />
 
-        {/* Footer with send button */}
+        {/* Footer with attachment and send buttons */}
         <div
           style={{
             display: "flex",
@@ -564,18 +738,42 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
             background: "var(--portal-bg-elevated)",
           }}
         >
-          <span
-            style={{
-              fontSize: "var(--portal-font-size-xs)",
-              color: "var(--portal-text-tertiary)",
-            }}
-          >
-            Press Ctrl+Enter to send
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              style={{
+                all: "unset",
+                cursor: sending ? "not-allowed" : "pointer",
+                padding: "var(--portal-space-1) var(--portal-space-2)",
+                borderRadius: "var(--portal-radius-sm)",
+                color: "var(--portal-text-secondary)",
+                fontSize: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--portal-space-1)",
+                opacity: sending ? 0.5 : 1,
+              }}
+              aria-label="Attach file"
+              title="Attach file"
+            >
+              📎
+              <span style={{ fontSize: "var(--portal-font-size-xs)" }}>Attach</span>
+            </button>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              Ctrl+Enter to send
+            </span>
+          </div>
           <Button
             variant="primary"
             onClick={handleSendReply}
-            disabled={!replyText.trim() || sending}
+            disabled={(!replyText.trim() && !selectedFile) || sending}
           >
             {sending ? "Sending..." : "Send"}
           </Button>
@@ -617,7 +815,12 @@ function LoadingState() {
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyMessages({ animalName }: { animalName: string }) {
+interface EmptyMessagesProps {
+  breederName: string | null;
+  onStartConversation: () => void;
+}
+
+function EmptyMessages({ breederName, onStartConversation }: EmptyMessagesProps) {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -663,16 +866,380 @@ function EmptyMessages({ animalName }: { animalName: string }) {
             maxWidth: "320px",
           }}
         >
-          Messages about {animalName}'s journey will appear here when the breeder contacts you.
+          {breederName
+            ? `Start a conversation with ${breederName}.`
+            : "Start a conversation with your breeder."}
         </p>
+        <Button variant="primary" onClick={onStartConversation}>
+          Send a Message
+        </Button>
       </div>
     </PortalCard>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Compose Message View
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ComposeMessageProps {
+  breederName: string | null;
+  breederPartyId: number;
+  onBack: () => void;
+  onMessageSent: (thread: any) => void;
+  portalFetch: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
+  tenantSlug: string | null;
+}
+
+function ComposeMessage({ breederName, breederPartyId, onBack, onMessageSent, portalFetch, tenantSlug }: ComposeMessageProps) {
+  const [subject, setSubject] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Focus textarea on mount
+  React.useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setError("File too large. Maximum size is 10MB.");
+        return;
+      }
+      setSelectedFile(file);
+      setError(null);
+    }
+  };
+
+  // Clear selected file
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSend = async () => {
+    const trimmedMessage = message.trim();
+    if ((!trimmedMessage && !selectedFile) || sending) return;
+
+    setSending(true);
+    setError(null);
+
+    try {
+      // First create the thread with the initial message
+      const response = await portalFetch<{ ok: boolean; thread: any }>(
+        "/messages/threads",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            recipientPartyId: breederPartyId,
+            subject: subject.trim() || undefined,
+            initialMessage: trimmedMessage || "Sent an attachment",
+          }),
+        }
+      );
+
+      if (response?.ok && response.thread) {
+        // If we have a file, send it as a follow-up message in the new thread
+        if (selectedFile) {
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+          formData.append("body", ""); // Empty body since message was sent with thread creation
+
+          const apiUrl = tenantSlug
+            ? `/api/v1/t/${tenantSlug}/messages/threads/${response.thread.id}/messages/upload`
+            : `/api/v1/messages/threads/${response.thread.id}/messages/upload`;
+
+          const uploadRes = await fetch(apiUrl, {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+          });
+
+          if (!uploadRes.ok) {
+            console.warn("[ComposeMessage] File upload failed, but thread was created");
+          }
+        }
+        onMessageSent(response.thread);
+      } else {
+        setError("Failed to send message. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("[ComposeMessage] Failed to send:", err);
+      setError(err?.message || "Failed to send message. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+  };
+
+  return (
+    <PageContainer>
+      {/* Back button */}
+      <button
+        onClick={onBack}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "var(--portal-space-1)",
+          color: "var(--portal-text-secondary)",
+          fontSize: "var(--portal-font-size-sm)",
+          marginBottom: "var(--portal-space-3)",
+        }}
+      >
+        ← Back to Messages
+      </button>
+
+      {/* Page title */}
+      <h1
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: "0 0 var(--portal-space-4) 0",
+        }}
+      >
+        New Message
+      </h1>
+
+      {/* Recipient info */}
+      <div
+        style={{
+          padding: "var(--portal-space-3)",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
+          marginBottom: "var(--portal-space-3)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-tertiary)",
+            marginBottom: "var(--portal-space-1)",
+          }}
+        >
+          To
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-primary)",
+            fontWeight: "var(--portal-font-weight-medium)",
+          }}
+        >
+          {breederName || "Your Breeder"}
+        </div>
+      </div>
+
+      {/* Subject input */}
+      <div style={{ marginBottom: "var(--portal-space-3)" }}>
+        <input
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Subject (optional)"
+          style={{
+            width: "100%",
+            padding: "var(--portal-space-3)",
+            background: "var(--portal-bg-card)",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-lg)",
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-primary)",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {/* Message composer */}
+      <div
+        style={{
+          background: "var(--portal-bg-card)",
+          border: "1px solid var(--portal-border-subtle)",
+          borderRadius: "var(--portal-radius-lg)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileSelect}
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+          style={{ display: "none" }}
+        />
+
+        {error && (
+          <div
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              background: "var(--portal-error-soft)",
+              color: "var(--portal-error)",
+              fontSize: "var(--portal-font-size-sm)",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Selected file preview */}
+        {selectedFile && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-2)",
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              background: "var(--portal-bg-elevated)",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "1.25rem" }}>{getFileIcon(selectedFile.type)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  fontWeight: "var(--portal-font-weight-medium)",
+                  color: "var(--portal-text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {selectedFile.name}
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-xs)", color: "var(--portal-text-tertiary)" }}>
+                {formatFileSize(selectedFile.size)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearFile}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "var(--portal-space-1)",
+                color: "var(--portal-text-tertiary)",
+                fontSize: "1rem",
+              }}
+              aria-label="Remove file"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={handleTextareaChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Write your message..."
+          disabled={sending}
+          style={{
+            width: "100%",
+            minHeight: "120px",
+            maxHeight: "200px",
+            padding: "var(--portal-space-3)",
+            border: "none",
+            outline: "none",
+            resize: "none",
+            fontFamily: "inherit",
+            fontSize: "var(--portal-font-size-sm)",
+            lineHeight: "1.5",
+            color: "var(--portal-text-primary)",
+            background: "transparent",
+          }}
+          rows={4}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "var(--portal-space-2) var(--portal-space-3)",
+            borderTop: "1px solid var(--portal-border-subtle)",
+            background: "var(--portal-bg-elevated)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              style={{
+                all: "unset",
+                cursor: sending ? "not-allowed" : "pointer",
+                padding: "var(--portal-space-1) var(--portal-space-2)",
+                borderRadius: "var(--portal-radius-sm)",
+                color: "var(--portal-text-secondary)",
+                fontSize: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--portal-space-1)",
+                opacity: sending ? 0.5 : 1,
+              }}
+              aria-label="Attach file"
+              title="Attach file"
+            >
+              📎
+              <span style={{ fontSize: "var(--portal-font-size-xs)" }}>Attach</span>
+            </button>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              Ctrl+Enter to send
+            </span>
+          </div>
+          <Button
+            variant="primary"
+            onClick={handleSend}
+            disabled={(!message.trim() && !selectedFile) || sending}
+          >
+            {sending ? "Sending..." : "Send Message"}
+          </Button>
+        </div>
+      </div>
+    </PageContainer>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Main Component
  * ──────────────────────────────────────────────────────────────────────────── */
+
+interface BreederInfo {
+  partyId: number;
+  name: string | null;
+}
 
 export default function PortalMessagesPage() {
   const { tenantSlug, isReady } = useTenantContext();
@@ -682,6 +1249,8 @@ export default function PortalMessagesPage() {
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
+  const [breederInfo, setBreederInfo] = React.useState<BreederInfo | null>(null);
+  const [isComposing, setIsComposing] = React.useState(false);
   const currentPartyId = getCurrentPartyId();
 
   // Create bound fetch function
@@ -690,30 +1259,42 @@ export default function PortalMessagesPage() {
     [tenantSlug]
   );
 
-  // Animal context from API
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context from API - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
-  // Load primary animal context - wait for tenant context
+  // Load primary animal context and breeder info - wait for tenant context
   React.useEffect(() => {
     if (!isReady) return;
 
     let cancelled = false;
 
-    async function loadAnimalContext() {
+    async function loadContext() {
       try {
-        const res = await portalFetch<{ placements: any[] }>("/portal/placements");
+        // Load placements and breeder info in parallel
+        const [placementsRes, breederRes] = await Promise.all([
+          portalFetch<{ placements: any[] }>("/portal/placements").catch(() => null),
+          portalFetch<{ breeder: { partyId: number; name: string } }>("/portal/breeder").catch(() => null),
+        ]);
+
         if (cancelled) return;
-        const placements = res?.placements || [];
-        if (placements.length > 0) {
-          setPrimaryAnimal(placements[0]);
+
+        if (placementsRes?.placements && placementsRes.placements.length > 0) {
+          setPrimaryAnimal(placementsRes.placements[0]);
+        }
+
+        if (breederRes?.breeder) {
+          setBreederInfo({
+            partyId: breederRes.breeder.partyId,
+            name: breederRes.breeder.name,
+          });
         }
       } catch (err) {
-        // Silently ignore - animal context is optional for display
+        // Silently ignore - context is optional for display
       }
     }
-    loadAnimalContext();
+    loadContext();
     return () => { cancelled = true; };
   }, [portalFetch, isReady]);
 
@@ -815,8 +1396,50 @@ export default function PortalMessagesPage() {
 
   const handleBack = () => {
     setSelectedThread(null);
+    setIsComposing(false);
     setThreadIdInUrl(null);
   };
+
+  const handleStartCompose = () => {
+    setIsComposing(true);
+    setSelectedThread(null);
+  };
+
+  const handleNewThreadCreated = (thread: any) => {
+    // Thread was created - switch to viewing it
+    setIsComposing(false);
+    setSelectedThread(thread);
+    setThreadIdInUrl(thread.id);
+    // Refresh the thread list
+    loadThreads();
+  };
+
+  // Handle message sent from ThreadDetail - must be before early returns (React hooks rules)
+  const handleMessageSent = React.useCallback((message: any) => {
+    // Add message to selected thread's messages list
+    setSelectedThread((prev: any) => {
+      if (!prev) return null;
+      // Check if message already exists
+      if (prev.messages?.some((m: any) => m.id === message.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        messages: [
+          ...(prev.messages || []),
+          {
+            id: message.id,
+            body: message.body,
+            senderPartyId: message.senderPartyId,
+            createdAt: message.createdAt,
+            isFromClient: true, // Mark as sent by portal user
+          },
+        ],
+      };
+    });
+    // Also refresh threads list to update preview/timestamps
+    loadThreads();
+  }, [loadThreads]);
 
   const unreadCount = threads.filter((t) => (t.unreadCount || 0) > 0).length;
 
@@ -873,32 +1496,19 @@ export default function PortalMessagesPage() {
     );
   }
 
-  // Handle message sent from ThreadDetail
-  const handleMessageSent = React.useCallback((message: any) => {
-    // Add message to selected thread's messages list
-    setSelectedThread((prev: any) => {
-      if (!prev) return null;
-      // Check if message already exists
-      if (prev.messages?.some((m: any) => m.id === message.id)) {
-        return prev;
-      }
-      return {
-        ...prev,
-        messages: [
-          ...(prev.messages || []),
-          {
-            id: message.id,
-            body: message.body,
-            senderPartyId: message.senderPartyId,
-            createdAt: message.createdAt,
-            isFromClient: true, // Mark as sent by portal user
-          },
-        ],
-      };
-    });
-    // Also refresh threads list to update preview/timestamps
-    loadThreads();
-  }, [loadThreads]);
+  // Compose view
+  if (isComposing && breederInfo) {
+    return (
+      <ComposeMessage
+        breederName={breederInfo.name}
+        breederPartyId={breederInfo.partyId}
+        onBack={handleBack}
+        onMessageSent={handleNewThreadCreated}
+        portalFetch={portalFetch}
+        tenantSlug={tenantSlug}
+      />
+    );
+  }
 
   // Thread detail view
   if (selectedThread) {
@@ -920,6 +1530,7 @@ export default function PortalMessagesPage() {
         breed={breed}
         onMessageSent={handleMessageSent}
         portalFetch={portalFetch}
+        tenantSlug={tenantSlug}
       />
     );
   }
@@ -928,28 +1539,40 @@ export default function PortalMessagesPage() {
   return (
     <PageContainer>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-        {/* Hero */}
-        <PortalHero
-          variant="page"
-          title="Messages"
-          subtitle={`Stay connected about ${animalName}'s journey`}
-          animalContext={animalName}
-          status={unreadCount > 0 ? "action" : undefined}
-          statusLabel={unreadCount > 0 ? `${unreadCount} unread` : undefined}
-        />
+        {/* Hero with New Message button */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
+          <PortalHero
+            variant="page"
+            title="Messages"
+            subtitle={animalName ? `Stay connected about ${animalName}'s journey` : "Stay connected with your breeder"}
+            animalContext={animalName ?? undefined}
+            status={unreadCount > 0 ? "action" : undefined}
+            statusLabel={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+          />
+          {breederInfo && (
+            <Button variant="primary" onClick={handleStartCompose}>
+              New Message
+            </Button>
+          )}
+        </div>
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={unreadCount > 0 ? `${unreadCount} unread` : "All read"}
-          statusVariant={unreadCount > 0 ? "action" : "success"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={unreadCount > 0 ? `${unreadCount} unread` : "All read"}
+            statusVariant={unreadCount > 0 ? "action" : "success"}
+          />
+        )}
 
         {/* Thread List */}
         {threads.length === 0 ? (
-          <EmptyMessages animalName={animalName} />
+          <EmptyMessages
+            breederName={breederInfo?.name || null}
+            onStartConversation={handleStartCompose}
+          />
         ) : (
           <PortalCard variant="elevated" padding="none">
             {threads.map((thread, index) => (

@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { joinApi } from "../api/client";
-import { useDemoMode, isDemoMode } from "../demo/demoMode";
 import { useUnreadCounts, useWaitlistRequests } from "../messages/hooks";
 import { useUserProfile, type MarketplaceUserProfile } from "../gate/MarketplaceGate";
 
@@ -288,7 +287,6 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
-  const { demoMode, enable: enableDemo, disable: disableDemo } = useDemoMode();
   const { totalUnread, refresh: refreshUnread } = useUnreadCounts();
   const { requests: waitlistRequests, refresh: refreshWaitlist } = useWaitlistRequests();
   const userProfile = useUserProfile();
@@ -362,10 +360,6 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
     }
   };
 
-  // Demo-only surfaces: Services, Inquiries, Updates
-  const demoOnlyDisabled = !demoMode;
-  const comingSoonTitle = "Coming soon - Preview with demo data";
-
   return (
     <div className="min-h-screen bg-portal-bg text-white relative font-sans antialiased">
       {/* Solid header - Marketplace-appropriate, no Portal gradient/blur */}
@@ -400,8 +394,6 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
               <NavLink
                 to="/services"
                 active={isActive("/services")}
-                disabled={demoOnlyDisabled}
-                disabledTitle={comingSoonTitle}
               >
                 Services
               </NavLink>
@@ -436,7 +428,7 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
             </nav>
           </div>
 
-          {/* Right: Notifications + Demo mode controls + Account actions */}
+          {/* Right: Notifications + Account actions */}
           <div className="flex items-center gap-3">
             {/* Notifications bell - always visible when authenticated */}
             {authenticated && (
@@ -452,30 +444,6 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
                     {totalNotifications > 99 ? "99+" : totalNotifications}
                   </span>
                 )}
-              </button>
-            )}
-
-            {/* Demo mode controls */}
-            {demoMode ? (
-              <>
-                <span className="px-2 py-1 text-xs font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  Demo mode
-                </span>
-                <button
-                  type="button"
-                  onClick={disableDemo}
-                  className="text-sm text-text-tertiary hover:text-white transition-colors"
-                >
-                  Turn off
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={enableDemo}
-                className="px-3 py-1.5 text-sm font-medium rounded-portal-xs bg-border-default border border-border-subtle text-text-secondary hover:text-white hover:bg-portal-card-hover transition-colors"
-              >
-                Preview with demo data
               </button>
             )}
 

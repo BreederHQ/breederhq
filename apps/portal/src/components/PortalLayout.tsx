@@ -5,8 +5,6 @@ import { TopNav } from "../design/TopNav";
 import { Footer } from "../design/Footer";
 import { usePortalContext } from "../hooks/usePortalContext";
 import { usePortalTasks } from "../tasks/taskSources";
-import { usePortalNotifications } from "../notifications/notificationSources";
-import { BuildStamp } from "../dev/BuildStamp";
 import { useUnreadMessageCount } from "../hooks/useUnreadMessageCount";
 
 interface PortalLayoutProps {
@@ -79,16 +77,15 @@ function OrgIdentity({
 export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const { orgName, loading } = usePortalContext();
   const { tasks } = usePortalTasks();
-  const { notifications } = usePortalNotifications();
   const { unreadCount: unreadMessageCount } = useUnreadMessageCount();
 
   // Derive org initial from org name
   const orgInitial = orgName ? orgName.charAt(0).toUpperCase() : null;
 
-  // Calculate badge counts
-  const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
-  const notificationsCount = notifications.length;
+  // Calculate badge counts - combine tasks and notifications into activity count
+  const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required" || t.urgency === "overdue").length;
 
+  // Navigation items
   const navItems = [
     {
       label: "Tasks",
@@ -100,6 +97,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
       label: "Messages",
       href: "/messages",
       active: currentPath.startsWith("/messages"),
+      badge: unreadMessageCount > 0 ? unreadMessageCount : undefined,
     },
     { label: "Agreements", href: "/agreements", active: currentPath.startsWith("/agreements") },
     { label: "Documents", href: "/documents", active: currentPath.startsWith("/documents") },
@@ -121,10 +119,8 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
         <OrgIdentity orgName={orgName} orgInitial={orgInitial} onClick={handleNavigateHome} />
-        {/* Wrapper constrains TopNav so it can scroll horizontally */}
-        <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
-          <TopNav items={navItems} />
-        </div>
+        {/* Spacer to push icons to right */}
+        <div style={{ flex: 1 }} />
         {/* Messages icon */}
         <button
           onClick={() => {
@@ -194,10 +190,10 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
             </span>
           )}
         </button>
-        {/* Notifications bell icon */}
+        {/* Activity icon (replaces Notifications bell) */}
         <button
           onClick={() => {
-            window.history.pushState({}, "", "/notifications");
+            window.history.pushState({}, "", "/activity");
             window.dispatchEvent(new PopStateEvent("popstate"));
           }}
           style={{
@@ -210,7 +206,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
             height: "32px",
             cursor: "pointer",
             flexShrink: 0,
-            color: currentPath.startsWith("/notifications")
+            color: currentPath.startsWith("/activity")
               ? "var(--portal-text-primary)"
               : "var(--portal-text-secondary)",
             transition: "color var(--portal-transition)",
@@ -219,12 +215,12 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
             e.currentTarget.style.color = "var(--portal-text-primary)";
           }}
           onMouseLeave={(e) => {
-            if (!currentPath.startsWith("/notifications")) {
+            if (!currentPath.startsWith("/activity")) {
               e.currentTarget.style.color = "var(--portal-text-secondary)";
             }
           }}
-          title="Notifications"
-          aria-label={`Notifications${notificationsCount > 0 ? ` (${notificationsCount} new)` : ""}`}
+          title="Activity"
+          aria-label={`Activity${actionRequiredCount > 0 ? ` (${actionRequiredCount} items require attention)` : ""}`}
         >
           <svg
             width="20"
@@ -239,20 +235,29 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
-          {/* Notification dot */}
-          {notificationsCount > 0 && (
+          {/* Action required badge with orange accent */}
+          {actionRequiredCount > 0 && (
             <span
               style={{
                 position: "absolute",
                 top: "2px",
                 right: "2px",
-                width: "8px",
-                height: "8px",
-                background: "var(--portal-accent)",
-                borderRadius: "50%",
+                minWidth: "16px",
+                height: "16px",
+                padding: "0 4px",
+                background: "hsl(25, 95%, 53%)", // Orange for action required
+                borderRadius: "8px",
                 border: "2px solid var(--portal-bg-elevated)",
+                fontSize: "10px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
               }}
-            />
+            >
+              {actionRequiredCount > 99 ? "99+" : actionRequiredCount}
+            </span>
           )}
         </button>
         {/* Sign out button - always visible on right side */}
@@ -303,9 +308,28 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
           <span>Sign out</span>
         </button>
       </HeaderBar>
+      {/* Top Navigation */}
+      <div
+        style={{
+          background: "var(--portal-bg-elevated)",
+          borderBottom: "1px solid var(--portal-border)",
+          position: "sticky",
+          top: "var(--portal-header-height)",
+          zIndex: 90,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "var(--portal-max-width)",
+            margin: "0 auto",
+            padding: "0 var(--portal-space-2)",
+          }}
+        >
+          <TopNav items={navItems} />
+        </div>
+      </div>
       <main style={{ flex: 1 }}>{children}</main>
       <Footer />
-      <BuildStamp />
     </div>
   );
 }

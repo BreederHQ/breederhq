@@ -137,22 +137,22 @@ export function useConversation(conversationId: string | null) {
 }
 
 /**
- * Hook to send a message
+ * Hook to send a message (with optional file attachment)
  */
 export function useSendMessage() {
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
 
   const sendMessage = React.useCallback(
-    async (conversationId: string, content: string): Promise<Message | null> => {
-      if (!content.trim()) return null;
+    async (conversationId: string, content: string, file?: File): Promise<Message | null> => {
+      if (!content.trim() && !file) return null;
 
       setSending(true);
       setError(null);
 
       try {
         const adapter = getMessagingAdapter();
-        const message = await adapter.sendMessage(conversationId, content.trim());
+        const message = await adapter.sendMessage(conversationId, content.trim(), file);
         return message;
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));

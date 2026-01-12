@@ -1,34 +1,35 @@
 // apps/marketplace/src/marketplace/pages/AnimalsIndexPage.tsx
-// Animals browse page - listing-centric view with demo mode support
-// Supports both offspring group listings (litters) and program animal listings (individual animals)
+// Animals browse page - listing-centric view with real API support
+// Supports both offspring group listings and program animal listings (individual animals)
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { getAllMockListings, simulateDelay, getBoostedItem, removeBoostedItem } from "../../demo/mockData";
-import { SponsorDisclosure } from "../components/SponsorDisclosure";
 import { AnimalListingCard } from "../components/AnimalListingCard";
 import { formatCents } from "../../utils/format";
-import { getAnimalListings } from "../../api/client";
+import {
+  getAnimalListings,
+  getPublicOffspringGroups,
+  type PublicOffspringGroupListing,
+} from "../../api/client";
 
-import type { PublicOffspringGroupListingDTO, PublicAnimalListingDTO } from "../../api/types";
+import type { PublicAnimalListingDTO } from "../../api/types";
 
 // View type for tab switching
-type ViewType = "all" | "litters" | "animals";
+type ViewType = "all" | "offspring" | "animals";
 
 /**
  * Animals index page - browse available animals.
- * Shows both offspring group listings (litters) and program animal listings.
- * In demo mode: shows aggregated listings from all mock breeders.
- * In real mode: fetches from API + can fall back to demo.
+ * Shows both offspring group listings and program animal listings.
  */
 export function AnimalsIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [litterListings, setLitterListings] = React.useState<PublicOffspringGroupListingDTO[]>([]);
-  const [animalListings, setAnimalListings] = React.useState<PublicAnimalListingDTO[]>([]);
-  const [boostedListing, setBoostedListing] = React.useState<PublicOffspringGroupListingDTO | null>(null);
+  const [offspringGroupListings, setOffspringGroupListings] = React.useState<
+    PublicOffspringGroupListing[]
+  >([]);
+  const [animalListings, setAnimalListings] = React.useState<
+    PublicAnimalListingDTO[]
+  >([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const demoMode = isDemoMode();
 
   // Read filter from URL
   const urlSearch = searchParams.get("q") || "";
@@ -52,124 +53,61 @@ export function AnimalsIndexPage() {
       setLoading(true);
       setError(null);
 
-      try {
-        // Always try to fetch program animal listings from API
-        const animalResponse = await getAnimalListings({ search: search || undefined });
-        if (!dead) {
-          setAnimalListings(animalResponse?.items || []);
-        }
-      } catch (err) {
-        // Silently fail for animal listings - they may not be available yet
-        if (!dead) setAnimalListings([]);
-      }
+      // Fetch both types in parallel
+      const [offspringResult, animalResult] = await Promise.allSettled([
+        getPublicOffspringGroups({ search: search || undefined }),
+        getAnimalListings({ search: search || undefined }),
+      ]);
 
-      // Demo mode litter listings
-      if (demoMode) {
-        await simulateDelay(200);
-        let all = getAllMockListings();
-
-        // Get boosted item (before filtering)
-        const boosted = getBoostedItem(all, "animals");
-        if (!dead) setBoostedListing(boosted);
-
-        // Remove boosted from regular list
-        all = removeBoostedItem(all, boosted);
-
-        // Filter by search
-        if (search) {
-          const q = search.toLowerCase();
-          all = all.filter(
-            (l) =>
-              (l.title && l.title.toLowerCase().includes(q)) ||
-              (l.breed && l.breed.toLowerCase().includes(q)) ||
-              l.programName.toLowerCase().includes(q)
-          );
+      if (!dead) {
+        // Handle offspring groups result
+        if (offspringResult.status === "fulfilled") {
+          setOffspringGroupListings(offspringResult.value.items || []);
+        } else {
+          console.error("Failed to fetch offspring groups:", offspringResult.reason);
+          setOffspringGroupListings([]);
         }
 
-        if (!dead) setLitterListings(all);
-      } else {
-        // Real mode - no litter listings from demo
-        if (!dead) setLitterListings([]);
-      }
+        // Handle animal listings result
+        if (animalResult.status === "fulfilled") {
+          setAnimalListings(animalResult.value?.items || []);
+        } else {
+          console.error("Failed to fetch animal listings:", animalResult.reason);
+          setAnimalListings([]);
+        }
 
-      if (!dead) setLoading(false);
+        setLoading(false);
+      }
     };
 
     fetchData();
-    return () => { dead = true; };
-  }, [demoMode, search]);
-
-  // Handle enabling demo mode
-  const handleEnableDemo = () => {
-    setDemoMode(true);
-    window.location.reload();
-  };
+    return () => {
+      dead = true;
+    };
+  }, [search]);
 
   // Filter listings by view
-  const filteredLitterListings = view === "animals" ? [] : litterListings;
-  const filteredAnimalListings = view === "litters" ? [] : animalListings.filter((a) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      (a.title && a.title.toLowerCase().includes(q)) ||
-      (a.headline && a.headline.toLowerCase().includes(q)) ||
-      (a.animalBreed && a.animalBreed.toLowerCase().includes(q)) ||
-      a.programName.toLowerCase().includes(q) ||
-      a.animalName.toLowerCase().includes(q)
-    );
-  });
+  const filteredOffspringListings = view === "animals" ? [] : offspringGroupListings;
+  const filteredAnimalListings =
+    view === "offspring"
+      ? []
+      : animalListings.filter((a) => {
+          if (!search) return true;
+          const q = search.toLowerCase();
+          return (
+            (a.title && a.title.toLowerCase().includes(q)) ||
+            (a.headline && a.headline.toLowerCase().includes(q)) ||
+            (a.animalBreed && a.animalBreed.toLowerCase().includes(q)) ||
+            a.programName.toLowerCase().includes(q) ||
+            a.animalName.toLowerCase().includes(q)
+          );
+        });
 
-  const totalListings = filteredLitterListings.length + filteredAnimalListings.length;
-  const hasAnyListings = litterListings.length > 0 || animalListings.length > 0;
+  const totalListings = filteredOffspringListings.length + filteredAnimalListings.length;
+  const hasAnyListings = offspringGroupListings.length > 0 || animalListings.length > 0;
 
-  // Real mode with no listings: show coming soon state
-  if (!demoMode && !hasAnyListings && !loading) {
-    return (
-      <div className="space-y-6">
-
-        <div>
-          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            Animals
-          </h1>
-          <p className="text-sm text-text-tertiary mt-1">
-            Browse available animals and view details.
-          </p>
-        </div>
-
-        <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
-            <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-white mb-2">No animals available yet</h2>
-          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-            Browse animals through individual breeders or check back later.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              to="/breeders"
-              className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-            >
-              Browse breeders
-            </Link>
-            <button
-              type="button"
-              onClick={handleEnableDemo}
-              className="text-sm text-text-tertiary hover:text-white transition-colors"
-            >
-              Preview with demo data
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Main listings view
   return (
     <div className="space-y-5">
-
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Animals
@@ -200,7 +138,7 @@ export function AnimalsIndexPage() {
           {[
             { key: "all", label: "All" },
             { key: "animals", label: "Program Animals" },
-            { key: "litters", label: "Litters" },
+            { key: "offspring", label: "Offspring Groups" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -227,18 +165,14 @@ export function AnimalsIndexPage() {
         )}
       </div>
 
-      {/* Boosted listing - pinned at top when not searching */}
-      {!loading && boostedListing && !search && view !== "animals" && (
-        <div className="mb-4">
-          <LitterListingCard listing={boostedListing} isBoosted />
-        </div>
-      )}
-
       {/* Listings grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse">
+            <div
+              key={i}
+              className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse"
+            >
               <div className="h-5 bg-border-default rounded w-3/4 mb-3" />
               <div className="h-4 bg-border-default rounded w-1/2 mb-2" />
               <div className="h-4 bg-border-default rounded w-2/3" />
@@ -247,7 +181,35 @@ export function AnimalsIndexPage() {
         </div>
       ) : totalListings === 0 ? (
         <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-          <p className="text-sm text-text-tertiary">No listings match your search.</p>
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-text-muted"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-white mb-2">
+            {search ? "No listings match your search" : "No animals available yet"}
+          </h2>
+          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
+            {search
+              ? "Try a different search term or browse all breeders."
+              : "Browse breeders to see their programs and upcoming offspring."}
+          </p>
+          <Link
+            to="/breeders"
+            className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+          >
+            Browse breeders
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -255,9 +217,12 @@ export function AnimalsIndexPage() {
           {filteredAnimalListings.map((listing) => (
             <AnimalListingCard key={`animal-${listing.id}`} listing={listing} />
           ))}
-          {/* Litter listings */}
-          {filteredLitterListings.map((listing) => (
-            <LitterListingCard key={`litter-${listing.programSlug}-${listing.slug}`} listing={listing} />
+          {/* Offspring group listings */}
+          {filteredOffspringListings.map((listing) => (
+            <OffspringGroupCard
+              key={`og-${listing.id}`}
+              listing={listing}
+            />
           ))}
         </div>
       )}
@@ -266,77 +231,101 @@ export function AnimalsIndexPage() {
 }
 
 /**
- * Litter listing card for offspring group listings.
+ * Offspring group card for offspring group listings.
  */
-function LitterListingCard({ listing, isBoosted = false }: { listing: PublicOffspringGroupListingDTO; isBoosted?: boolean }) {
-  const priceText = listing.priceRange
-    ? listing.priceRange.min === listing.priceRange.max
-      ? formatCents(listing.priceRange.min)
-      : `${formatCents(listing.priceRange.min)} - ${formatCents(listing.priceRange.max)}`
-    : null;
+function OffspringGroupCard({
+  listing,
+}: {
+  listing: PublicOffspringGroupListing;
+}) {
+  // Format price range
+  let priceText: string | null = null;
+  if (listing.priceMinCents != null) {
+    if (
+      listing.priceMaxCents != null &&
+      listing.priceMaxCents !== listing.priceMinCents
+    ) {
+      priceText = `${formatCents(listing.priceMinCents)} - ${formatCents(listing.priceMaxCents)}`;
+    } else {
+      priceText = formatCents(listing.priceMinCents);
+    }
+  }
 
+  // Birth date display
   const birthDateLabel = listing.actualBirthOn ? "Born" : "Expected";
   const birthDateValue = listing.actualBirthOn || listing.expectedBirthOn;
+  const formattedBirthDate = birthDateValue
+    ? new Date(birthDateValue).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      })
+    : null;
 
-  return (
-    <Link
-      to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
-      className="block"
-    >
-      <div className={`rounded-portal border bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default ${
-        isBoosted ? "border-accent/30" : "border-border-subtle"
-      }`}>
-        {/* Boosted badge and disclosure */}
-        {isBoosted && (
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent/15 text-accent">
-              Boosted
-            </span>
-            {listing.sponsorDisclosureText && (
-              <div onClick={(e) => e.preventDefault()}>
-                <SponsorDisclosure disclosureText={listing.sponsorDisclosureText} />
-              </div>
-            )}
-          </div>
-        )}
+  // Build link - need breeder slug
+  const breederSlug = listing.breeder?.slug;
+  const listingLink =
+    breederSlug && listing.listingSlug
+      ? `/programs/${breederSlug}/offspring-groups/${listing.listingSlug}`
+      : null;
 
-        {/* Litter badge */}
-        <div className="mb-2">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-400">
-            Litter
-          </span>
-        </div>
-
-        {/* Title */}
-        <h3 className="text-[15px] font-semibold text-white mb-2 line-clamp-1">
-          {listing.title}
-        </h3>
-
-        {/* Breed and species */}
-        <div className="text-sm text-text-secondary mb-1">
-          {listing.breed || listing.species}
-        </div>
-
-        {/* Breeder attribution */}
-        <div className="text-[13px] text-text-tertiary mb-3">
-          {listing.programName}
-        </div>
-
-        {/* Metadata row */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
-          {birthDateValue && (
-            <span>{birthDateLabel} {birthDateValue}</span>
-          )}
-          <span>{listing.countAvailable} available</span>
-        </div>
-
-        {/* Price */}
-        {priceText && (
-          <div className="mt-3 pt-3 border-t border-border-subtle">
-            <span className="text-[15px] text-accent font-semibold">{priceText}</span>
-          </div>
-        )}
+  const CardContent = (
+    <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+      {/* Offspring Group badge */}
+      <div className="mb-2">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-400">
+          Offspring Group
+        </span>
       </div>
-    </Link>
+
+      {/* Title */}
+      <h3 className="text-[15px] font-semibold text-white mb-2 line-clamp-1">
+        {listing.title || `${listing.breed || listing.species} Offspring`}
+      </h3>
+
+      {/* Breed and species */}
+      <div className="text-sm text-text-secondary mb-1">
+        {listing.breed || listing.species}
+      </div>
+
+      {/* Breeder attribution */}
+      {listing.breeder && (
+        <div className="text-[13px] text-text-tertiary mb-3">
+          {listing.breeder.name}
+          {listing.breeder.location && (
+            <>
+              <span className="mx-1">·</span>
+              <span>{listing.breeder.location}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Metadata row */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
+        {formattedBirthDate && (
+          <span>
+            {birthDateLabel} {formattedBirthDate}
+          </span>
+        )}
+        <span>{listing.availableCount} available</span>
+      </div>
+
+      {/* Price */}
+      {priceText && (
+        <div className="mt-3 pt-3 border-t border-border-subtle">
+          <span className="text-[15px] text-accent font-semibold">{priceText}</span>
+        </div>
+      )}
+    </div>
   );
+
+  if (listingLink) {
+    return (
+      <Link to={listingLink} className="block">
+        {CardContent}
+      </Link>
+    );
+  }
+
+  return CardContent;
 }

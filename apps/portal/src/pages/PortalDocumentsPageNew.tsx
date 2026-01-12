@@ -288,7 +288,7 @@ function DocumentGroup({ title, documents }: DocumentGroupProps) {
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyDocuments({ animalName }: { animalName: string }) {
+function EmptyDocuments() {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -334,7 +334,7 @@ function EmptyDocuments({ animalName }: { animalName: string }) {
             maxWidth: "320px",
           }}
         >
-          Documents about {animalName} will appear here when shared by your breeder.
+          Documents will appear here when shared by your breeder.
         </p>
       </div>
     </PortalCard>
@@ -455,8 +455,8 @@ export default function PortalDocumentsPageNew() {
   const [error, setError] = React.useState<string | null>(null);
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -533,20 +533,22 @@ export default function PortalDocumentsPageNew() {
         <PortalHero
           variant="page"
           title="Documents"
-          subtitle={`Important files for ${animalName}'s journey`}
-          animalContext={animalName}
+          subtitle={animalName ? `Important files for ${animalName}'s journey` : "Important files"}
+          animalContext={animalName ?? undefined}
           status="info"
           statusLabel={`${documents.length} files`}
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={`${documents.length} files`}
-          statusVariant="neutral"
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={`${documents.length} files`}
+            statusVariant="neutral"
+          />
+        )}
 
         {/* Download notice */}
         <div
@@ -564,7 +566,7 @@ export default function PortalDocumentsPageNew() {
 
         {/* Document Groups */}
         {documents.length === 0 ? (
-          <EmptyDocuments animalName={animalName} />
+          <EmptyDocuments />
         ) : (
           <>
             <DocumentGroup title="Health Records" documents={healthDocs} />
