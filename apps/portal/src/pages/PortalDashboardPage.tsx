@@ -57,7 +57,6 @@ interface ContextStripProps {
   species: string | null;
   breed: string | null;
   status: PlacementStatus;
-  nextAction: string;
   ctaLabel: string;
   ctaPath: string;
   onNavigate: (path: string) => void;
@@ -68,7 +67,6 @@ function ContextStrip({
   species,
   breed,
   status,
-  nextAction,
   ctaLabel,
   ctaPath,
   onNavigate,
@@ -122,18 +120,6 @@ function ContextStrip({
             </div>
           )}
           <StatusBadge label={statusInfo.label} variant={statusInfo.variant as StatusVariant} speciesAccent={accent} />
-        </div>
-
-        {/* Center: Next action */}
-        <div
-          style={{
-            flex: "1 1 150px",
-            textAlign: "center",
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-secondary)",
-          }}
-        >
-          {nextAction}
         </div>
 
         {/* Right: CTA */}
@@ -584,7 +570,6 @@ export default function PortalDashboardPage() {
             species={species}
             breed={breed}
             status={primaryPlacement.placementStatus as PlacementStatus}
-            nextAction={nextAction}
             ctaLabel={ctaLabel}
             ctaPath={ctaPath}
             onNavigate={handleNavigate}
