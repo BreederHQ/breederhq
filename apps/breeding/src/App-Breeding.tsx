@@ -3301,7 +3301,6 @@ function GeneticsLabPage({
                 <div className="flex flex-wrap gap-1 mb-4">
                   {[
                     { id: 'overview', label: 'Overview', icon: '📊' },
-                    { id: 'bestmatch', label: 'Best Match', icon: '🔍' },
                     { id: 'compare', label: 'Compare', icon: '⚖️' },
                     { id: 'pedigree', label: 'Pedigree', icon: '🌳' },
                     { id: 'punnett', label: 'Punnett Squares', icon: '🧬' },
@@ -3309,6 +3308,7 @@ function GeneticsLabPage({
                     { id: 'health', label: 'Health Analysis', icon: '🏥' },
                     { id: 'colors', label: 'Color Preview', icon: '🎨' },
                     { id: 'goals', label: 'Breeding Goals', icon: '🎯' },
+                    { id: 'bestmatch', label: 'Best Match', icon: '🔍' },
                     { id: 'missing', label: "What's Missing", icon: '📋' },
                   ].map((tab) => (
                     <button
@@ -3689,20 +3689,12 @@ function GeneticsLabPage({
                   {/* Color Preview Tab */}
                   {activeLabTab === 'colors' && (
                     <div>
-                      <div className="text-sm text-secondary mb-4">
-                        Visual preview of possible coat colors based on genetic data.
-                      </div>
-                      {selectedDam?.species ? (
-                        <CoatColorPreview
-                          species={selectedDam.species as "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT"}
-                          selectedGenotype={results.coatColor?.[0]?.damGenotype}
-                        />
-                      ) : (
-                        <div className="text-center py-12 text-secondary">
-                          <div className="text-4xl mb-4">🎨</div>
-                          <div className="font-medium mb-2">Select Animals to Preview Colors</div>
-                        </div>
-                      )}
+                      <CoatColorPreview
+                        species={(selectedDam?.species || "DOG") as "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT"}
+                        predictions={results?.coatColor || []}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
                     </div>
                   )}
 

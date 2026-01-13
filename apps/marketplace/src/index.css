@@ -5,6 +5,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   Brand Design Tokens
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Brand orange - #ff7a1a in HSL */
+  --brand-orange: 24 94% 55%;
+
+  /* Brand blue - from logo #005dc2 (primary) in HSL */
+  --brand-blue: 212 100% 38%;
+
+  /* Brand teal - from logo #01a7c3 (secondary) in HSL */
+  --brand-teal: 187 99% 39%;
+
+  /* Core palette */
+  --page: 0 0% 7%;
+  --surface: 0 0% 10%;
+  --surface-2: 0 0% 12%;
+  --surface-strong: 0 0% 14%;
+  --primary: 0 0% 96%;
+  --secondary: 0 0% 70%;
+  --hairline: 0 0% 22%;
+
+  /* Aliases */
+  --background: var(--page);
+  --foreground: var(--primary);
+  --accent: var(--brand-orange);
+}
+
 /* Basic dark background for body */
 html, body {
   min-height: 100%;
@@ -14,4 +42,36 @@ html, body {
 
 #marketplace-root, #root, #app {
   min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Accessibility: Focus Indicators (WCAG 2.4.7)
+   ───────────────────────────────────────────────────────────── */
+/* Global focus-visible styles for all interactive elements */
+:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 2px;
+}
+
+/* Remove default focus outline when not using keyboard navigation */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Enhanced focus for buttons and links */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Focus styles for form elements */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 1px;
+  border-color: hsl(var(--brand-orange)) !important;
 }

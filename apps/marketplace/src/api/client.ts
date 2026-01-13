@@ -141,7 +141,7 @@ export async function getPrograms(params: GetProgramsParams): Promise<ProgramsRe
   if (params.offset != null) query.set("offset", String(params.offset));
 
   const queryStr = query.toString();
-  const path = `/api/v1/public/marketplace/programs${queryStr ? `?${queryStr}` : ""}`;
+  const path = `/api/v1/marketplace/programs${queryStr ? `?${queryStr}` : ""}`;
 
   devLogFetch(path);
   const { data } = await apiGet<ProgramsResponse>(path);
@@ -149,14 +149,14 @@ export async function getPrograms(params: GetProgramsParams): Promise<ProgramsRe
 }
 
 export async function getProgram(programSlug: string): Promise<PublicProgramDTO> {
-  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}`;
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}`;
   devLogFetch(path);
   const { data } = await apiGet<PublicProgramDTO>(path);
   return data;
 }
 
 export async function getProgramListings(programSlug: string): Promise<ListingsResponse> {
-  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups`;
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups`;
   devLogFetch(path);
   const { data } = await apiGet<ListingsResponse>(path);
   return data;
@@ -166,7 +166,7 @@ export async function getListing(
   programSlug: string,
   listingSlug: string
 ): Promise<ListingDetailDTO> {
-  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}`;
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}`;
   devLogFetch(path);
   const { data } = await apiGet<ListingDetailDTO>(path);
   return data;
@@ -251,6 +251,7 @@ export interface GetAnimalListingsParams {
   intent?: string;
   species?: string;
   breed?: string;
+  location?: string;
   limit?: number;
   offset?: number;
 }
@@ -264,11 +265,12 @@ export async function getAnimalListings(params: GetAnimalListingsParams = {}): P
   if (params.intent) query.set("intent", params.intent);
   if (params.species) query.set("species", params.species);
   if (params.breed) query.set("breed", params.breed);
+  if (params.location) query.set("location", params.location);
   if (params.limit != null) query.set("limit", String(params.limit));
   if (params.offset != null) query.set("offset", String(params.offset));
 
   const queryStr = query.toString();
-  const path = `/api/v1/public/marketplace/animals${queryStr ? `?${queryStr}` : ""}`;
+  const path = `/api/v1/marketplace/animals${queryStr ? `?${queryStr}` : ""}`;
 
   devLogFetch(path);
   const { data } = await apiGet<AnimalListingsResponse>(path);
@@ -282,7 +284,7 @@ export async function getAnimalListing(
   programSlug: string,
   listingSlug: string
 ): Promise<PublicAnimalListingDTO> {
-  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}`;
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}`;
   devLogFetch(path);
   const { data } = await apiGet<PublicAnimalListingDTO>(path);
   return data;
@@ -666,7 +668,7 @@ export async function getPublicBreedingPrograms(
   if (params.limit != null) query.set("limit", String(params.limit));
 
   const queryStr = query.toString();
-  const path = `/api/v1/public/marketplace/breeding-programs${queryStr ? `?${queryStr}` : ""}`;
+  const path = `/api/v1/marketplace/breeding-programs${queryStr ? `?${queryStr}` : ""}`;
 
   devLogFetch(path);
   const { data } = await apiGet<PublicBreedingProgramsResponse>(path);
@@ -679,7 +681,7 @@ export async function getPublicBreedingPrograms(
 export async function getBreederBreedingPrograms(
   breederSlug: string
 ): Promise<PublicBreedingProgramsResponse> {
-  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(breederSlug)}/breeding-programs`;
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(breederSlug)}/breeding-programs`;
 
   devLogFetch(path);
   const { data } = await apiGet<PublicBreedingProgramsResponse>(path);
@@ -1590,6 +1592,7 @@ export async function getPublicServices(
   if (params.limit != null) query.set("limit", String(params.limit));
 
   const queryStr = query.toString();
+  // Services endpoint requires marketplace entitlement (not truly public)
   const path = `/api/v1/marketplace/services${queryStr ? `?${queryStr}` : ""}`;
 
   devLogFetch(path);
@@ -1634,6 +1637,7 @@ export interface GetPublicOffspringGroupsParams {
   species?: string;
   breed?: string;
   search?: string;
+  location?: string;
   page?: number;
   limit?: number;
 }
@@ -1648,6 +1652,7 @@ export async function getPublicOffspringGroups(
   if (params.species) query.set("species", params.species);
   if (params.breed) query.set("breed", params.breed);
   if (params.search) query.set("search", params.search);
+  if (params.location) query.set("location", params.location);
   if (params.page != null) query.set("page", String(params.page));
   if (params.limit != null) query.set("limit", String(params.limit));
 
@@ -1657,4 +1662,152 @@ export async function getPublicOffspringGroups(
   devLogFetch(path);
   const { data } = await apiGet<PublicOffspringGroupsResponse>(path);
   return data;
+}
+
+// =====================================
+// Saved Listings API
+// =====================================
+
+export type SavedListingType = "offspring_group" | "animal" | "service";
+
+export interface SavedListingItem {
+  id: number;
+  listingType: SavedListingType;
+  listingId: number;
+  savedAt: string;
+  // Expanded listing details
+  listing?: {
+    title: string;
+    slug: string | null;
+    coverImageUrl: string | null;
+    status: string;
+    isAvailable: boolean;
+    species?: string;
+    breed?: string;
+    priceCents?: number | null;
+    priceMinCents?: number | null;
+    priceMaxCents?: number | null;
+    breederName?: string;
+    breederSlug?: string;
+  };
+}
+
+export interface SavedListingsResponse {
+  items: SavedListingItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GetSavedListingsParams {
+  type?: SavedListingType;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Get user's saved listings.
+ */
+export async function getSavedListings(
+  params: GetSavedListingsParams = {}
+): Promise<SavedListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.type) query.set("type", params.type);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/marketplace/saved${queryStr ? `?${queryStr}` : ""}`;
+
+  const { data } = await apiGet<SavedListingsResponse>(path);
+  return data;
+}
+
+/**
+ * Save a listing to favorites.
+ */
+export async function saveListing(
+  listingType: SavedListingType,
+  listingId: number | string
+): Promise<{ success: boolean; id?: number }> {
+  const path = `/api/v1/marketplace/saved`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ listingType, listingId: Number(listingId) }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean; id?: number }>(response);
+  return data || { success: true };
+}
+
+/**
+ * Remove a listing from favorites.
+ */
+export async function unsaveListing(
+  listingType: SavedListingType,
+  listingId: number | string
+): Promise<{ success: boolean }> {
+  const path = `/api/v1/marketplace/saved/${listingType}/${listingId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  return { success: true };
+}
+
+/**
+ * Check if a specific listing is saved.
+ */
+export async function checkSavedListing(
+  listingType: SavedListingType,
+  listingId: number | string
+): Promise<{ saved: boolean }> {
+  const path = `/api/v1/marketplace/saved/check/${listingType}/${listingId}`;
+
+  try {
+    const { data } = await apiGet<{ saved: boolean }>(path);
+    return data || { saved: false };
+  } catch {
+    return { saved: false };
+  }
 }

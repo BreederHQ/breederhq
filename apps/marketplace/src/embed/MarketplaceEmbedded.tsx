@@ -64,18 +64,17 @@ function UrlSync() {
 
 /**
  * Embedded content wrapper - renders content without MarketplaceLayout header.
- * Platform's NavShell provides the navigation.
+ * Platform's NavShell provides the navigation and handles scrolling.
  * Applies Marketplace theme styles (dark background, portal colors).
  *
- * Note: This is rendered inside NavShell's <main className="min-w-0 flex-1">
- * so we need to use negative margins to break out of Platform's padding
- * and fill the available space properly.
+ * Note: This is rendered inside NavShell's scrollable main area.
+ * We should NOT create a nested scroll container - let the platform handle scrolling.
  */
 function EmbeddedContent({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-portal-bg text-white font-sans antialiased rounded-2xl border border-border-subtle flex-1 min-h-0 flex flex-col overflow-hidden">
+    <div className="bg-portal-bg text-white font-sans antialiased rounded-2xl border border-border-subtle">
       {/* Content frame - matches standalone MarketplaceLayout main element */}
-      <div className="w-full max-w-portal mx-auto px-6 pt-8 pb-16 flex-1 overflow-y-auto">
+      <div className="w-full max-w-portal mx-auto px-6 pt-8 pb-16">
         {children}
       </div>
     </div>

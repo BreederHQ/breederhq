@@ -22,11 +22,11 @@ module.exports = {
         // Portal borders
         "border-subtle": "#1a1c1e",
         "border-default": "#232528",
-        // Portal accent (orange)
+        // Brand accent (orange) - #ff7a1a is the official brand color
         accent: {
-          DEFAULT: "#ff6b35",
-          hover: "#ff8555",
-          muted: "rgba(255, 107, 53, 0.15)",
+          DEFAULT: "#ff7a1a",
+          hover: "#ff8a3a",
+          muted: "rgba(255, 122, 26, 0.15)",
         },
         // Portal text
         "text-secondary": "#a8adb3",

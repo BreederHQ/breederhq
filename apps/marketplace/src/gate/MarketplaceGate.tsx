@@ -12,6 +12,7 @@ import { AuthPage } from "../auth/AuthPage";
 import { MarketplaceLayout } from "../layout/MarketplaceLayout";
 import { AccessNotAvailable } from "./AccessNotAvailable";
 import { MarketplaceRoutes } from "../routes/MarketplaceRoutes";
+import { SavedListingsProvider } from "../hooks/useSavedListings";
 
 type GateStatus = "loading" | "unauthenticated" | "not_entitled" | "entitled" | "error";
 
@@ -21,6 +22,37 @@ type GateState =
   | { status: "not_entitled" }
   | { status: "entitled" }
   | { status: "error"; message: string };
+
+/**
+ * Routes that are publicly accessible without authentication.
+ * Users can browse these pages without logging in.
+ * Save/contact/waitlist actions will prompt login.
+ */
+const PUBLIC_ROUTES = [
+  "/",
+  "/animals",
+  "/breeders",
+  "/services",
+  "/programs",
+  "/breeding-programs",
+];
+
+/**
+ * Check if a path is publicly accessible.
+ */
+function isPublicRoute(pathname: string): boolean {
+  // Exact matches
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    return true;
+  }
+  // Prefix matches for nested public routes
+  if (pathname.startsWith("/breeders/") ||
+      pathname.startsWith("/programs/") ||
+      pathname.startsWith("/animals/")) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Context for gate state - allows components to check if they're inside an entitled gate.
@@ -213,6 +245,9 @@ export function MarketplaceGate() {
     [state.status, userProfile]
   );
 
+  // Check if current route is publicly accessible
+  const currentPathIsPublic = isPublicRoute(location.pathname);
+
   // Loading state - no context provided, no routes rendered, no data fetches
   if (state.status === "loading") {
     return <GateLoadingSkeleton />;
@@ -223,60 +258,60 @@ export function MarketplaceGate() {
     return <GateError message={state.message} onRetry={handleRetry} />;
   }
 
-  // Unauthenticated - show auth page with returnTo path
-  // Note: AuthPage is outside the context as it shouldn't access protected data
+  // Unauthenticated users can browse public routes
+  // Protected routes (inquiries, saved, waitlist, etc.) redirect to auth
   if (state.status === "unauthenticated") {
+    if (currentPathIsPublic) {
+      // Allow anonymous browsing of public pages
+      return (
+        <GateContext.Provider value={contextValue}>
+          <SavedListingsProvider>
+            <MarketplaceLayout authenticated={false}>
+              <MarketplaceRoutes />
+            </MarketplaceLayout>
+          </SavedListingsProvider>
+        </GateContext.Provider>
+      );
+    }
+    // Protected route - show auth page with returnTo path
     return <AuthPage returnToPath={attemptedPath} />;
   }
 
-  // Authenticated but not entitled
+  // Authenticated but not entitled - allow public browsing, block protected routes
   if (state.status === "not_entitled") {
+    if (currentPathIsPublic) {
+      // Allow browsing even without entitlement
+      return (
+        <GateContext.Provider value={contextValue}>
+          <SavedListingsProvider>
+            <MarketplaceLayout authenticated={true}>
+              <MarketplaceRoutes />
+            </MarketplaceLayout>
+          </SavedListingsProvider>
+        </GateContext.Provider>
+      );
+    }
+    // Protected route without entitlement - show access denied
     return (
       <GateContext.Provider value={contextValue}>
-        <MarketplaceLayout authenticated={true}>
-          <DevGateBanner status={state.status} />
-          <AccessNotAvailable />
-        </MarketplaceLayout>
+        <SavedListingsProvider>
+          <MarketplaceLayout authenticated={true}>
+            <AccessNotAvailable />
+          </MarketplaceLayout>
+        </SavedListingsProvider>
       </GateContext.Provider>
     );
   }
 
-  // Entitled - show routes inside shell with context
+  // Entitled - show all routes inside shell with context
   return (
     <GateContext.Provider value={contextValue}>
-      <MarketplaceLayout authenticated={true}>
-        <DevGateBanner status={state.status} />
-        <MarketplaceRoutes />
-      </MarketplaceLayout>
+      <SavedListingsProvider>
+        <MarketplaceLayout authenticated={true}>
+          <MarketplaceRoutes />
+        </MarketplaceLayout>
+      </SavedListingsProvider>
     </GateContext.Provider>
   );
 }
 
-/**
- * DEV-only banner showing gate status for debugging.
- * Only renders in development mode.
- * Also adds a data-gate-status attribute used by the API client for DEV warnings.
- */
-function DevGateBanner({ status }: { status: GateStatus }) {
-  // Only show in development
-  if (import.meta.env.PROD) {
-    return null;
-  }
-
-  const statusColors: Record<GateStatus, string> = {
-    loading: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    unauthenticated: "bg-red-500/20 text-red-300 border-red-500/30",
-    not_entitled: "bg-orange-500/20 text-orange-300 border-orange-500/30",
-    entitled: "bg-green-500/20 text-green-300 border-green-500/30",
-    error: "bg-red-500/20 text-red-300 border-red-500/30",
-  };
-
-  return (
-    <div
-      data-gate-status={status}
-      className={`fixed top-0 right-0 z-50 px-3 py-1 text-xs font-mono border-l border-b rounded-bl ${statusColors[status]}`}
-    >
-      DEV: gate={status}
-    </div>
-  );
-}

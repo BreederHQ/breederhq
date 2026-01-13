@@ -171,8 +171,17 @@ export function useWebSocket({
       }
 
       if (wsRef.current) {
-        wsRef.current.close();
+        const ws = wsRef.current;
         wsRef.current = null;
+
+        // Only close if already open - avoid "closed before established" warning
+        // If still connecting, the onopen handler will close it when mountedRef is false
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          // WebSocket is still connecting - let onopen handle cleanup
+          // This avoids the "WebSocket is closed before the connection is established" error
+        }
       }
     };
   }, [enabled, tenantId, createConnection]);

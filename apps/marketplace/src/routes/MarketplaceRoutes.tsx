@@ -22,6 +22,9 @@ import { ProgramsSettingsPage } from "../management/pages/ProgramsSettingsPage";
 import { ServicesSettingsPage } from "../management/pages/ServicesSettingsPage";
 import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage";
 import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
+import { SavedListingsPage } from "../marketplace/pages/SavedListingsPage";
+import { WaitlistPositionsPage } from "../marketplace/pages/WaitlistPositionsPage";
+import { BuyerDashboardPage } from "../buyer/pages/BuyerDashboardPage";
 
 /**
  * Route tree for authenticated/entitled marketplace users.
@@ -41,8 +44,11 @@ export function MarketplaceRoutes() {
       <Route path="/services" element={<ServicesPage />} />
 
       {/* Buyer activity */}
+      <Route path="/dashboard" element={<BuyerDashboardPage />} />
       <Route path="/inquiries" element={<InquiriesPage />} />
       <Route path="/updates" element={<UpdatesPage />} />
+      <Route path="/saved" element={<SavedListingsPage />} />
+      <Route path="/waitlist" element={<WaitlistPositionsPage />} />
 
       {/* Seller: My listing preview */}
       <Route path="/me/listing" element={<MyListingPage />} />
