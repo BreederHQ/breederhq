@@ -16,7 +16,7 @@ import { TermsPage } from "../pages/TermsPage";
  */
 export function MarketplaceStandaloneApp() {
   return (
-    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <BrowserRouter future={{ v7_startTransition: true }}>
       <Routes>
         {/* Auth routes are outside the gate - accessible without authentication */}
         <Route path="/auth" element={<Navigate to="/auth/login" replace />} />

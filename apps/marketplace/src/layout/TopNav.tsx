@@ -4,6 +4,7 @@
 import * as React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { MarketplaceUserProfile } from "../gate/MarketplaceGate";
+import { useIsSeller } from "../gate/MarketplaceGate";
 import logo from "@bhq/ui/assets/logo.png";
 
 /**
@@ -142,7 +143,7 @@ function NavLink({ to, active, children }: NavLinkProps) {
 interface DropdownMenuProps {
   trigger: React.ReactNode;
   items: Array<{
-    label: string;
+    label?: string;
     href?: string;
     onClick?: () => void;
     icon?: React.ReactNode;
@@ -234,6 +235,7 @@ export function TopNav({
 }: TopNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isSeller = useIsSeller();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -254,17 +256,22 @@ export function TopNav({
     }
   };
 
+  // Build account menu items - seller items only shown when in seller context
   const accountItems = authenticated
     ? [
         { label: "Buyer", header: true },
         { label: "My Inquiries", href: "/inquiries" },
         { label: "Saved Items", href: "/saved" },
         { label: "My Waitlists", href: "/waitlist" },
-        { divider: true },
-        { label: "Seller", header: true },
-        { label: "My Programs", href: "/me/programs" },
-        { label: "My Services", href: "/me/services" },
-        { label: "Provider Portal", href: "/provider" },
+        // Seller section - only shown when accessed via breeder portal
+        ...(isSeller
+          ? [
+              { divider: true },
+              { label: "Seller", header: true },
+              { label: "Manage Listings", href: "/manage" },
+              { label: "Provider Portal", href: "/provider" },
+            ]
+          : []),
         { divider: true },
         { label: "Settings", onClick: onOpenSettings },
         { label: "Sign Out", onClick: onLogout },
@@ -276,7 +283,7 @@ export function TopNav({
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-border-subtle bg-portal-elevated">
-      <div className="h-full w-full max-w-portal mx-auto px-4 md:px-6 flex items-center justify-between">
+      <div className="h-full w-full px-4 md:px-8 lg:px-12 xl:px-16 flex items-center justify-between">
         {/* Left side: Logo + Desktop Navigation */}
         <div className="flex items-center gap-6">
           {/* Logo */}
@@ -488,20 +495,16 @@ export function TopNav({
                     </span>
                   )}
                 </Link>
-                <Link
-                  to="/me/programs"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
-                >
-                  My Programs
-                </Link>
-                <Link
-                  to="/me/services"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
-                >
-                  My Services
-                </Link>
+                {/* Seller link - only shown when in seller context */}
+                {isSeller && (
+                  <Link
+                    to="/manage"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  >
+                    Manage Listings
+                  </Link>
+                )}
               </>
             )}
 

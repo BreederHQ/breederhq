@@ -1,6 +1,9 @@
 // apps/marketplace/src/embed/MarketplaceEmbedded.tsx
 // Embedded entrypoint for mounting Marketplace inside Platform shell.
 // Uses MemoryRouter to provide React Router context while syncing with Platform's URL.
+//
+// IMPORTANT: When embedded in Platform, the user is ALWAYS a breeder/seller
+// with tenant context. We provide this via GateContext from MarketplaceGate.
 import * as React from "react";
 import { MemoryRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
@@ -15,8 +18,31 @@ import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
+import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePortal";
+import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
+import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
+// Import the shared GateContext so hooks work correctly
+import { GateContext, type GateContextValue } from "../gate/MarketplaceGate";
 
 const BASE_PATH = "/marketplace";
+
+/**
+ * Get tenant ID from window global or localStorage.
+ * This is set by the Platform when it loads.
+ */
+function getTenantId(): string | null {
+  try {
+    const w = typeof window !== "undefined" ? (window as any) : {};
+    const tenantId = w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+    return tenantId ? String(tenantId) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
+// URL HELPERS
+// ============================================================================
 
 function getMarketplacePath(): string {
   const full = window.location.pathname;
@@ -87,9 +113,25 @@ function EmbeddedContent({ children }: { children: React.ReactNode }) {
  * - No MarketplaceGate (Platform handles auth)
  * - No MarketplaceLayout header (Platform provides NavShell)
  * - MemoryRouter provides React Router context for internal components
+ * - EmbeddedGateProvider provides seller context (platform = breeder portal)
  */
 export function MarketplaceEmbedded() {
   const initialPath = React.useMemo(() => getMarketplacePath(), []);
+
+  // Get tenant ID - in embedded mode (platform portal), this should always exist
+  const tenantId = React.useMemo(() => getTenantId(), []);
+
+  // Gate context value - embedded mode is always seller context
+  const gateContextValue = React.useMemo<GateContextValue>(
+    () => ({
+      status: "entitled",
+      isEntitled: true,
+      userProfile: null,
+      tenantId,
+      isSeller: !!tenantId, // True when we have tenant context
+    }),
+    [tenantId]
+  );
 
   // Dispatch module announcement to Platform
   React.useEffect(() => {
@@ -99,25 +141,31 @@ export function MarketplaceEmbedded() {
   }, []);
 
   return (
-    <MemoryRouter initialEntries={[initialPath]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <UrlSync />
-      <EmbeddedContent>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/manage" element={<Navigate to="/" replace />} />
-          <Route path="/animals" element={<AnimalsIndexPage />} />
-          <Route path="/breeders" element={<BreedersIndexPage />} />
-          <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/inquiries" element={<InquiriesPage />} />
-          <Route path="/updates" element={<UpdatesPage />} />
-          <Route path="/litters" element={<Navigate to="/animals" replace />} />
-          <Route path="/programs" element={<Navigate to="/breeders" replace />} />
-          <Route path="/programs/:programSlug" element={<ProgramPage />} />
-          <Route path="/programs/:programSlug/offspring-groups/:listingSlug" element={<ListingPage />} />
-          <Route path="*" element={<HomePage />} />
-        </Routes>
-      </EmbeddedContent>
-    </MemoryRouter>
+    <GateContext.Provider value={gateContextValue}>
+      <MemoryRouter initialEntries={[initialPath]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+        <UrlSync />
+        <EmbeddedContent>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            {/* Seller management pages */}
+            <Route path="/manage/breeder" element={<MarketplaceManagePortal />} />
+            <Route path="/manage/animals" element={<ManageAnimalsPage />} />
+            <Route path="/manage/services" element={<ManageServicesPage />} />
+            <Route path="/manage" element={<Navigate to="/manage/breeder" replace />} />
+            <Route path="/animals" element={<AnimalsIndexPage />} />
+            <Route path="/breeders" element={<BreedersIndexPage />} />
+            <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
+            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/inquiries" element={<InquiriesPage />} />
+            <Route path="/updates" element={<UpdatesPage />} />
+            <Route path="/litters" element={<Navigate to="/animals" replace />} />
+            <Route path="/programs" element={<Navigate to="/breeders" replace />} />
+            <Route path="/programs/:programSlug" element={<ProgramPage />} />
+            <Route path="/programs/:programSlug/offspring-groups/:listingSlug" element={<ListingPage />} />
+            <Route path="*" element={<HomePage />} />
+          </Routes>
+        </EmbeddedContent>
+      </MemoryRouter>
+    </GateContext.Provider>
   );
 }

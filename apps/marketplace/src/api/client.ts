@@ -43,13 +43,26 @@ function devLogFetch(path: string): void {
 }
 
 /**
- * Get API base URL from environment or use relative path.
+ * Get API base URL.
+ * Priority:
+ * 1. window.__BHQ_API_BASE__ (set by Platform when embedded)
+ * 2. VITE_API_URL env var (for standalone marketplace)
+ * 3. Empty string (relative path, uses same origin)
  */
 export function getApiBase(): string {
+  // Check for Platform-provided base URL first (used when embedded)
+  const w = typeof window !== "undefined" ? (window as any) : {};
+  if (w.__BHQ_API_BASE__ && typeof w.__BHQ_API_BASE__ === "string") {
+    return w.__BHQ_API_BASE__.replace(/\/+$/, "");
+  }
+
+  // Check env var (standalone marketplace mode)
   const envUrl = (import.meta as any)?.env?.VITE_API_URL;
   if (envUrl && typeof envUrl === "string" && envUrl.trim() !== "") {
     return envUrl.trim().replace(/\/+$/, "");
   }
+
+  // Default to empty (relative path)
   return "";
 }
 
@@ -408,16 +421,33 @@ export interface BreedingProgramListItem {
   acceptInquiries: boolean;
   openWaitlist: boolean;
   acceptReservations: boolean;
+  comingSoon?: boolean;
   createdAt: string;
   _count?: { breedingPlans: number };
+  /** Summary stats for linked breeding plans and offspring groups */
+  summary?: {
+    totalPlans: number;
+    activePlans: number;
+    totalLitters: number;
+    upcomingLitters: number;
+    nextExpectedBirth: string | null;
+    availableLitters: number;
+    totalAvailable: number;
+  };
 }
 
 export interface BreedingProgramDetail extends BreedingProgramListItem {
   tenantId: number;
+  breedId?: number | null;
   description?: string | null;
+  programStory?: string | null;
   pricingTiers?: ProgramPricingTier[] | null;
   whatsIncluded?: string | null;
   typicalWaitTime?: string | null;
+  coverImageUrl?: string | null;
+  showWhatsIncluded?: boolean;
+  showWaitTime?: boolean;
+  showCoverImage?: boolean;
   updatedAt: string;
   publishedAt?: string | null;
 }
@@ -432,14 +462,22 @@ export interface BreedingProgramCreateInput {
   name: string;
   species: string;
   breedText?: string | null;
+  breedId?: number | null;
   description?: string | null;
+  programStory?: string | null;
   listed?: boolean;
   acceptInquiries?: boolean;
   openWaitlist?: boolean;
   acceptReservations?: boolean;
+  comingSoon?: boolean;
   pricingTiers?: ProgramPricingTier[] | null;
   whatsIncluded?: string | null;
   typicalWaitTime?: string | null;
+  coverImageUrl?: string | null;
+  // Visibility flags
+  showWhatsIncluded?: boolean;
+  showWaitTime?: boolean;
+  showCoverImage?: boolean;
 }
 
 export interface BreedingProgramsListResponse {
@@ -817,11 +855,12 @@ export interface ServiceListingsResponse {
  */
 export async function getBreederServices(
   tenantId: string,
-  params: { status?: string; type?: string } = {}
+  params: { status?: string; type?: string; limit?: number } = {}
 ): Promise<ServiceListingsResponse> {
   const query = new URLSearchParams();
   if (params.status) query.set("status", params.status);
   if (params.type) query.set("type", params.type);
+  if (params.limit) query.set("limit", params.limit.toString());
 
   const queryStr = query.toString();
   const path = `/api/v1/services${queryStr ? `?${queryStr}` : ""}`;
@@ -1810,4 +1849,1262 @@ export async function checkSavedListing(
   } catch {
     return { saved: false };
   }
+}
+
+// =====================================
+// Breeder Animal Listings Management API
+// =====================================
+
+export type BreederAnimalListingIntent =
+  | "STUD"
+  | "BROOD_PLACEMENT"
+  | "REHOME"
+  | "GUARDIAN"
+  | "TRAINED"
+  | "WORKING"
+  | "STARTED"
+  | "CO_OWNERSHIP";
+
+export type BreederAnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED" | "SOLD";
+export type BreederAnimalPriceModel = "fixed" | "range" | "inquire";
+
+/**
+ * Breeder-side animal listing item for management view.
+ */
+export interface BreederAnimalListingItem {
+  id: number;
+  animalId: number;
+  urlSlug: string;
+  intent: BreederAnimalListingIntent;
+  status: BreederAnimalListingStatus;
+  headline: string | null;
+  title: string | null;
+  summary: string | null;
+  description: string | null;
+  priceModel: BreederAnimalPriceModel | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  priceText: string | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  locationCountry: string | null;
+  primaryPhotoUrl: string | null;
+  detailsJson: Record<string, unknown> | null;
+  // Animal details
+  animalName: string;
+  animalBreed: string | null;
+  animalSpecies: string;
+  animalSex: string | null;
+  animalDob: string | null;
+  // Program association
+  programId: number | null;
+  programSlug: string | null;
+  programName: string | null;
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+}
+
+export interface BreederAnimalListingsResponse {
+  items: BreederAnimalListingItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface BreederAnimalListingCreateInput {
+  animalId: number;
+  programId?: number | null;
+  intent: BreederAnimalListingIntent;
+  headline?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  priceModel?: BreederAnimalPriceModel;
+  priceCents?: number | null;
+  priceMinCents?: number | null;
+  priceMaxCents?: number | null;
+  priceText?: string | null;
+  locationCity?: string | null;
+  locationRegion?: string | null;
+  locationCountry?: string | null;
+  detailsJson?: Record<string, unknown> | null;
+}
+
+/**
+ * Get all animal listings for the current tenant (breeder management).
+ * Uses GET /api/v1/animal-listings - the dedicated tenant-scoped endpoint.
+ */
+export async function getBreederAnimalListings(
+  tenantId: string,
+  params: { status?: string; intent?: string; programId?: string; limit?: number } = {}
+): Promise<BreederAnimalListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.intent) query.set("intent", params.intent);
+  if (params.programId) query.set("programId", params.programId);
+  if (params.limit) query.set("limit", params.limit.toString());
+
+  const queryStr = query.toString();
+  const path = `/api/v1/animal-listings${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederAnimalListingsResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Get a single animal listing by animal ID (breeder management).
+ * Uses GET /api/v1/animals/:id/public-listing
+ */
+export async function getBreederAnimalListing(
+  tenantId: string,
+  animalId: number
+): Promise<BreederAnimalListingItem> {
+  const path = `/api/v1/animals/${animalId}/public-listing`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederAnimalListingItem>(response);
+  if (!data) throw new ApiError("Listing not found", 404);
+  return data;
+}
+
+/**
+ * Create or update an animal listing (breeder management).
+ * Uses PUT /api/v1/animals/:id/public-listing (upsert)
+ */
+export async function createBreederAnimalListing(
+  tenantId: string,
+  input: BreederAnimalListingCreateInput
+): Promise<BreederAnimalListingItem> {
+  const path = `/api/v1/animals/${input.animalId}/public-listing`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT", // Upsert - creates or updates
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederAnimalListingItem>(response);
+  if (!data) throw new ApiError("Failed to create listing", 500);
+  return data;
+}
+
+/**
+ * Update an animal listing (breeder management).
+ * Uses PUT /api/v1/animals/:id/public-listing (upsert)
+ */
+export async function updateBreederAnimalListing(
+  tenantId: string,
+  animalId: number,
+  input: Partial<Omit<BreederAnimalListingCreateInput, "animalId">>
+): Promise<BreederAnimalListingItem> {
+  const path = `/api/v1/animals/${animalId}/public-listing`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederAnimalListingItem>(response);
+  if (!data) throw new ApiError("Failed to update listing", 500);
+  return data;
+}
+
+/**
+ * Update listing status (publish/pause/mark sold).
+ * Uses PATCH /api/v1/animals/:id/public-listing/status
+ */
+export async function updateBreederAnimalListingStatus(
+  tenantId: string,
+  animalId: number,
+  status: BreederAnimalListingStatus
+): Promise<BreederAnimalListingItem> {
+  const path = `/api/v1/animals/${animalId}/public-listing/status`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederAnimalListingItem>(response);
+  if (!data) throw new ApiError("Failed to update listing status", 500);
+  return data;
+}
+
+/**
+ * Delete an animal listing (breeder management).
+ * Uses DELETE /api/v1/animals/:id/public-listing
+ */
+export async function deleteBreederAnimalListing(
+  tenantId: string,
+  animalId: number
+): Promise<void> {
+  const path = `/api/v1/animals/${animalId}/public-listing`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+}
+
+// =====================================
+// Breeder Offspring Group Management API
+// =====================================
+
+export type OffspringKeeperIntent =
+  | "AVAILABLE"
+  | "RESERVED"
+  | "PLACED"
+  | "KEEPER"
+  | "DECEASED";
+
+export interface BreederOffspringIndividual {
+  id: number;
+  offspringGroupId: number;
+  name: string | null;
+  sex: "MALE" | "FEMALE" | null;
+  collarColorName: string | null;
+  collarColorHex: string | null;
+  coatDescription: string | null;
+  photos: string[];
+  keeperIntent: OffspringKeeperIntent;
+  marketplaceListed: boolean;
+  marketplacePriceCents: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BreederOffspringGroupItem {
+  id: number;
+  tenantId: number;
+  // Breeding context
+  breedingPlanId: number | null;
+  breedingProgramId: number | null;
+  damId: number | null;
+  sireId: number | null;
+  // Parent info
+  dam: { id: number; name: string; photoUrl: string | null; breed: string | null } | null;
+  sire: { id: number; name: string; photoUrl: string | null; breed: string | null } | null;
+  // Program info
+  program: { id: number; slug: string; name: string } | null;
+  // Dates
+  expectedBirthOn: string | null;
+  actualBirthOn: string | null;
+  // Species/breed inferred
+  species: string;
+  breed: string | null;
+  // Marketplace fields
+  listingTitle: string | null;
+  listingDescription: string | null;
+  listingSlug: string | null;
+  coverImageUrl: string | null;
+  marketplaceDefaultPriceCents: number | null;
+  published: boolean;
+  publishedAt: string | null;
+  // Offspring
+  offspring: BreederOffspringIndividual[];
+  // Computed
+  availableCount: number;
+  totalCount: number;
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BreederOffspringGroupsResponse {
+  items: BreederOffspringGroupItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface BreederOffspringGroupUpdateInput {
+  listingTitle?: string | null;
+  listingDescription?: string | null;
+  listingSlug?: string | null;
+  coverImageUrl?: string | null;
+  marketplaceDefaultPriceCents?: number | null;
+  published?: boolean;
+}
+
+export interface BreederOffspringIndividualCreateInput {
+  offspringGroupId: number;
+  name?: string | null;
+  sex?: "MALE" | "FEMALE" | null;
+  collarColorName?: string | null;
+  collarColorHex?: string | null;
+  coatDescription?: string | null;
+  photos?: string[];
+  keeperIntent?: OffspringKeeperIntent;
+  marketplaceListed?: boolean;
+  marketplacePriceCents?: number | null;
+}
+
+export interface BreederOffspringIndividualUpdateInput {
+  name?: string | null;
+  sex?: "MALE" | "FEMALE" | null;
+  collarColorName?: string | null;
+  collarColorHex?: string | null;
+  coatDescription?: string | null;
+  photos?: string[];
+  keeperIntent?: OffspringKeeperIntent;
+  marketplaceListed?: boolean;
+  marketplacePriceCents?: number | null;
+}
+
+/**
+ * Get all offspring groups for the current tenant (breeder management).
+ * Uses GET /api/v1/offspring-groups
+ */
+export async function getBreederOffspringGroups(
+  tenantId: string,
+  params: { published?: string; programId?: string; limit?: number } = {}
+): Promise<BreederOffspringGroupsResponse> {
+  const query = new URLSearchParams();
+  if (params.published) query.set("published", params.published);
+  if (params.programId) query.set("programId", params.programId);
+  if (params.limit) query.set("limit", params.limit.toString());
+
+  const queryStr = query.toString();
+  const path = `/api/v1/offspring-groups${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederOffspringGroupsResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Get a single offspring group by ID (breeder management).
+ * Uses GET /api/v1/offspring-groups/:id
+ */
+export async function getBreederOffspringGroup(
+  tenantId: string,
+  groupId: number
+): Promise<BreederOffspringGroupItem> {
+  const path = `/api/v1/offspring-groups/${groupId}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederOffspringGroupItem>(response);
+  if (!data) throw new ApiError("Offspring group not found", 404);
+  return data;
+}
+
+/**
+ * Update an offspring group's marketplace fields (breeder management).
+ * Uses PATCH /api/v1/offspring-groups/:id
+ */
+export async function updateBreederOffspringGroup(
+  tenantId: string,
+  groupId: number,
+  input: BreederOffspringGroupUpdateInput
+): Promise<BreederOffspringGroupItem> {
+  const path = `/api/v1/offspring-groups/${groupId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederOffspringGroupItem>(response);
+  if (!data) throw new ApiError("Failed to update offspring group", 500);
+  return data;
+}
+
+/**
+ * Add an individual offspring to a group.
+ */
+export async function createBreederOffspringIndividual(
+  tenantId: string,
+  input: BreederOffspringIndividualCreateInput
+): Promise<BreederOffspringIndividual> {
+  const path = `/api/v1/offspring/individuals`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederOffspringIndividual>(response);
+  if (!data) throw new ApiError("Failed to create offspring", 500);
+  return data;
+}
+
+/**
+ * Update an individual offspring.
+ */
+export async function updateBreederOffspringIndividual(
+  tenantId: string,
+  individualId: number,
+  input: BreederOffspringIndividualUpdateInput
+): Promise<BreederOffspringIndividual> {
+  const path = `/api/v1/offspring/individuals/${individualId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederOffspringIndividual>(response);
+  if (!data) throw new ApiError("Failed to update offspring", 500);
+  return data;
+}
+
+/**
+ * Bulk update offspring marketplace listings (list all available / unlist all).
+ * Uses POST /api/v1/offspring-groups/:id/offspring/bulk
+ */
+export async function bulkUpdateOffspringListing(
+  tenantId: string,
+  groupId: number,
+  action: "list_all_available" | "unlist_all"
+): Promise<{ updated: number }> {
+  const path = `/api/v1/offspring-groups/${groupId}/offspring/bulk`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ action }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ updated: number }>(response);
+  return data || { updated: 0 };
+}
+
+// =====================================
+// Breeder Breeding Plans API
+// =====================================
+
+export type BreedingPlanStatus =
+  | "PLANNING"
+  | "COMMITTED"
+  | "IN_HEAT"
+  | "BRED"
+  | "CONFIRMED"
+  | "WHELPING"
+  | "NURSING"
+  | "WEANING"
+  | "PLACING"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "ARCHIVED";
+
+export interface BreederBreedingPlanItem {
+  id: number;
+  tenantId: number;
+  programId: number | null;
+  name: string;
+  status: BreedingPlanStatus;
+  species: string;
+  breedText: string | null;
+  // Parents
+  damId: number | null;
+  sireId: number | null;
+  dam?: { id: number; name: string; photoUrl?: string | null } | null;
+  sire?: { id: number; name: string; photoUrl?: string | null } | null;
+  // Dates
+  expectedBirthDate: string | null;
+  birthDateActual: string | null;
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BreederBreedingPlansResponse {
+  items: BreederBreedingPlanItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Get all breeding plans for the current tenant.
+ * Uses GET /api/v1/breeding/plans
+ */
+export async function getBreederBreedingPlans(
+  tenantId: string,
+  params: { status?: string; programId?: string; limit?: number } = {}
+): Promise<BreederBreedingPlansResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.programId) query.set("programId", params.programId);
+  if (params.limit) query.set("limit", params.limit.toString());
+  query.set("include", "dam,sire");
+
+  const queryStr = query.toString();
+  const path = `/api/v1/breeding/plans${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederBreedingPlansResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+// =====================================
+// Breeder Inquiries Management API
+// =====================================
+
+export type InquiryStatus = "NEW" | "READ" | "REPLIED" | "ARCHIVED";
+export type InquiryListingType = "offspring_group" | "animal" | "service" | "program" | "general";
+
+export interface BreederInquiryItem {
+  id: number;
+  tenantId: number;
+  // Buyer info
+  buyerId: string;
+  buyerName: string;
+  buyerEmail: string;
+  // Listing context
+  listingType: InquiryListingType;
+  listingId: number | null;
+  listingTitle: string | null;
+  listingSlug: string | null;
+  programSlug: string | null;
+  // Message content
+  message: string;
+  // Status
+  status: InquiryStatus;
+  // Origin tracking
+  origin: OriginPayload | null;
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+  repliedAt: string | null;
+}
+
+export interface BreederInquiriesResponse {
+  items: BreederInquiryItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Get all inquiries for the current tenant (breeder management).
+ */
+export async function getBreederInquiries(
+  tenantId: string,
+  params: { status?: string; listingType?: string; page?: number; limit?: number } = {}
+): Promise<BreederInquiriesResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.listingType) query.set("listingType", params.listingType);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/inquiries${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederInquiriesResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Update inquiry status (mark read, replied, archived).
+ */
+export async function updateBreederInquiryStatus(
+  tenantId: string,
+  inquiryId: number,
+  status: InquiryStatus
+): Promise<BreederInquiryItem> {
+  const path = `/api/v1/inquiries/${inquiryId}/status`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederInquiryItem>(response);
+  if (!data) throw new ApiError("Failed to update inquiry status", 500);
+  return data;
+}
+
+// =====================================
+// Breeder Waitlist Management API
+// =====================================
+
+export type WaitlistEntryStatus = "PENDING" | "APPROVED" | "DECLINED" | "MATCHED" | "WITHDRAWN";
+
+export interface BreederWaitlistEntry {
+  id: number;
+  tenantId: number;
+  // Buyer info
+  buyerId: string | null;
+  name: string;
+  email: string;
+  phone: string | null;
+  // Program context
+  programId: number | null;
+  programName: string | null;
+  programSlug: string | null;
+  // Status
+  status: WaitlistEntryStatus;
+  // Preferences
+  preferences: {
+    sex?: "MALE" | "FEMALE" | "ANY";
+    color?: string;
+    notes?: string;
+  } | null;
+  // Deposit info
+  depositRequired: boolean;
+  depositAmountCents: number | null;
+  depositPaidAt: string | null;
+  // Position
+  position: number;
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  matchedAt: string | null;
+}
+
+export interface BreederWaitlistResponse {
+  items: BreederWaitlistEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Get waitlist entries for the current tenant (breeder management).
+ */
+export async function getBreederWaitlist(
+  tenantId: string,
+  params: { status?: string; programId?: string; page?: number; limit?: number } = {}
+): Promise<BreederWaitlistResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.programId) query.set("programId", params.programId);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/waitlist-entries${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederWaitlistResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Update waitlist entry status (approve, decline, match).
+ */
+export async function updateBreederWaitlistStatus(
+  tenantId: string,
+  entryId: number,
+  status: WaitlistEntryStatus
+): Promise<BreederWaitlistEntry> {
+  const path = `/api/v1/waitlist/${entryId}/status`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreederWaitlistEntry>(response);
+  if (!data) throw new ApiError("Failed to update waitlist entry status", 500);
+  return data;
+}
+
+/**
+ * Reorder waitlist entries.
+ */
+export async function reorderBreederWaitlist(
+  tenantId: string,
+  programId: number,
+  entryIds: number[]
+): Promise<{ success: boolean }> {
+  const path = `/api/v1/waitlist/reorder`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ programId, entryIds }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  return { success: true };
+}
+
+// =====================================
+// Marketplace Profile API
+// =====================================
+
+/**
+ * Marketplace profile data structure from the API.
+ * Contains draft (editable) and published (live) versions.
+ */
+export interface MarketplaceProfileData {
+  draft: MarketplaceProfileDraft | null;
+  draftUpdatedAt: string | null;
+  published: MarketplaceProfileDraft | null;
+  publishedAt: string | null;
+}
+
+/**
+ * Draft profile structure - can be saved and edited before publishing.
+ */
+export interface MarketplaceProfileDraft {
+  businessName?: string;
+  bio?: string;
+  logoAssetId?: string | null;
+
+  // Location (full address for draft, stripped on publish)
+  address?: {
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    streetAddress?: string;
+    streetAddress2?: string;
+  };
+  publicLocationMode?: "city_state" | "zip_only" | "full" | "hidden";
+
+  // Contact & Social
+  websiteUrl?: string;
+  showWebsite?: boolean;
+  instagram?: string;
+  showInstagram?: boolean;
+  facebook?: string;
+  showFacebook?: boolean;
+
+  // Breeds list
+  breeds?: Array<{ name: string; species?: string | null; isPublic?: boolean }>;
+
+  // Listed Programs
+  listedPrograms?: Array<{
+    name: string;
+    species?: string | null;
+    breedText?: string | null;
+    breedId?: number | null;
+    description?: string | null;
+    programStory?: string | null;
+    acceptInquiries?: boolean;
+    openWaitlist?: boolean;
+    acceptReservations?: boolean;
+    comingSoon?: boolean;
+    // Pricing
+    pricingTiers?: Array<{
+      tier: string;
+      priceRange: string;
+      description?: string;
+    }> | null;
+    whatsIncluded?: string | null;
+    showWhatsIncluded?: boolean;
+    typicalWaitTime?: string | null;
+    showWaitTime?: boolean;
+    // Media
+    coverImageUrl?: string | null;
+    showCoverImage?: boolean;
+  }>;
+
+  // Standards & Credentials
+  standardsAndCredentials?: {
+    registrations?: string[];
+    healthPractices?: string[];
+    breedingPractices?: string[];
+    carePractices?: string[];
+    registrationsNote?: string | null;
+    healthNote?: string | null;
+    breedingNote?: string | null;
+    careNote?: string | null;
+    showRegistrations?: boolean;
+    showHealthPractices?: boolean;
+    showBreedingPractices?: boolean;
+    showCarePractices?: boolean;
+  };
+
+  // Placement Policies
+  placementPolicies?: {
+    requireApplication?: boolean;
+    requireInterview?: boolean;
+    requireContract?: boolean;
+    hasReturnPolicy?: boolean;
+    offersSupport?: boolean;
+    note?: string | null;
+    showPolicies?: boolean;
+  };
+
+  // Business Identity
+  showBusinessIdentity?: boolean;
+  yearEstablished?: number | null;
+}
+
+/**
+ * Get the breeder's marketplace profile (draft + published).
+ */
+export async function getMarketplaceProfile(
+  tenantId: string
+): Promise<MarketplaceProfileData> {
+  const path = `/api/v1/marketplace/profile`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<MarketplaceProfileData>(response);
+  return data || { draft: null, draftUpdatedAt: null, published: null, publishedAt: null };
+}
+
+/**
+ * Save draft marketplace profile.
+ */
+export async function saveMarketplaceProfileDraft(
+  tenantId: string,
+  draft: MarketplaceProfileDraft
+): Promise<{ ok: boolean; draftUpdatedAt: string }> {
+  const path = `/api/v1/marketplace/profile/draft`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(draft),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean; draftUpdatedAt: string }>(response);
+  if (!data) throw new ApiError("Failed to save draft", 500);
+  return data;
+}
+
+/**
+ * Publish the marketplace profile (makes it publicly visible).
+ */
+export async function publishMarketplaceProfile(
+  tenantId: string,
+  profile: MarketplaceProfileDraft
+): Promise<{ ok: boolean; publishedAt: string; tenantSlug?: string }> {
+  const path = `/api/v1/marketplace/profile/publish`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(profile),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string; errors?: string[] }>(response);
+    const errorMessage = body?.errors?.join(", ") || body?.message || body?.error || `Request failed with status ${response.status}`;
+    throw new ApiError(errorMessage, response.status);
+  }
+
+  const data = await safeReadJson<{ ok: boolean; publishedAt: string; tenantSlug?: string }>(response);
+  if (!data) throw new ApiError("Failed to publish profile", 500);
+  return data;
+}
+
+/**
+ * Unpublish the marketplace profile (removes from public listing).
+ */
+export async function unpublishMarketplaceProfile(
+  tenantId: string
+): Promise<{ ok: boolean }> {
+  const path = `/api/v1/marketplace/profile/unpublish`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean }>(response);
+  return data || { ok: true };
 }

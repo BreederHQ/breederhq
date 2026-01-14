@@ -293,7 +293,7 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
   };
 
   return (
-    <div className="min-h-screen bg-portal-bg text-white relative font-sans antialiased">
+    <div className="min-h-screen flex flex-col bg-portal-bg text-white relative font-sans antialiased">
       {/* Skip to main content link (WCAG 2.4.1) */}
       <a
         href="#main-content"
@@ -321,8 +321,8 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
         />
       )}
 
-      {/* Main content area */}
-      <main id="main-content" className="w-full max-w-[1200px] mx-auto px-4 md:px-6 pt-6 pb-20 md:pb-8">
+      {/* Main content area - responsive with edge padding, flex-1 to fill remaining viewport */}
+      <main id="main-content" className="flex-1 w-full px-4 md:px-8 lg:px-12 xl:px-16 pt-6 pb-20 md:pb-8">
         {children}
       </main>
 
@@ -335,7 +335,7 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
 
       {/* Footer (hidden on mobile when bottom bar is visible) */}
       <footer className="hidden md:block border-t border-border-subtle py-6">
-        <div className="max-w-[1200px] mx-auto px-6">
+        <div className="px-8 lg:px-12 xl:px-16">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-text-tertiary">
             <p>&copy; {new Date().getFullYear()} BreederHQ LLC. All rights reserved.</p>
             <nav className="flex items-center gap-4">

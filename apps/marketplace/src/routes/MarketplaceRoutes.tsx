@@ -6,6 +6,7 @@
 
 import * as React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useIsSeller } from "../gate/MarketplaceGate";
 
 // Page imports
 import { HomePage } from "../marketplace/pages/HomePage";
@@ -18,13 +19,31 @@ import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MyListingPage } from "../marketplace/pages/MyListingPage";
-import { ProgramsSettingsPage } from "../management/pages/ProgramsSettingsPage";
-import { ServicesSettingsPage } from "../management/pages/ServicesSettingsPage";
 import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage";
 import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
 import { SavedListingsPage } from "../marketplace/pages/SavedListingsPage";
 import { WaitlistPositionsPage } from "../marketplace/pages/WaitlistPositionsPage";
 import { BuyerDashboardPage } from "../buyer/pages/BuyerDashboardPage";
+
+// V2 Breeder Management Portal
+import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePortal";
+import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
+import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
+
+/**
+ * Route guard for seller-only routes.
+ * Redirects to home if user doesn't have seller context.
+ */
+function SellerOnlyRoute({ children }: { children: React.ReactNode }) {
+  const isSeller = useIsSeller();
+
+  if (!isSeller) {
+    // Buyers trying to access seller routes get redirected to home
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 /**
  * Route tree for authenticated/entitled marketplace users.
@@ -50,18 +69,96 @@ export function MarketplaceRoutes() {
       <Route path="/saved" element={<SavedListingsPage />} />
       <Route path="/waitlist" element={<WaitlistPositionsPage />} />
 
-      {/* Seller: My listing preview */}
+      {/* Seller: My listing preview (legacy) */}
       <Route path="/me/listing" element={<MyListingPage />} />
 
-      {/* Seller: Programs management */}
-      <Route path="/me/programs" element={<ProgramsSettingsPage />} />
+      {/* V2 Unified Marketplace Management Portal - Seller only */}
+      <Route
+        path="/manage/breeder"
+        element={
+          <SellerOnlyRoute>
+            <MarketplaceManagePortal />
+          </SellerOnlyRoute>
+        }
+      />
 
-      {/* Seller: Services management */}
-      <Route path="/me/services" element={<ServicesSettingsPage />} />
+      {/* V2 Dedicated Management Pages - Seller only */}
+      <Route
+        path="/manage/animals"
+        element={
+          <SellerOnlyRoute>
+            <ManageAnimalsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/services"
+        element={
+          <SellerOnlyRoute>
+            <ManageServicesPage />
+          </SellerOnlyRoute>
+        }
+      />
 
-      {/* Service Provider Portal */}
-      <Route path="/provider" element={<ProviderDashboardPage />} />
-      <Route path="/provider/*" element={<ProviderDashboardPage />} />
+      {/* Legacy seller routes - redirect to new management pages */}
+      <Route
+        path="/manage"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/programs"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/services"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/services" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/animals"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/animals" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/litters"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/animals" replace />
+          </SellerOnlyRoute>
+        }
+      />
+
+      {/* Service Provider Portal - Seller only */}
+      <Route
+        path="/provider"
+        element={
+          <SellerOnlyRoute>
+            <ProviderDashboardPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/provider/*"
+        element={
+          <SellerOnlyRoute>
+            <ProviderDashboardPage />
+          </SellerOnlyRoute>
+        }
+      />
 
       {/* Legacy redirects */}
       <Route path="/litters" element={<Navigate to="/animals" replace />} />

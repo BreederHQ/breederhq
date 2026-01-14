@@ -18,6 +18,7 @@ module.exports = {
           elevated: "#0f1012",
           card: "#141618",
           "card-hover": "#1a1c1f",
+          surface: "#1a1c1f", // For form inputs - matches card-hover for consistency
         },
         // Portal borders
         "border-subtle": "#1a1c1e",

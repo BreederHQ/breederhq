@@ -18,37 +18,65 @@ type UseViewModeOptions = {
 type UseViewModeResult = {
   /** Current view mode */
   viewMode: ViewMode;
-  /** Set the view mode (temporary, session-only - resets on page reload) */
+  /** Set the view mode - persisted to localStorage for session persistence */
   setViewMode: (mode: ViewMode) => void;
   /** Whether tenant preferences are still loading */
   loading: boolean;
 };
 
+const STORAGE_KEY_PREFIX = "bhq_viewmode_";
+
+function getStorageKey(module: ViewPreferenceModule): string {
+  return `${STORAGE_KEY_PREFIX}${module}`;
+}
+
+function getStoredViewMode(module: ViewPreferenceModule): ViewMode | null {
+  try {
+    const stored = localStorage.getItem(getStorageKey(module));
+    if (stored === "cards" || stored === "table" || stored === "list") {
+      return stored;
+    }
+  } catch {
+    // localStorage not available
+  }
+  return null;
+}
+
+function setStoredViewMode(module: ViewPreferenceModule, mode: ViewMode): void {
+  try {
+    localStorage.setItem(getStorageKey(module), mode);
+  } catch {
+    // localStorage not available
+  }
+}
+
 /**
  * Hook to manage view mode state with tenant default preferences.
  *
  * Behavior:
- * 1. Fetches tenant's default preference from server on mount
- * 2. Falls back to "cards" if fetch fails
- * 3. User can toggle view mode during their session (not persisted)
- * 4. On next page load, fetches fresh preference from server
- *
- * Note: We intentionally don't use localStorage to avoid cross-user
- * pollution when multiple users log in on the same browser.
- * The tenant-level setting in Settings > Platform Management > General
- * is the source of truth for default view preferences.
+ * 1. Checks localStorage for user's last choice (session persistence)
+ * 2. If no localStorage value, fetches tenant's default preference from server
+ * 3. Falls back to "cards" if both fail
+ * 4. User's view mode choice is saved to localStorage for persistence
  */
 export function useViewMode({
   module,
 }: UseViewModeOptions): UseViewModeResult {
-  // Start with default, will be updated once we fetch from server
-  const [viewMode, setViewModeState] = React.useState<ViewMode>(
-    DEFAULT_VIEW_PREFERENCES[module]
-  );
-  const [loading, setLoading] = React.useState(true);
+  // Check localStorage first for user's previous choice
+  const storedMode = getStoredViewMode(module);
 
-  // Fetch tenant preferences on mount
+  const [viewMode, setViewModeState] = React.useState<ViewMode>(
+    storedMode ?? DEFAULT_VIEW_PREFERENCES[module]
+  );
+  const [loading, setLoading] = React.useState(!storedMode);
+
+  // Fetch tenant preferences on mount (only if no stored preference)
   React.useEffect(() => {
+    // If we already have a stored preference, skip fetching
+    if (storedMode) {
+      return;
+    }
+
     let ignore = false;
 
     (async () => {
@@ -76,11 +104,12 @@ export function useViewMode({
     return () => {
       ignore = true;
     };
-  }, [module]);
+  }, [module, storedMode]);
 
   const setViewMode = React.useCallback((mode: ViewMode) => {
     setViewModeState(mode);
-  }, []);
+    setStoredViewMode(module, mode);
+  }, [module]);
 
   return {
     viewMode,

@@ -1,7 +1,17 @@
 import * as React from "react";
 import { Dialog } from "../Dialog/Dialog";
 import { Button } from "../Button/Button";
-import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp, Dna, Heart, Scale, GitBranch } from "lucide-react";
+
+// Helper to get CSRF token from cookie
+function getCsrfToken(): string | null {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
 
 // Types for genetics import
 export type GeneticsProvider = "embark" | "wisdom_panel" | "uc_davis" | "animal_genetics" | "paw_print" | "manual";
@@ -21,6 +31,48 @@ export interface ParsedLocus {
   allele1?: string;
   allele2?: string;
   genotype: string;
+}
+
+// Extended data types from Embark
+export interface BreedCompositionEntry {
+  breed: string;
+  percentage: number;
+}
+
+export interface COIData {
+  coefficient: number;
+  percentage: number;
+  riskLevel: "excellent" | "good" | "moderate" | "high" | "critical";
+}
+
+export interface MHCDiversity {
+  drb1Alleles?: number;
+  dqa1Dqb1Alleles?: number;
+}
+
+export interface GeneticLineage {
+  mtHaplotype?: string;
+  mtHaplogroup?: string;
+  yHaplotype?: string;
+  yHaplogroup?: string;
+}
+
+export interface ExtendedGeneticData {
+  dogIdentity?: {
+    name?: string;
+    sex?: string;
+    swabCode?: string;
+  };
+  breedName?: string;
+  breedComposition?: BreedCompositionEntry[];
+  coi?: COIData;
+  mhcDiversity?: MHCDiversity;
+  lineage?: GeneticLineage;
+  predictedAdultWeight?: {
+    value: number;
+    unit: "lbs" | "kg";
+  };
+  lifeStage?: string;
 }
 
 export interface PreviewResult {
@@ -46,6 +98,8 @@ export interface PreviewResult {
   };
   unmapped: Array<{ category: string; name: string; value: string }>;
   warnings: string[];
+  // Extended data from Embark
+  extended?: ExtendedGeneticData;
 }
 
 export interface ImportResult {
@@ -61,6 +115,8 @@ export interface ImportResult {
   warnings: string[];
   /** Number of new markers flagged for admin review */
   newMarkersPendingReview?: number;
+  // Extended data that was imported
+  extended?: ExtendedGeneticData;
 }
 
 interface GeneticsImportDialogProps {
@@ -81,12 +137,13 @@ const DEFAULT_PROVIDERS: ProviderInfo[] = [
     species: ["DOG"],
     supportedFormats: ["CSV", "TSV"],
     isSupported: true,
-    exportInstructions: `1. Log into your Embark account at embarkvet.com
-2. Go to your dog's results page
-3. Click the "Advanced" tab
-4. Scroll down and click "Raw Data"
-5. Click "Download as CSV" or "Download as TSV"
-6. Upload the downloaded file here`,
+    exportInstructions: `How to download from Embark:
+1. Log into embarkvet.com and go to your dog's results
+2. Scroll down and click "Raw Data" under "Print or Download Results"
+3. Scroll past the TPED/TFAM section to "Machine-readable results file"
+4. Click "Download as CSV" or "Download as TSV"
+
+Important: Download the CSV/TSV file, NOT the "Raw DNA" zip file (TPED/TFAM). The CSV/TSV contains all interpreted health and trait results. The TPED/TFAM files contain unprocessed genetic markers for research use only.`,
   },
   {
     id: "wisdom_panel",
@@ -176,9 +233,15 @@ export function GeneticsImportDialog({
     setError("");
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
+
       const res = await fetch(`${baseUrl}/animals/${animalId}/genetics/import/preview`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           provider: selectedProvider.id,
@@ -208,9 +271,15 @@ export function GeneticsImportDialog({
     setError("");
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
+
       const res = await fetch(`${baseUrl}/animals/${animalId}/genetics/import`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           provider: selectedProvider.id,
@@ -277,6 +346,11 @@ export function GeneticsImportDialog({
                     ? `Supports: ${provider.supportedFormats.join(", ")}`
                     : "Coming soon"}
                 </div>
+                {provider.id === "embark" && provider.isSupported && (
+                  <div className="text-xs text-secondary mt-1">
+                    Full import: health, traits, breed %, COI, MHC diversity, lineage, weight
+                  </div>
+                )}
               </div>
               {provider.isSupported && (
                 <div className="text-primary">
@@ -316,6 +390,50 @@ export function GeneticsImportDialog({
         </pre>
       </div>
 
+      {selectedProvider?.id === "embark" && (
+        <div className="p-4 border border-border rounded-lg space-y-3">
+          <h4 className="font-medium text-sm">What gets imported</h4>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Health test results (200+)</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Coat color genetics</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Coat type &amp; texture</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Physical traits</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Breed composition %</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Inbreeding coefficient (COI)</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>MHC immune diversity</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Lineage haplotypes</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Predicted adult weight</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           fileContent ? "border-green-500 bg-green-50 dark:bg-green-950" : "border-border hover:border-primary"
@@ -330,10 +448,10 @@ export function GeneticsImportDialog({
         />
 
         {fileContent ? (
-          <div className="space-y-2">
-            <CheckCircle className="w-12 h-12 mx-auto text-green-500" />
-            <p className="font-medium">{fileName}</p>
-            <p className="text-sm text-secondary">File loaded successfully</p>
+          <div className="space-y-3">
+            <CheckCircle className="w-12 h-12 mx-auto text-green-600" />
+            <p className="font-semibold text-base text-green-900 dark:text-green-100 break-all">{fileName}</p>
+            <p className="text-sm text-green-700 dark:text-green-300">File loaded successfully</p>
             <Button
               variant="outline"
               size="sm"
@@ -342,6 +460,7 @@ export function GeneticsImportDialog({
                 setFileName("");
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
+              className="bg-white dark:bg-gray-800 border-green-600 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900"
             >
               Choose Different File
             </Button>
@@ -391,30 +510,152 @@ export function GeneticsImportDialog({
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-          <FileText className="w-5 h-5 text-blue-500" />
+        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/50 rounded-lg border border-blue-200 dark:border-blue-800">
+          <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           <div>
-            <p className="font-medium">Preview: {previewResult.summary.total} markers found</p>
-            <p className="text-sm text-secondary">
+            <p className="font-medium text-blue-900 dark:text-blue-100">Preview: {previewResult.summary.total} markers found</p>
+            <p className="text-sm text-blue-700 dark:text-blue-300">
               Review the data below before importing to {animalName}'s profile.
             </p>
           </div>
         </div>
 
+        {/* Extended Data Section - Breed, COI, Weight, etc. */}
+        {previewResult.extended && (
+          <div className="grid grid-cols-2 gap-3">
+            {/* Breed Composition */}
+            {previewResult.extended.breedComposition && previewResult.extended.breedComposition.length > 0 && (
+              <div className="col-span-2 p-3 border border-border rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Dna className="w-4 h-4 text-purple-500" />
+                  <span className="font-medium text-sm">Breed Composition</span>
+                </div>
+                <div className="space-y-1.5">
+                  {previewResult.extended.breedComposition.map((breed, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex justify-between text-sm mb-0.5">
+                          <span>{breed.breed}</span>
+                          <span className="font-medium">{breed.percentage}%</span>
+                        </div>
+                        <div className="h-2 bg-surface-alt rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-purple-500 rounded-full"
+                            style={{ width: `${breed.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* COI */}
+            {previewResult.extended.coi && (
+              <div className="p-3 border border-border rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <GitBranch className="w-4 h-4 text-blue-500" />
+                  <span className="font-medium text-sm">Inbreeding Coefficient</span>
+                </div>
+                <div className="text-2xl font-bold">
+                  {previewResult.extended.coi.percentage.toFixed(2)}%
+                </div>
+                <div className={`text-xs font-medium mt-1 ${
+                  previewResult.extended.coi.riskLevel === 'excellent' ? 'text-green-600' :
+                  previewResult.extended.coi.riskLevel === 'good' ? 'text-green-500' :
+                  previewResult.extended.coi.riskLevel === 'moderate' ? 'text-yellow-600' :
+                  previewResult.extended.coi.riskLevel === 'high' ? 'text-orange-600' :
+                  'text-red-600'
+                }`}>
+                  {previewResult.extended.coi.riskLevel.charAt(0).toUpperCase() + previewResult.extended.coi.riskLevel.slice(1)}
+                </div>
+              </div>
+            )}
+
+            {/* Predicted Weight */}
+            {previewResult.extended.predictedAdultWeight && (
+              <div className="p-3 border border-border rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <Scale className="w-4 h-4 text-green-500" />
+                  <span className="font-medium text-sm">Predicted Adult Weight</span>
+                </div>
+                <div className="text-2xl font-bold">
+                  {previewResult.extended.predictedAdultWeight.value.toFixed(1)} {previewResult.extended.predictedAdultWeight.unit}
+                </div>
+              </div>
+            )}
+
+            {/* MHC Diversity */}
+            {previewResult.extended.mhcDiversity && (
+              <div className="p-3 border border-border rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <Heart className="w-4 h-4 text-red-500" />
+                  <span className="font-medium text-sm">Immune Diversity (MHC)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {previewResult.extended.mhcDiversity.drb1Alleles !== undefined && (
+                    <div>
+                      <span className="text-secondary">DRB1:</span>{" "}
+                      <span className="font-medium">{previewResult.extended.mhcDiversity.drb1Alleles} alleles</span>
+                    </div>
+                  )}
+                  {previewResult.extended.mhcDiversity.dqa1Dqb1Alleles !== undefined && (
+                    <div>
+                      <span className="text-secondary">DQA1/DQB1:</span>{" "}
+                      <span className="font-medium">{previewResult.extended.mhcDiversity.dqa1Dqb1Alleles} alleles</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Lineage */}
+            {previewResult.extended.lineage && (previewResult.extended.lineage.mtHaplotype || previewResult.extended.lineage.yHaplotype) && (
+              <div className="col-span-2 p-3 border border-border rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch className="w-4 h-4 text-indigo-500" />
+                  <span className="font-medium text-sm">Lineage</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {previewResult.extended.lineage.mtHaplotype && (
+                    <div>
+                      <div className="text-secondary text-xs">Maternal (MT)</div>
+                      <div className="font-mono">{previewResult.extended.lineage.mtHaplotype}</div>
+                      {previewResult.extended.lineage.mtHaplogroup && (
+                        <div className="text-xs text-secondary">Group: {previewResult.extended.lineage.mtHaplogroup}</div>
+                      )}
+                    </div>
+                  )}
+                  {previewResult.extended.lineage.yHaplotype && (
+                    <div>
+                      <div className="text-secondary text-xs">Paternal (Y)</div>
+                      <div className="font-mono">{previewResult.extended.lineage.yHaplotype}</div>
+                      {previewResult.extended.lineage.yHaplogroup && (
+                        <div className="text-xs text-secondary">Group: {previewResult.extended.lineage.yHaplogroup}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {previewResult.warnings.length > 0 && (
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-yellow-700 dark:text-yellow-300">
+                <p className="font-semibold text-amber-900 dark:text-amber-100">
                   {previewResult.warnings.length} warnings
                 </p>
-                <ul className="text-sm text-yellow-600 dark:text-yellow-400 mt-1 space-y-1">
+                <ul className="text-sm text-amber-800 dark:text-amber-200 mt-1 space-y-1">
                   {previewResult.warnings.slice(0, 5).map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                   {previewResult.warnings.length > 5 && (
-                    <li>...and {previewResult.warnings.length - 5} more</li>
+                    <li className="text-amber-700 dark:text-amber-300">...and {previewResult.warnings.length - 5} more</li>
                   )}
                 </ul>
               </div>
@@ -465,28 +706,28 @@ export function GeneticsImportDialog({
         </div>
 
         {previewResult.unmapped.length > 0 && (
-          <div className="border border-border rounded-lg overflow-hidden">
+          <div className="border border-amber-300 dark:border-amber-700 rounded-lg overflow-hidden">
             <button
               onClick={() => toggleSection("unmapped")}
-              className="w-full p-3 flex items-center justify-between bg-surface hover:bg-surface-alt transition-colors"
+              className="w-full p-3 flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
             >
-              <span className="font-medium text-yellow-600 dark:text-yellow-400">
-                Unmapped Fields ({previewResult.unmapped.length})
+              <span className="font-medium text-amber-700 dark:text-amber-300">
+                New Fields for Admin Review ({previewResult.unmapped.length})
               </span>
               {expandedSections.has("unmapped") ? (
-                <ChevronUp className="w-4 h-4" />
+                <ChevronUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               ) : (
-                <ChevronDown className="w-4 h-4" />
+                <ChevronDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               )}
             </button>
             {expandedSections.has("unmapped") && (
-              <div className="p-3 bg-surface-alt border-t border-border">
-                <p className="text-sm text-secondary mb-2">
-                  These fields were not recognized and will not be imported:
+              <div className="p-3 bg-amber-50/50 dark:bg-amber-900/10 border-t border-amber-200 dark:border-amber-800">
+                <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                  These fields will be auto-imported but need official mappings added by an admin:
                 </p>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-secondary">
+                    <tr className="text-left text-amber-700 dark:text-amber-300">
                       <th className="pb-2">Category</th>
                       <th className="pb-2">Name</th>
                       <th className="pb-2">Value</th>
@@ -494,16 +735,16 @@ export function GeneticsImportDialog({
                   </thead>
                   <tbody>
                     {previewResult.unmapped.slice(0, 20).map((item, i) => (
-                      <tr key={i} className="border-t border-border-subtle">
-                        <td className="py-1.5">{item.category}</td>
-                        <td className="py-1.5">{item.name}</td>
-                        <td className="py-1.5 font-mono">{item.value}</td>
+                      <tr key={i} className="border-t border-amber-200 dark:border-amber-800">
+                        <td className="py-1.5 text-amber-900 dark:text-amber-100">{item.category}</td>
+                        <td className="py-1.5 text-amber-900 dark:text-amber-100">{item.name}</td>
+                        <td className="py-1.5 font-mono text-amber-800 dark:text-amber-200">{item.value}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {previewResult.unmapped.length > 20 && (
-                  <p className="text-sm text-secondary mt-2">
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
                     ...and {previewResult.unmapped.length - 20} more
                   </p>
                 )}

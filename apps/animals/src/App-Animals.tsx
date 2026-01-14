@@ -46,8 +46,9 @@ import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, MoreVertical, Download, Trophy, LayoutGrid, Table as TableIcon, Archive, Trash2 } from "lucide-react";
+import { MoreHorizontal, MoreVertical, Download, Trophy, LayoutGrid, Table as TableIcon, List, Archive, Trash2 } from "lucide-react";
 import { AnimalCardView } from "./components/AnimalCardView";
+import { AnimalListView } from "./components/AnimalListView";
 import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
@@ -212,6 +213,8 @@ type AnimalRow = {
   owners?: OwnershipRow[];
   microchip?: string | null;
   tags: string[];
+  /** Full tag objects with id, name, color for rich display */
+  tagObjects?: Array<{ id: number; name: string; color: string | null }>;
   notes?: string | null;
   photoUrl?: string | null;
   dob?: string | null;
@@ -244,7 +247,7 @@ const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: b
   { key: "name", label: "Name", default: true },
   { key: "species", label: "Species", default: true, center: true },
   { key: "breed", label: "Breed", default: true, center: true },
-  { key: "sex", label: "Sex", default: true, center: true },
+  { key: "sex", label: "Sex", default: false, center: true },
   { key: "status", label: "Status", default: true, center: true },
   { key: "ownerName", label: "Owner", default: false },
   { key: "microchip", label: "Microchip #", default: false },
@@ -289,7 +292,7 @@ function speciesEmoji(species?: string | null): string {
   return "🐾";
 }
 
-const STORAGE_KEY = "bhq_animals_cols_v1";
+const STORAGE_KEY = "bhq_animals_cols_v4";
 const VIEW_MODE_KEY = "bhq_animals_view_v1";
 type ViewMode = "table" | "cards";
 const DATE_KEYS = new Set(["dob", "created_at", "updated_at"] as const);
@@ -428,6 +431,82 @@ function CardViewWithDetails({
         loading={loading}
         error={error}
         onRowClick={(row) => open?.(row)}
+        vaccinationAlerts={vaccinationAlerts}
+      />
+      <TableFooter
+        entityLabel="animals"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={sortedRows.length}
+        total={totalRows}
+        includeArchived={includeArchived}
+        onIncludeArchivedChange={(checked) => {
+          setIncludeArchived(checked);
+          setPage(1);
+        }}
+      />
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * List View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function ListViewWithDetails({
+  rows,
+  loading,
+  error,
+  sortedRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  includeArchived,
+  setIncludeArchived,
+  totalRows,
+  start,
+  end,
+  vaccinationAlerts,
+  visibleColumns,
+}: {
+  rows: AnimalRow[];
+  loading: boolean;
+  error: string | null;
+  sortedRows: AnimalRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  includeArchived: boolean;
+  setIncludeArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+  vaccinationAlerts?: Record<number, VaccinationAlertState>;
+  visibleColumns: { key: string; label: string }[];
+}) {
+  const { open } = useTableDetails<AnimalRow>();
+
+  return (
+    <>
+      <AnimalListView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+        visibleColumns={visibleColumns}
         vaccinationAlerts={vaccinationAlerts}
       />
       <TableFooter
@@ -1475,10 +1554,12 @@ function AnimalTagsSection({
   animalId,
   api,
   disabled = false,
+  onTagsChange,
 }: {
   animalId: number | string;
   api: any;
   disabled?: boolean;
+  onTagsChange?: (tags: Array<{ id: number; name: string; color: string | null }>) => void;
 }) {
   const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
   const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
@@ -1525,31 +1606,47 @@ function AnimalTagsSection({
 
   const handleSelect = React.useCallback(async (tag: TagOption) => {
     // Optimistic update
-    setSelectedTags((prev) => [...prev, tag]);
+    setSelectedTags((prev) => {
+      const updated = [...prev, tag];
+      onTagsChange?.(updated);
+      return updated;
+    });
     setError(null);
 
     try {
       await api.tags.assign(tag.id, { animalId: Number(animalId) });
     } catch (e: any) {
       // Rollback on error
-      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setSelectedTags((prev) => {
+        const rolled = prev.filter((t) => t.id !== tag.id);
+        onTagsChange?.(rolled);
+        return rolled;
+      });
       setError(e?.message || "Failed to assign tag");
     }
-  }, [api, animalId]);
+  }, [api, animalId, onTagsChange]);
 
   const handleRemove = React.useCallback(async (tag: TagOption) => {
     // Optimistic update
-    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setSelectedTags((prev) => {
+      const updated = prev.filter((t) => t.id !== tag.id);
+      onTagsChange?.(updated);
+      return updated;
+    });
     setError(null);
 
     try {
       await api.tags.unassign(tag.id, { animalId: Number(animalId) });
     } catch (e: any) {
       // Rollback on error
-      setSelectedTags((prev) => [...prev, tag]);
+      setSelectedTags((prev) => {
+        const rolled = [...prev, tag];
+        onTagsChange?.(rolled);
+        return rolled;
+      });
       setError(e?.message || "Failed to remove tag");
     }
-  }, [api, animalId]);
+  }, [api, animalId, onTagsChange]);
 
   const handleCreate = React.useCallback(async (name: string): Promise<TagOption> => {
     const created = await api.tags.create({ name, module: "ANIMAL" });
@@ -1574,15 +1671,23 @@ function AnimalTagsSection({
     setAvailableTags((prev) => [...prev, newTag]);
 
     // Auto-assign the newly created tag to this animal
-    setSelectedTags((prev) => [...prev, newTag]);
+    setSelectedTags((prev) => {
+      const updated = [...prev, newTag];
+      onTagsChange?.(updated);
+      return updated;
+    });
     try {
       await api.tags.assign(newTag.id, { animalId: Number(animalId) });
     } catch (e: any) {
       // Rollback on error
-      setSelectedTags((prev) => prev.filter((t) => t.id !== newTag.id));
+      setSelectedTags((prev) => {
+        const rolled = prev.filter((t) => t.id !== newTag.id);
+        onTagsChange?.(rolled);
+        return rolled;
+      });
       setError(e?.message || "Failed to assign tag");
     }
-  }, [api, animalId]);
+  }, [api, animalId, onTagsChange]);
 
   return (
     <>
@@ -3320,6 +3425,28 @@ type BreedComposition = {
   percentage: number;
 };
 
+type COIRiskLevel = "excellent" | "good" | "moderate" | "high" | "critical";
+
+type COIData = {
+  coefficient: number;
+  percentage: number;
+  riskLevel: COIRiskLevel;
+  source?: "embark" | "calculated" | "manual";
+};
+
+type MHCDiversity = {
+  drb1Alleles?: number;
+  dqa1Dqb1Alleles?: number;
+  diversityScore?: number;
+};
+
+type GeneticLineage = {
+  mtHaplotype?: string;
+  mtHaplogroup?: string;
+  yHaplotype?: string;
+  yHaplogroup?: string;
+};
+
 type GeneticData = {
   coatColor?: GeneticLocus[];
   health?: GeneticLocus[];
@@ -3334,6 +3461,15 @@ type GeneticData = {
     testId?: string;
   };
   breedComposition?: BreedComposition[];
+  // Extended genetic data from Embark
+  coi?: COIData;
+  mhcDiversity?: MHCDiversity;
+  lineage?: GeneticLineage;
+  predictedAdultWeight?: {
+    value: number;
+    unit: "lbs" | "kg";
+  };
+  lifeStage?: string;
 };
 
 /** Locus card with visibility toggle for genetics sharing */
@@ -4256,6 +4392,114 @@ function GeneticsTab({
               </div>
             )}
           </div>
+
+          {/* Genetic Diversity Metrics */}
+          <div className="border-t border-hairline pt-4">
+            <div className="text-sm font-medium mb-3">🧬 Genetic Diversity</div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* COI */}
+              <div className="p-3 border border-hairline rounded-lg bg-surface-alt">
+                <div className="text-xs text-secondary mb-1">Inbreeding Coefficient (COI)</div>
+                {editData.coi ? (
+                  <>
+                    <div className="text-2xl font-bold">{editData.coi.percentage.toFixed(2)}%</div>
+                    <div className={`text-xs font-medium mt-1 ${
+                      editData.coi.riskLevel === "excellent" ? "text-green-600" :
+                      editData.coi.riskLevel === "good" ? "text-green-500" :
+                      editData.coi.riskLevel === "moderate" ? "text-yellow-600" :
+                      editData.coi.riskLevel === "high" ? "text-orange-600" :
+                      "text-red-600"
+                    }`}>
+                      {editData.coi.riskLevel.charAt(0).toUpperCase() + editData.coi.riskLevel.slice(1)}
+                      {editData.coi.source && <span className="text-secondary font-normal"> · via {editData.coi.source}</span>}
+                    </div>
+                    <div className="mt-2 h-2 bg-hairline rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          editData.coi.percentage < 5 ? "bg-green-500" :
+                          editData.coi.percentage < 10 ? "bg-yellow-500" :
+                          editData.coi.percentage < 15 ? "bg-orange-500" :
+                          "bg-red-500"
+                        }`}
+                        style={{ width: `${Math.min(editData.coi.percentage * 4, 100)}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-secondary">Not recorded</div>
+                )}
+              </div>
+
+              {/* MHC Diversity */}
+              <div className="p-3 border border-hairline rounded-lg bg-surface-alt">
+                <div className="text-xs text-secondary mb-1">Immune Diversity (MHC Class II)</div>
+                {editData.mhcDiversity ? (
+                  <div className="space-y-1">
+                    {editData.mhcDiversity.drb1Alleles !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-secondary">DLA-DRB1:</span>
+                        <span className="font-medium">{editData.mhcDiversity.drb1Alleles} alleles</span>
+                      </div>
+                    )}
+                    {editData.mhcDiversity.dqa1Dqb1Alleles !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-secondary">DLA-DQA1/DQB1:</span>
+                        <span className="font-medium">{editData.mhcDiversity.dqa1Dqb1Alleles} alleles</span>
+                      </div>
+                    )}
+                    {editData.mhcDiversity.diversityScore !== undefined && (
+                      <div className="flex justify-between text-sm mt-2 pt-2 border-t border-hairline">
+                        <span className="text-secondary">Diversity Score:</span>
+                        <span className="font-bold">{editData.mhcDiversity.diversityScore}/100</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-secondary">Not recorded</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Lineage */}
+          {(editData.lineage?.mtHaplotype || editData.lineage?.yHaplotype) && (
+            <div className="border-t border-hairline pt-4">
+              <div className="text-sm font-medium mb-3">🌳 Lineage / Haplotypes</div>
+              <div className="grid grid-cols-2 gap-4">
+                {editData.lineage.mtHaplotype && (
+                  <div className="p-3 border border-hairline rounded-lg bg-surface-alt">
+                    <div className="text-xs text-secondary mb-1">Maternal (Mitochondrial)</div>
+                    <div className="font-mono text-sm">{editData.lineage.mtHaplotype}</div>
+                    {editData.lineage.mtHaplogroup && (
+                      <div className="text-xs text-secondary mt-1">Haplogroup: {editData.lineage.mtHaplogroup}</div>
+                    )}
+                  </div>
+                )}
+                {editData.lineage.yHaplotype && (
+                  <div className="p-3 border border-hairline rounded-lg bg-surface-alt">
+                    <div className="text-xs text-secondary mb-1">Paternal (Y-Chromosome)</div>
+                    <div className="font-mono text-sm">{editData.lineage.yHaplotype}</div>
+                    {editData.lineage.yHaplogroup && (
+                      <div className="text-xs text-secondary mt-1">Haplogroup: {editData.lineage.yHaplogroup}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Predicted Adult Weight */}
+          {editData.predictedAdultWeight && (
+            <div className="border-t border-hairline pt-4">
+              <div className="text-sm font-medium mb-2">⚖️ Predicted Adult Weight</div>
+              <div className="text-2xl font-bold">
+                {editData.predictedAdultWeight.value.toFixed(1)} {editData.predictedAdultWeight.unit}
+              </div>
+              {editData.lifeStage && (
+                <div className="text-xs text-secondary mt-1">Life stage at test: {editData.lifeStage}</div>
+              )}
+            </div>
+          )}
         </div>
       </SectionCard>
 
@@ -7253,6 +7497,44 @@ export default function AppAnimals() {
         // Owners are fetched lazily when opening animal details, not on list load
         const items = baseItems.map(animalToRow);
         if (!cancelled) setRows(items);
+
+        // Fetch tags for all animals in background (don't block initial render)
+        if (items.length > 0 && api.tags?.listForAnimal) {
+          // Fetch tags for each animal individually using Promise.all
+          Promise.all(
+            items.map(async (row: AnimalRow) => {
+              try {
+                const tags = await api.tags.listForAnimal(row.id);
+                return { id: row.id, tags };
+              } catch {
+                return { id: row.id, tags: [] };
+              }
+            })
+          ).then((results) => {
+            if (cancelled) return;
+            // Build a map of animalId -> tags
+            const tagsMap = new Map<number, Array<{ id: number; name: string; color: string | null }>>();
+            for (const r of results) {
+              if (r.tags.length > 0) {
+                tagsMap.set(r.id, r.tags);
+              }
+            }
+            // Update rows with tag data
+            if (tagsMap.size > 0) {
+              setRows((prevRows) =>
+                prevRows.map((row) => {
+                  const entityTags = tagsMap.get(row.id);
+                  if (entityTags && entityTags.length > 0) {
+                    return { ...row, tags: entityTags.map((t) => t.name), tagObjects: entityTags };
+                  }
+                  return row;
+                })
+              );
+            }
+          }).catch((e: any) => {
+            console.warn("Failed to fetch tags for animals:", e);
+          });
+        }
       } catch (e: any) {
         console.error("[Animals] Error loading animals:", e);
         if (!cancelled)
@@ -8336,6 +8618,15 @@ export default function AppAnimals() {
                     animalId={row.id}
                     api={api}
                     disabled={mode === "view"}
+                    onTagsChange={(newTags) => {
+                      setRows((prev) =>
+                        prev.map((r) =>
+                          r.id === row.id
+                            ? { ...r, tags: newTags.map((t) => t.name), tagObjects: newTags }
+                            : r
+                        )
+                      );
+                    }}
                   />
                 }
               />
@@ -8780,19 +9071,6 @@ export default function AppAnimals() {
             <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
-                onClick={() => setViewMode("table")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                  viewMode === "table"
-                    ? "bg-[hsl(var(--brand-orange))] text-black"
-                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Table</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setViewMode("cards")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "cards"
@@ -8804,6 +9082,32 @@ export default function AppAnimals() {
                 <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Cards</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
             </div>
 
             {/* Sort dropdown */}
@@ -8814,8 +9118,10 @@ export default function AppAnimals() {
               onClear={() => setSorts([])}
             />
 
-            {/* Column toggle - only show in table mode */}
-            {viewMode === "table" && (
+            <div className="ml-auto" />
+
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
               <ColumnsPopover
                 columns={map}
                 onToggle={toggle}
@@ -8824,8 +9130,6 @@ export default function AppAnimals() {
                 triggerClassName="bhq-columns-trigger"
               />
             )}
-
-            <div className="ml-auto" />
           </div>
 
           {filtersOpen && (
@@ -8959,6 +9263,25 @@ export default function AppAnimals() {
                 }}
               />
             </Table>
+          ) : viewMode === "list" ? (
+            <ListViewWithDetails
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              sortedRows={sortedRows}
+              pageSize={pageSize}
+              page={clampedPage}
+              pageCount={pageCount}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              includeArchived={includeArchived}
+              setIncludeArchived={setIncludeArchived}
+              totalRows={rows.length}
+              start={start}
+              end={end}
+              vaccinationAlerts={vaccinationAlerts}
+              visibleColumns={visibleSafe}
+            />
           ) : (
             <CardViewWithDetails
               rows={pageRows}
@@ -9074,6 +9397,7 @@ export default function AppAnimals() {
                 <Input
                   value={newName}
                   onChange={handleNameChange}
+                  className={newName.trim().length <= 1 ? "border-amber-500" : ""}
                 />
               </div>
 
@@ -9173,6 +9497,7 @@ export default function AppAnimals() {
                   onChange={(e) =>
                     setNewDob(e.currentTarget.value)
                   }
+                  inputClassName={!newDob ? "border-amber-500" : ""}
                 />
               </div>
 

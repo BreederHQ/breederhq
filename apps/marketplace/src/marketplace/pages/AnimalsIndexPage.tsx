@@ -158,12 +158,65 @@ function MapPinIcon({ className }: { className?: string }) {
   );
 }
 
+function StarIcon({ className, filled }: { className?: string; filled?: boolean }) {
+  if (filled) {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function VerifiedBadgeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  );
+}
+
+function SortIcon({ className, direction }: { className?: string; direction?: "asc" | "desc" | null }) {
+  if (direction === "asc") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M8 15l4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (direction === "desc") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M8 9l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  // Neutral state - both arrows
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M8 10l4-4 4 4M8 14l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // =============================================================================
 // Types and Constants
 // =============================================================================
 
-type ViewType = "all" | "offspring" | "animals";
-type SortType = "newest" | "price_low" | "price_high" | "location";
+type ListingViewType = "all" | "offspring" | "animals";
+type SortType = "newest" | "price_low" | "price_high" | "name_asc" | "name_desc" | "breed_asc" | "breed_desc" | "location_asc" | "location_desc";
+type DisplayMode = "grid" | "list";
 
 interface Filters {
   search: string;
@@ -172,7 +225,7 @@ interface Filters {
   location: string;
   priceMin: string;
   priceMax: string;
-  view: ViewType;
+  view: ListingViewType;
   sort: SortType;
 }
 
@@ -187,11 +240,101 @@ const SPECIES_OPTIONS = [
   { value: "sheep", label: "Sheep" },
 ];
 
+// Popular breeds by species - for the breed filter dropdown
+const BREED_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  dog: [
+    { value: "", label: "All Breeds" },
+    { value: "german-shepherd", label: "German Shepherd" },
+    { value: "golden-retriever", label: "Golden Retriever" },
+    { value: "labrador-retriever", label: "Labrador Retriever" },
+    { value: "french-bulldog", label: "French Bulldog" },
+    { value: "bulldog", label: "Bulldog" },
+    { value: "poodle", label: "Poodle" },
+    { value: "beagle", label: "Beagle" },
+    { value: "rottweiler", label: "Rottweiler" },
+    { value: "dachshund", label: "Dachshund" },
+    { value: "yorkshire-terrier", label: "Yorkshire Terrier" },
+    { value: "boxer", label: "Boxer" },
+    { value: "australian-shepherd", label: "Australian Shepherd" },
+    { value: "siberian-husky", label: "Siberian Husky" },
+    { value: "cavalier-king-charles", label: "Cavalier King Charles Spaniel" },
+    { value: "doberman", label: "Doberman Pinscher" },
+    { value: "great-dane", label: "Great Dane" },
+    { value: "miniature-schnauzer", label: "Miniature Schnauzer" },
+    { value: "shih-tzu", label: "Shih Tzu" },
+    { value: "boston-terrier", label: "Boston Terrier" },
+    { value: "bernese-mountain-dog", label: "Bernese Mountain Dog" },
+    { value: "pomeranian", label: "Pomeranian" },
+    { value: "havanese", label: "Havanese" },
+    { value: "shetland-sheepdog", label: "Shetland Sheepdog" },
+    { value: "border-collie", label: "Border Collie" },
+    { value: "other", label: "Other" },
+  ],
+  cat: [
+    { value: "", label: "All Breeds" },
+    { value: "persian", label: "Persian" },
+    { value: "maine-coon", label: "Maine Coon" },
+    { value: "ragdoll", label: "Ragdoll" },
+    { value: "british-shorthair", label: "British Shorthair" },
+    { value: "siamese", label: "Siamese" },
+    { value: "abyssinian", label: "Abyssinian" },
+    { value: "bengal", label: "Bengal" },
+    { value: "scottish-fold", label: "Scottish Fold" },
+    { value: "sphynx", label: "Sphynx" },
+    { value: "russian-blue", label: "Russian Blue" },
+    { value: "other", label: "Other" },
+  ],
+  horse: [
+    { value: "", label: "All Breeds" },
+    { value: "quarter-horse", label: "Quarter Horse" },
+    { value: "thoroughbred", label: "Thoroughbred" },
+    { value: "arabian", label: "Arabian" },
+    { value: "paint-horse", label: "Paint Horse" },
+    { value: "appaloosa", label: "Appaloosa" },
+    { value: "morgan", label: "Morgan" },
+    { value: "warmblood", label: "Warmblood" },
+    { value: "friesian", label: "Friesian" },
+    { value: "clydesdale", label: "Clydesdale" },
+    { value: "other", label: "Other" },
+  ],
+  rabbit: [
+    { value: "", label: "All Breeds" },
+    { value: "holland-lop", label: "Holland Lop" },
+    { value: "netherland-dwarf", label: "Netherland Dwarf" },
+    { value: "mini-rex", label: "Mini Rex" },
+    { value: "lionhead", label: "Lionhead" },
+    { value: "flemish-giant", label: "Flemish Giant" },
+    { value: "other", label: "Other" },
+  ],
+  goat: [
+    { value: "", label: "All Breeds" },
+    { value: "nigerian-dwarf", label: "Nigerian Dwarf" },
+    { value: "boer", label: "Boer" },
+    { value: "nubian", label: "Nubian" },
+    { value: "alpine", label: "Alpine" },
+    { value: "pygmy", label: "Pygmy" },
+    { value: "other", label: "Other" },
+  ],
+  sheep: [
+    { value: "", label: "All Breeds" },
+    { value: "dorper", label: "Dorper" },
+    { value: "suffolk", label: "Suffolk" },
+    { value: "merino", label: "Merino" },
+    { value: "katahdin", label: "Katahdin" },
+    { value: "other", label: "Other" },
+  ],
+};
+
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest First" },
   { value: "price_low", label: "Price: Low to High" },
   { value: "price_high", label: "Price: High to Low" },
-  { value: "location", label: "Distance" },
+  { value: "name_asc", label: "Name: A-Z" },
+  { value: "name_desc", label: "Name: Z-A" },
+  { value: "breed_asc", label: "Breed: A-Z" },
+  { value: "breed_desc", label: "Breed: Z-A" },
+  { value: "location_asc", label: "Location: A-Z" },
+  { value: "location_desc", label: "Location: Z-A" },
 ];
 
 const ITEMS_PER_PAGE = 24;
@@ -256,8 +399,14 @@ function FilterPanel({
         <label className="text-sm font-medium text-text-secondary">Category</label>
         <select
           value={filters.species}
-          onChange={(e) => onFilterChange("species", e.target.value)}
-          className="w-full h-10 px-3 rounded-lg bg-portal-card border border-border-subtle text-sm text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+          onChange={(e) => {
+            onFilterChange("species", e.target.value);
+            // Clear breed filter when species changes
+            if (filters.breed) {
+              onFilterChange("breed", "");
+            }
+          }}
+          className="w-full h-10 px-3 rounded-lg bg-border-default border border-border-subtle text-sm text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors cursor-pointer"
         >
           {SPECIES_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -266,6 +415,24 @@ function FilterPanel({
           ))}
         </select>
       </div>
+
+      {/* Breed - only shown when a species is selected */}
+      {filters.species && BREED_OPTIONS[filters.species] && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-text-secondary">Breed</label>
+          <select
+            value={filters.breed}
+            onChange={(e) => onFilterChange("breed", e.target.value)}
+            className="w-full h-10 px-3 rounded-lg bg-border-default border border-border-subtle text-sm text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors cursor-pointer"
+          >
+            {BREED_OPTIONS[filters.species].map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Location */}
       <div className="space-y-2">
@@ -277,7 +444,7 @@ function FilterPanel({
             placeholder="City or ZIP"
             value={filters.location}
             onChange={(e) => onFilterChange("location", e.target.value)}
-            className="w-full h-10 pl-9 pr-3 rounded-lg bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+            className="w-full h-10 pl-9 pr-3 rounded-lg bg-border-default border border-border-subtle text-sm text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
           />
         </div>
       </div>
@@ -285,22 +452,38 @@ function FilterPanel({
       {/* Price Range */}
       <div className="space-y-2">
         <label className="text-sm font-medium text-text-secondary">Price Range</label>
-        <div className="flex gap-2">
-          <input
-            type="number"
-            placeholder="Min"
-            value={filters.priceMin}
-            onChange={(e) => onFilterChange("priceMin", e.target.value)}
-            className="flex-1 h-10 px-3 rounded-lg bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
-          />
-          <span className="flex items-center text-text-tertiary">-</span>
-          <input
-            type="number"
-            placeholder="Max"
-            value={filters.priceMax}
-            onChange={(e) => onFilterChange("priceMax", e.target.value)}
-            className="flex-1 h-10 px-3 rounded-lg bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Min"
+              value={filters.priceMin}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                onFilterChange("priceMin", val);
+              }}
+              className="w-full h-10 pl-7 pr-3 rounded-lg bg-border-default border border-border-subtle text-sm text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+            />
+          </div>
+          <span className="text-text-tertiary shrink-0">–</span>
+          <div className="relative flex-1 min-w-0">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Max"
+              value={filters.priceMax}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                onFilterChange("priceMax", val);
+              }}
+              className="w-full h-10 pl-7 pr-3 rounded-lg bg-border-default border border-border-subtle text-sm text-white placeholder-text-tertiary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+            />
+          </div>
         </div>
       </div>
 
@@ -372,6 +555,8 @@ interface AnimalCardProps {
   priceMax?: number | null;
   location: string | null;
   isVerified?: boolean;
+  rating?: number | null;
+  reviewCount?: number;
   breed: string | null;
   species: string | null;
   breederName: string | null;
@@ -389,6 +574,8 @@ function AnimalCard({
   priceMax,
   location,
   isVerified,
+  rating,
+  reviewCount,
   breed,
   breederName,
   href,
@@ -437,14 +624,8 @@ function AnimalCard({
             </div>
           )}
 
-          {/* Badges overlay */}
+          {/* Left badges */}
           <div className="absolute top-2 left-2 flex flex-wrap gap-1.5">
-            {isVerified && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-500/90 text-white">
-                <CheckIcon className="w-3 h-3" />
-                Verified
-              </span>
-            )}
             {listingType === "offspring" && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/90 text-white">
                 Litter
@@ -452,19 +633,26 @@ function AnimalCard({
             )}
           </div>
 
-          {/* Save button */}
-          <button
-            type="button"
-            onClick={handleSaveClick}
-            className={`absolute top-2 right-2 p-1.5 rounded-full transition-colors ${
-              isSaved
-                ? "bg-red-500/90 text-white"
-                : "bg-black/50 text-white/80 hover:text-red-400 hover:bg-black/70"
-            }`}
-            aria-label={isSaved ? "Remove from saved" : "Save listing"}
-          >
-            <HeartIcon className="w-4 h-4" filled={isSaved} />
-          </button>
+          {/* Right side: Verification badge + Save button */}
+          <div className="absolute top-2 right-2 flex items-center gap-1.5">
+            {isVerified && (
+              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-[hsl(var(--brand-blue))]/90 text-white" title="Verified Breeder">
+                <VerifiedBadgeIcon className="w-3 h-3" />
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleSaveClick}
+              className={`p-1.5 rounded-full transition-colors ${
+                isSaved
+                  ? "bg-red-500/90 text-white"
+                  : "bg-black/50 text-white/80 hover:text-red-400 hover:bg-black/70"
+              }`}
+              aria-label={isSaved ? "Remove from saved" : "Save listing"}
+            >
+              <HeartIcon className="w-4 h-4" filled={isSaved} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -481,13 +669,278 @@ function AnimalCard({
             <p className="text-[13px] text-text-tertiary mb-2">{breederName}</p>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             {priceDisplay && (
               <span className="text-[15px] font-semibold text-accent">{priceDisplay}</span>
             )}
             {location && (
               <span className="text-[12px] text-text-tertiary">{location}</span>
             )}
+          </div>
+
+          {/* Rating display */}
+          {rating != null && rating > 0 && (
+            <div className="flex items-center gap-1">
+              <div className="flex items-center">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <StarIcon
+                    key={star}
+                    className={`w-3.5 h-3.5 ${star <= Math.round(rating) ? "text-yellow-400" : "text-text-muted"}`}
+                    filled={star <= Math.round(rating)}
+                  />
+                ))}
+              </div>
+              {reviewCount != null && reviewCount > 0 && (
+                <span className="text-[11px] text-text-tertiary">({reviewCount})</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// =============================================================================
+// List View Table Header Component
+// =============================================================================
+
+interface ListTableHeaderProps {
+  sort: SortType;
+  onSortChange: (sort: SortType) => void;
+}
+
+function ListTableHeader({ sort, onSortChange }: ListTableHeaderProps) {
+  // Helper to determine sort direction for a column
+  const getSortDirection = (column: string): "asc" | "desc" | null => {
+    if (sort === `${column}_asc`) return "asc";
+    if (sort === `${column}_desc`) return "desc";
+    return null;
+  };
+
+  // Helper to toggle sort for a column
+  const toggleSort = (column: string) => {
+    const current = getSortDirection(column);
+    if (current === null || current === "desc") {
+      onSortChange(`${column}_asc` as SortType);
+    } else {
+      onSortChange(`${column}_desc` as SortType);
+    }
+  };
+
+  // Check if price is sorted (special case since it uses different naming)
+  const getPriceSortDirection = (): "asc" | "desc" | null => {
+    if (sort === "price_low") return "asc";
+    if (sort === "price_high") return "desc";
+    return null;
+  };
+
+  const togglePriceSort = () => {
+    const current = getPriceSortDirection();
+    if (current === null || current === "desc") {
+      onSortChange("price_low");
+    } else {
+      onSortChange("price_high");
+    }
+  };
+
+  return (
+    <div className="hidden md:flex items-center gap-4 px-4 py-2 mb-2 text-xs font-medium text-text-tertiary uppercase tracking-wide border-b border-border-subtle">
+      {/* Thumbnail spacer */}
+      <div className="w-16 flex-shrink-0" />
+
+      {/* Name - sortable */}
+      <button
+        type="button"
+        onClick={() => toggleSort("name")}
+        className="flex items-center gap-1 min-w-[160px] max-w-[200px] hover:text-white transition-colors"
+      >
+        Name
+        <SortIcon className="w-4 h-4" direction={getSortDirection("name")} />
+      </button>
+
+      {/* Breed - sortable */}
+      <button
+        type="button"
+        onClick={() => toggleSort("breed")}
+        className="flex items-center gap-1 min-w-[120px] max-w-[140px] hover:text-white transition-colors"
+      >
+        Breed
+        <SortIcon className="w-4 h-4" direction={getSortDirection("breed")} />
+      </button>
+
+      {/* Species - not sortable, just label */}
+      <div className="hidden lg:block min-w-[70px]">Species</div>
+
+      {/* Breeder - not sortable, just label */}
+      <div className="flex-1 min-w-[100px]">Breeder</div>
+
+      {/* Location - sortable */}
+      <button
+        type="button"
+        onClick={() => toggleSort("location")}
+        className="hidden lg:flex items-center gap-1 min-w-[100px] hover:text-white transition-colors"
+      >
+        Location
+        <SortIcon className="w-4 h-4" direction={getSortDirection("location")} />
+      </button>
+
+      {/* Price - sortable */}
+      <button
+        type="button"
+        onClick={togglePriceSort}
+        className="flex items-center gap-1 min-w-[80px] justify-end hover:text-white transition-colors"
+      >
+        Price
+        <SortIcon className="w-4 h-4" direction={getPriceSortDirection()} />
+      </button>
+
+      {/* Save & Arrow spacers */}
+      <div className="w-8 flex-shrink-0" />
+      <div className="w-4 flex-shrink-0" />
+    </div>
+  );
+}
+
+// =============================================================================
+// Animal List Row Component (for list view)
+// =============================================================================
+
+function AnimalListRow({
+  id,
+  title,
+  imageUrl,
+  price,
+  priceType,
+  priceMin,
+  priceMax,
+  location,
+  isVerified,
+  breed,
+  species,
+  breederName,
+  href,
+  listingType,
+}: AnimalCardProps) {
+  const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
+  const { isSaved, toggleSave } = useSaveButton(savedListingType, id);
+
+  // Format price display
+  let priceDisplay: string | null = null;
+  if (priceType === "fixed" && price != null) {
+    priceDisplay = formatCents(price);
+  } else if (priceType === "range" && priceMin != null) {
+    if (priceMax != null && priceMax !== priceMin) {
+      priceDisplay = `${formatCents(priceMin)} - ${formatCents(priceMax)}`;
+    } else {
+      priceDisplay = formatCents(priceMin);
+    }
+  } else if (priceType === "inquire") {
+    priceDisplay = "Contact";
+  }
+
+  const handleSaveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleSave();
+  };
+
+  return (
+    <Link to={href} className="block group">
+      <div className="rounded-lg border border-border-subtle bg-portal-card px-4 py-3 transition-all hover:bg-portal-card-hover hover:border-border-default">
+        <div className="flex items-center gap-4">
+          {/* Thumbnail */}
+          <div className="w-16 h-12 rounded-lg bg-border-default overflow-hidden flex-shrink-0">
+            {imageUrl ? (
+              <img src={imageUrl} alt={title} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            )}
+          </div>
+
+          {/* Title & Type badge */}
+          <div className="flex items-center gap-2 min-w-[160px] max-w-[200px]">
+            <h3 className="font-medium text-white group-hover:text-accent transition-colors truncate">
+              {title}
+            </h3>
+            {listingType === "offspring" && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/20 text-blue-400 whitespace-nowrap">
+                Litter
+              </span>
+            )}
+            {isVerified && (
+              <VerifiedBadgeIcon className="w-4 h-4 text-[hsl(var(--brand-blue))] flex-shrink-0" />
+            )}
+          </div>
+
+          {/* Breed */}
+          <div className="hidden md:block min-w-[120px] max-w-[140px]">
+            {breed ? (
+              <span className="text-sm text-text-secondary truncate block">{breed}</span>
+            ) : (
+              <span className="text-sm text-text-muted">—</span>
+            )}
+          </div>
+
+          {/* Species */}
+          <div className="hidden lg:block min-w-[70px]">
+            {species ? (
+              <span className="text-xs text-text-tertiary capitalize">{species}</span>
+            ) : (
+              <span className="text-xs text-text-muted">—</span>
+            )}
+          </div>
+
+          {/* Breeder */}
+          <div className="hidden md:block flex-1 min-w-[100px]">
+            {breederName ? (
+              <span className="text-sm text-text-tertiary truncate block">{breederName}</span>
+            ) : (
+              <span className="text-sm text-text-muted">—</span>
+            )}
+          </div>
+
+          {/* Location */}
+          <div className="hidden lg:block min-w-[100px]">
+            {location ? (
+              <span className="text-xs text-text-tertiary truncate block">{location}</span>
+            ) : (
+              <span className="text-xs text-text-muted">—</span>
+            )}
+          </div>
+
+          {/* Price */}
+          <div className="min-w-[80px] text-right">
+            {priceDisplay ? (
+              <span className="text-sm font-semibold text-accent whitespace-nowrap">{priceDisplay}</span>
+            ) : (
+              <span className="text-xs text-text-muted">—</span>
+            )}
+          </div>
+
+          {/* Save button */}
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${
+              isSaved
+                ? "text-red-500 hover:text-red-400"
+                : "text-text-tertiary hover:text-red-400"
+            }`}
+            aria-label={isSaved ? "Remove from saved" : "Save listing"}
+          >
+            <HeartIcon className="w-4 h-4" filled={isSaved} />
+          </button>
+
+          {/* Arrow */}
+          <div className="text-text-tertiary group-hover:text-white transition-colors flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
       </div>
@@ -496,7 +949,7 @@ function AnimalCard({
 }
 
 // =============================================================================
-// Skeleton Card
+// Skeleton Components
 // =============================================================================
 
 function SkeletonCard() {
@@ -511,6 +964,21 @@ function SkeletonCard() {
           <div className="h-4 bg-border-default rounded w-20" />
           <div className="h-3 bg-border-default rounded w-16" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonListRow() {
+  return (
+    <div className="rounded-lg border border-border-subtle bg-portal-card px-4 py-3 animate-pulse">
+      <div className="flex items-center gap-4">
+        <div className="w-16 h-12 rounded-lg bg-border-default flex-shrink-0" />
+        <div className="h-4 bg-border-default rounded w-32" />
+        <div className="hidden sm:block h-3 bg-border-default rounded w-24" />
+        <div className="hidden md:block flex-1 h-3 bg-border-default rounded w-20" />
+        <div className="h-4 bg-border-default rounded w-16" />
+        <div className="h-4 w-4 bg-border-default rounded" />
       </div>
     </div>
   );
@@ -667,7 +1135,7 @@ export function AnimalsIndexPage() {
     location: searchParams.get("location") || "",
     priceMin: searchParams.get("priceMin") || "",
     priceMax: searchParams.get("priceMax") || "",
-    view: (searchParams.get("view") as ViewType) || "all",
+    view: (searchParams.get("view") as ListingViewType) || "all",
     sort: (searchParams.get("sort") as SortType) || "newest",
   }));
 
@@ -686,6 +1154,7 @@ export function AnimalsIndexPage() {
 
   // UI state
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
+  const [displayMode, setDisplayMode] = React.useState<DisplayMode>("grid");
 
   // Sync URL params when filters change
   React.useEffect(() => {
@@ -833,7 +1302,7 @@ export function AnimalsIndexPage() {
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
-    <div className="min-h-screen pb-20 md:pb-8">
+    <div className="pb-20 md:pb-8">
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -844,10 +1313,10 @@ export function AnimalsIndexPage() {
 
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="text-[28px] font-bold text-white tracking-tight">
+        <h1 className="text-[32px] font-bold text-white tracking-tight">
           Browse Animals
         </h1>
-        <p className="text-text-secondary mt-1">
+        <p className="text-text-secondary mt-2">
           Find your perfect companion from verified breeders
         </p>
       </div>
@@ -918,14 +1387,54 @@ export function AnimalsIndexPage() {
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-text-secondary">
               {loading ? (
-                <span className="inline-block h-4 w-24 bg-border-default rounded animate-pulse" />
+                <span className="inline-block h-4 w-32 bg-border-default rounded animate-pulse" />
               ) : (
-                `${totalDisplayed} result${totalDisplayed === 1 ? "" : "s"}`
+                <>
+                  <span className="font-semibold text-white">{totalDisplayed}</span>
+                  {" "}
+                  {filters.breed
+                    ? BREED_OPTIONS[filters.species]?.find(b => b.value === filters.breed)?.label
+                    : filters.species
+                    ? SPECIES_OPTIONS.find(s => s.value === filters.species)?.label
+                    : "animal"}
+                  {totalDisplayed === 1 ? "" : "s"} available
+                </>
               )}
             </p>
 
-            {/* Desktop Sort */}
+            {/* Desktop Sort + View Toggle */}
             <div className="hidden md:flex items-center gap-3">
+              {/* View Mode Toggle */}
+              <div className="flex items-center rounded-lg border border-border-subtle bg-portal-card p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode("grid")}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    displayMode === "grid"
+                      ? "bg-accent text-white"
+                      : "text-text-tertiary hover:text-white"
+                  }`}
+                  aria-label="Grid view"
+                  title="Grid view"
+                >
+                  <GridIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode("list")}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    displayMode === "list"
+                      ? "bg-accent text-white"
+                      : "text-text-tertiary hover:text-white"
+                  }`}
+                  aria-label="List view"
+                  title="List view"
+                >
+                  <ListIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Sort Dropdown */}
               <select
                 value={filters.sort}
                 onChange={(e) => handleFilterChange("sort", e.target.value as SortType)}
@@ -940,11 +1449,14 @@ export function AnimalsIndexPage() {
             </div>
           </div>
 
-          {/* Grid */}
+          {/* Results Grid/List */}
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={displayMode === "grid"
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              : "flex flex-col gap-2"
+            }>
               {Array.from({ length: 6 }).map((_, i) => (
-                <SkeletonCard key={i} />
+                displayMode === "grid" ? <SkeletonCard key={i} /> : <SkeletonListRow key={i} />
               ))}
             </div>
           ) : totalDisplayed === 0 ? (
@@ -995,7 +1507,18 @@ export function AnimalsIndexPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* List view table header */}
+              {displayMode === "list" && (
+                <ListTableHeader
+                  sort={filters.sort}
+                  onSortChange={(sort) => handleFilterChange("sort", sort)}
+                />
+              )}
+
+              <div className={displayMode === "grid"
+                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                : "flex flex-col gap-2"
+              }>
                 {/* Individual Animal Listings */}
                 {displayedAnimals.map((listing) => {
                   const locationParts = [
@@ -1003,8 +1526,10 @@ export function AnimalsIndexPage() {
                     listing.locationRegion,
                   ].filter(Boolean);
 
+                  const CardComponent = displayMode === "grid" ? AnimalCard : AnimalListRow;
+
                   return (
-                    <AnimalCard
+                    <CardComponent
                       key={`animal-${listing.id}`}
                       id={String(listing.id)}
                       title={listing.title || listing.animalName}
@@ -1031,8 +1556,10 @@ export function AnimalsIndexPage() {
                       ? `/programs/${breederSlug}/offspring-groups/${listing.listingSlug}`
                       : "#";
 
+                  const CardComponent = displayMode === "grid" ? AnimalCard : AnimalListRow;
+
                   return (
-                    <AnimalCard
+                    <CardComponent
                       key={`offspring-${listing.id}`}
                       id={String(listing.id)}
                       title={listing.title || `${listing.breed || listing.species} Offspring`}

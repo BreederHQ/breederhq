@@ -3,7 +3,8 @@
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, List, Table as TableIcon } from "lucide-react";
+import { NavLink, useInRouterContext } from "react-router-dom";
 import {
   PageHeader,
   Card,
@@ -44,6 +45,7 @@ import clsx from "clsx";
 
 import { reproEngine } from "@bhq/ui/utils";
 import { GroupCardView } from "./components/GroupCardView";
+import { GroupListView } from "./components/GroupListView";
 import { CollarPicker, CollarSwatch } from "./components/CollarPicker";
 
 
@@ -264,45 +266,52 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
   );
 }
 
-/* ───────────────────────── Underline tabs ───────────────────────── */
-function UnderlineTabs({
-  value,
-  onChange,
+/* ───────────────────────── SafeNavLink (works with or without Router) ───────────────────────── */
+function SafeNavLink({
+  to,
+  children,
+  className,
+  style,
+  end,
 }: {
-  value: "offspring" | "groups";
-  onChange: (v: "offspring" | "groups") => void;
+  to: string;
+  children: React.ReactNode | ((arg: { isActive: boolean }) => React.ReactNode);
+  className: ((arg: { isActive: boolean }) => string) | string;
+  style?: ((arg: { isActive: boolean }) => React.CSSProperties) | React.CSSProperties;
+  end?: boolean;
 }) {
-  const tabs = [
-    { key: "groups" as const, label: "Groups", emoji: "📦" },
-    { key: "offspring" as const, label: "Offspring", emoji: "🐾" },
-  ];
+  const inRouter = useInRouterContext();
+
+  const computeActive = React.useCallback(() => {
+    try {
+      const here = (typeof window !== "undefined" ? window.location.pathname : "/").replace(/\/+$/, "") || "/";
+      const target = new URL(to, typeof window !== "undefined" ? window.location.href : "http://x").pathname
+        .replace(/\/+$/, "") || "/";
+      if (end) {
+        return here === target;
+      }
+      return here === target || here.startsWith(target + "/");
+    } catch {
+      return false;
+    }
+  }, [to, end]);
+
+  if (!inRouter) {
+    const isActive = computeActive();
+    const cls = typeof className === "function" ? className({ isActive }) : className;
+    const sty = typeof style === "function" ? style({ isActive }) : style;
+    const resolvedChildren = typeof children === "function" ? children({ isActive }) : children;
+    return (
+      <a href={to} className={cls} style={sty}>
+        {resolvedChildren}
+      </a>
+    );
+  }
 
   return (
-    <div role="tablist" aria-label="Offspring tabs" className="flex gap-1">
-      {tabs.map((tab) => {
-        const isActive = value === tab.key;
-        return (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={isActive}
-            className={[
-              "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
-              isActive
-                ? "text-primary border-[hsl(var(--brand-orange))]"
-                : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
-            ].join(" ")}
-            onClick={() => onChange(tab.key)}
-          >
-            {isActive && (
-              <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
-            )}
-            <span className="relative z-10">{tab.emoji}</span>
-            <span className="relative z-10">{tab.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <NavLink to={to} end={end} className={className as any} style={style as any}>
+      {children as any}
+    </NavLink>
   );
 }
 
@@ -611,6 +620,7 @@ type GroupTableRow = {
 
   // Optional group level tags, from backend if present
   tags?: string[] | null;
+  tagObjects?: Array<{ id: number; name: string; color?: string | null }>;
   buyers?: BuyerLink[];
 
   // Counts
@@ -660,12 +670,13 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "countReserved", label: "Reserved", default: true },
 
   // New columns, off by default
+  { key: "tags", label: "Tags", default: false },
   { key: "countWeaned", label: "Weaned", default: false },
   { key: "countPlaced", label: "Placed", default: false },
-    { key: "updatedAt", label: "Updated", default: false },
+  { key: "updatedAt", label: "Updated", default: false },
 ];
 
-const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
+const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v4";
 
 const GROUP_DATE_COLS = new Set<string>([
   "expectedBirth",
@@ -4034,7 +4045,33 @@ function OffspringGroupsTab(
       );
 
       setRaw(items);
-      setRows(items.map(mapDetailToTableRow));
+      const tableRows = items.map(mapDetailToTableRow);
+      setRows(tableRows);
+
+      // Fetch tags for each group
+      Promise.all(
+        tableRows.map(async (row: GroupTableRow) => {
+          try {
+            const tags = await api.tags.listForOffspringGroup(row.id);
+            return { id: row.id, tags };
+          } catch {
+            return { id: row.id, tags: [] };
+          }
+        })
+      ).then((tagResults) => {
+        const tagMap = new Map(tagResults.map((r) => [r.id, r.tags]));
+        setRows((prev) =>
+          prev.map((row) => {
+            const tags = tagMap.get(row.id);
+            if (!tags || tags.length === 0) return row;
+            return {
+              ...row,
+              tags: tags.map((t) => t.name),
+              tagObjects: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+            };
+          })
+        );
+      });
     } catch (e: any) {
       setError(e?.message || "Failed to load groups");
     } finally {
@@ -4759,19 +4796,6 @@ function OffspringGroupsTab(
             <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
-                onClick={() => setViewMode("table")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                  viewMode === "table"
-                    ? "bg-[hsl(var(--brand-orange))] text-black"
-                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Table</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setViewMode("cards")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "cards"
@@ -4783,12 +4807,40 @@ function OffspringGroupsTab(
                 <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Cards</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
             </div>
 
-            {/* Column toggle - only show in table mode */}
-            {viewMode === "table" && (
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
               <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />
             )}
+
+            <div className="ml-auto" />
           </div>
 
           {/* Conditional view rendering */}
@@ -4798,6 +4850,14 @@ function OffspringGroupsTab(
               loading={loading}
               error={error}
               onRowClick={(row) => openDetails("groupId", row.id)}
+            />
+          ) : viewMode === "list" ? (
+            <GroupListView
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              onRowClick={(row) => openDetails("groupId", row.id)}
+              visibleColumns={visibleSafe}
             />
           ) : (
           <Table
@@ -5065,38 +5125,107 @@ export default function AppOffspringModule() {
   const readOnlyGlobal =
     !((window as any).bhqPerms?.offspring?.canEdit ?? true);
 
-  const [activeTab, setActiveTab] =
-    React.useState<"offspring" | "groups">("groups");
+  /* ───────── View routing (groups | offspring) ───────── */
+  type ViewRoute = "groups" | "offspring";
 
-  const handleTabChange = React.useCallback(
-    (next: "offspring" | "groups") => {
-      setActiveTab(next);
-    },
-    [],
-  );
+  const getBasePath = React.useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const p = window.location.pathname || "/";
+    const clean = p.replace(/\/+$/, "");
+    // Strip /individual sub-path to get base offspring path
+    if (clean.endsWith("/individual")) return clean.slice(0, -"/individual".length) || "/";
+    return clean || "/";
+  }, []);
+
+  const getViewFromLocation = (): ViewRoute => {
+    if (typeof window === "undefined") return "groups";
+    const p = window.location.pathname || "/";
+    // Check for /individual sub-path for individual offspring view
+    if (p.endsWith("/individual") || p.includes("/individual/")) return "offspring";
+    return "groups";
+  };
+
+  const [currentView, setCurrentView] = React.useState<ViewRoute>(getViewFromLocation());
+
+  React.useEffect(() => {
+    const onPop = () => setCurrentView(getViewFromLocation());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const basePath = React.useMemo(() => getBasePath(), [getBasePath]);
 
   return (
     <div className="p-4 space-y-4">
-      <PageHeader
-        title="Offspring"
-        subtitle={
-          activeTab === "offspring"
-            ? "Manage individual offspring"
-            : "Manage offspring groups and buyers"
-        }
-        rightSlot={
-          <UnderlineTabs value={activeTab} onChange={handleTabChange} />
-        }
-      />
+      <div className="relative">
+        <PageHeader
+          title={currentView === "offspring" ? "Offspring - Individuals" : "Offspring - Groups"}
+          subtitle={
+            currentView === "offspring"
+              ? "Manage individual offspring records"
+              : "Manage groups and buyers"
+          }
+        />
 
-      {activeTab === "groups" && (
+        {/* Right-aligned Tab Navigation with emojis and orange underline */}
+        <div className="absolute right-0 top-0 h-full flex items-center">
+          <nav className="flex items-center gap-1">
+            <SafeNavLink
+              to={basePath === "/" ? "/" : `${basePath}/`}
+              end
+              className={({ isActive }) =>
+                [
+                  "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                  isActive
+                    ? "text-primary border-[hsl(var(--brand-orange))]"
+                    : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                ].join(" ")
+              }
+            >
+              {({ isActive }: { isActive: boolean }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                  )}
+                  <span className="relative z-10">📦</span>
+                  <span className="relative z-10">Groups</span>
+                </>
+              )}
+            </SafeNavLink>
+
+            <SafeNavLink
+              to={`${basePath}/individual`}
+              className={({ isActive }) =>
+                [
+                  "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                  isActive
+                    ? "text-primary border-[hsl(var(--brand-orange))]"
+                    : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                ].join(" ")
+              }
+            >
+              {({ isActive }: { isActive: boolean }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                  )}
+                  <span className="relative z-10">🐾</span>
+                  <span className="relative z-10">Offspring</span>
+                </>
+              )}
+            </SafeNavLink>
+          </nav>
+        </div>
+      </div>
+
+      {currentView === "groups" && (
         <OffspringGroupsTab
           api={api}
           tenantId={tenantId}
           readOnlyGlobal={readOnlyGlobal}
         />
       )}
-      {activeTab === "offspring" && <OffspringPage embed />}
+      {currentView === "offspring" && <OffspringPage embed />}
     </div>
   );
 }

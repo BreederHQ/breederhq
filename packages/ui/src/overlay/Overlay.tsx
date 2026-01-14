@@ -180,18 +180,37 @@ export const Overlay: React.FC<OverlayProps> = ({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [open, effectiveDisableEscClose, requestClose]);
 
-  // Basic focus trap when opened
+  // Track the element that had focus before the overlay opened
+  const prevFocusRef = React.useRef<HTMLElement | null>(null);
+
+  // Focus first input on mount, restore focus on unmount
   React.useEffect(() => {
     if (!open) return;
-    const el = panelRef.current;
-    if (!el) return;
-    const prev = document.activeElement as HTMLElement | null;
-    const focusables = el.querySelectorAll<HTMLElement>(
-      'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
-    );
-    (focusables[0] || el).focus?.();
-    return () => prev?.focus?.();
-  }, [open]);
+
+    // Capture the previously focused element once on mount
+    prevFocusRef.current = document.activeElement as HTMLElement | null;
+
+    // Small delay to ensure DOM is ready, then focus first input
+    const raf = requestAnimationFrame(() => {
+      const el = panelRef.current;
+      if (!el) return;
+      const focusables = el.querySelectorAll<HTMLElement>(
+        'input,select,textarea,button,[href],[tabindex]:not([tabindex="-1"])'
+      );
+      // Prefer first input/select/textarea over buttons
+      const firstInput = Array.from(focusables).find(
+        (f) => f.tagName === "INPUT" || f.tagName === "SELECT" || f.tagName === "TEXTAREA"
+      );
+      (firstInput || focusables[0] || el).focus?.();
+    });
+
+    // Cleanup: restore focus when overlay closes/unmounts
+    return () => {
+      cancelAnimationFrame(raf);
+      prevFocusRef.current?.focus?.();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run on mount/unmount
 
   // Host interactivity (pointer-events)
   useHostInteractivity(open, host && host.id === HOST_ID ? host : null);
@@ -209,7 +228,7 @@ export const Overlay: React.FC<OverlayProps> = ({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onMouseDown={() => (mouseDownOnBackdrop.current = true)}
         onMouseUp={(e) => {
           if (mouseDownOnBackdrop.current && !effectiveDisableOutsideClose) {
@@ -222,7 +241,7 @@ export const Overlay: React.FC<OverlayProps> = ({
       />
 
       {/* Panel area */}
-      <div className="absolute inset-0 flex items-start justify-center">
+      <div className="absolute inset-0 flex items-center justify-center pt-8">
         <div
           ref={panelRef}
           tabIndex={-1}
@@ -230,9 +249,9 @@ export const Overlay: React.FC<OverlayProps> = ({
           data-overlay-id={overlayId}
           className={[
             // fixed-size shell: height capped by viewport; content will scroll inside
-            "my-4 max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl outline-none",
+            "max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl outline-none",
             "flex flex-col overflow-hidden",
-            "max-h-[calc(100dvh-32px)]",
+            "max-h-[calc(100dvh-64px)]",
             SIZES[size],
           ].join(" ")}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}

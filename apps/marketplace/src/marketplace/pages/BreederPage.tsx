@@ -31,7 +31,14 @@ interface PlacementPolicies {
   requireApplication: boolean;
   requireInterview: boolean;
   requireContract: boolean;
+  requireDeposit: boolean;
+  requireReservationFee: boolean;
+  depositRefundable: boolean;
+  requireHomeVisit: boolean;
+  requireVetReference: boolean;
+  requireSpayNeuter: boolean;
   hasReturnPolicy: boolean;
+  lifetimeTakeBack: boolean;
   offersSupport: boolean;
   note: string | null;
 }
@@ -90,7 +97,9 @@ interface BreederProfileResponse {
   establishedYear?: number;
 }
 
-type TabType = "about" | "programs" | "reviews";
+type TabType = "programs" | "about" | "reviews";
+
+type ProgramData = BreederProfileResponse["programs"][number];
 
 // =============================================================================
 // Icons
@@ -218,17 +227,18 @@ function buildLocationDisplay(
 ): string {
   if (!location || mode === "hidden") return "";
 
-  const { city, state, zip } = location;
+  const { city, state } = location;
 
   switch (mode) {
     case "city_state":
       return city && state ? `${city}, ${state}` : city || state || "";
     case "zip_only":
-      return zip || "";
+      // For hero display, show city/state if available, otherwise nothing (don't show zip)
+      return city && state ? `${city}, ${state}` : city || state || "";
     case "full":
-      if (city && state && zip) return `${city}, ${state} ${zip}`;
+      // Don't include zip in hero display for cleaner look
       if (city && state) return `${city}, ${state}`;
-      return zip || city || state || "";
+      return city || state || "";
     default:
       return "";
   }
@@ -386,12 +396,6 @@ function HeroSection({ profile, locationDisplay }: HeroSectionProps) {
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-secondary">
-              {locationDisplay && (
-                <span className="flex items-center gap-1">
-                  <MapPinIcon className="w-4 h-4" />
-                  {locationDisplay}
-                </span>
-              )}
               {profile.rating && profile.reviewCount && profile.reviewCount > 0 && (
                 <span className="flex items-center gap-1">
                   <StarIcon className="w-4 h-4 text-yellow-400" filled />
@@ -402,6 +406,49 @@ function HeroSection({ profile, locationDisplay }: HeroSectionProps) {
                 <span>Est. {profile.establishedYear}</span>
               )}
             </div>
+
+            {/* Social Links - inline in hero */}
+            {(profile.website || profile.socialLinks.instagram || profile.socialLinks.facebook) && (
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {profile.website && (
+                  <a
+                    href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-border-default/50 text-xs text-text-secondary hover:text-white hover:bg-border-default transition-colors"
+                  >
+                    <GlobeIcon className="w-3.5 h-3.5" />
+                    Website
+                  </a>
+                )}
+                {profile.socialLinks.instagram && (
+                  <a
+                    href={`https://instagram.com/${profile.socialLinks.instagram.replace(/^@/, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-border-default/50 text-xs text-text-secondary hover:text-white hover:bg-border-default transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                    </svg>
+                    Instagram
+                  </a>
+                )}
+                {profile.socialLinks.facebook && (
+                  <a
+                    href={`https://facebook.com/${profile.socialLinks.facebook}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-border-default/50 text-xs text-text-secondary hover:text-white hover:bg-border-default transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                    </svg>
+                    Facebook
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -422,8 +469,8 @@ interface TabsNavProps {
 
 function TabsNav({ activeTab, onTabChange, programCount, reviewCount = 0 }: TabsNavProps) {
   const tabs: { id: TabType; label: string; count?: number }[] = [
+    { id: "programs", label: "Our Breeding Programs", count: programCount },
     { id: "about", label: "About" },
-    { id: "programs", label: "Programs", count: programCount },
     { id: "reviews", label: "Reviews", count: reviewCount },
   ];
 
@@ -538,8 +585,6 @@ interface AboutTabProps {
 }
 
 function AboutTab({ profile }: AboutTabProps) {
-  const hasLinks = profile.website || profile.socialLinks.instagram || profile.socialLinks.facebook;
-
   return (
     <div className="space-y-6">
       {/* Bio */}
@@ -547,55 +592,6 @@ function AboutTab({ profile }: AboutTabProps) {
         <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
           <h3 className="text-sm font-semibold text-white mb-3">About Us</h3>
           <p className="text-[15px] text-text-secondary leading-relaxed">{profile.bio}</p>
-        </div>
-      )}
-
-      {/* Business Hours */}
-      <BusinessHoursDisplay schedule={profile.businessHours} timeZone={profile.timeZone} />
-
-      {/* Links */}
-      {hasLinks && (
-        <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
-          <h3 className="text-sm font-semibold text-white mb-3">Links</h3>
-          <div className="flex flex-wrap gap-3">
-            {profile.website && (
-              <a
-                href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-border-default text-sm text-text-secondary hover:text-white transition-colors"
-              >
-                <GlobeIcon className="w-4 h-4" />
-                Website
-              </a>
-            )}
-            {profile.socialLinks.instagram && (
-              <a
-                href={`https://instagram.com/${profile.socialLinks.instagram.replace(/^@/, "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-border-default text-sm text-text-secondary hover:text-white transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                </svg>
-                Instagram
-              </a>
-            )}
-            {profile.socialLinks.facebook && (
-              <a
-                href={`https://facebook.com/${profile.socialLinks.facebook}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-border-default text-sm text-text-secondary hover:text-white transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
-                Facebook
-              </a>
-            )}
-          </div>
         </div>
       )}
 
@@ -616,21 +612,26 @@ function AboutTab({ profile }: AboutTabProps) {
         </div>
       )}
 
-      {/* Standards & Credentials */}
-      {profile.standardsAndCredentials && (
-        <StandardsAndCredentialsSection data={profile.standardsAndCredentials} />
-      )}
+      {/* Business Hours */}
+      <BusinessHoursDisplay schedule={profile.businessHours} timeZone={profile.timeZone} />
 
-      {/* Placement Policies */}
-      {profile.placementPolicies && (
-        <PlacementPoliciesSection data={profile.placementPolicies} />
+      {/* Standards & Credentials + Placement Policies side by side */}
+      {(profile.standardsAndCredentials || profile.placementPolicies) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {profile.standardsAndCredentials && (
+            <StandardsAndCredentialsSection data={profile.standardsAndCredentials} />
+          )}
+          {profile.placementPolicies && (
+            <PlacementPoliciesSection data={profile.placementPolicies} />
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 // =============================================================================
-// Programs Tab Content
+// Programs Tab Content - Featured prominently as the main landing view
 // =============================================================================
 
 interface ProgramsTabProps {
@@ -640,22 +641,464 @@ interface ProgramsTabProps {
 function ProgramsTab({ profile }: ProgramsTabProps) {
   if (profile.programs.length === 0) {
     return (
-      <div className="rounded-xl border border-border-subtle bg-portal-card p-8 text-center">
-        <p className="text-text-tertiary">No programs listed yet.</p>
+      <div className="rounded-2xl border border-border-subtle bg-gradient-to-br from-portal-card to-portal-bg p-12 text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
+          <svg className="w-8 h-8 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-white mb-2">No Programs Listed Yet</h3>
+        <p className="text-text-secondary max-w-sm mx-auto">
+          This breeder hasn't published any breeding programs yet. Check back soon or contact them for more information.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {profile.programs.map((program, idx) => (
-        <ProgramCard
-          key={`${program.name}-${idx}`}
+    <div className="space-y-6">
+      {/* Programs intro text */}
+      <div className="text-center mb-8">
+        <p className="text-text-secondary">
+          Explore our {profile.programs.length} breeding program{profile.programs.length !== 1 ? 's' : ''} below
+        </p>
+      </div>
+
+      {/* Program cards - grid layout matching Services page */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {profile.programs.map((program, idx) => (
+          <FeaturedProgramCard
+            key={`${program.name}-${idx}`}
+            program={program}
+            tenantSlug={profile.tenantSlug}
+            businessName={profile.businessName}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Featured Program Card - Visually stunning clickable card for the main programs view
+// =============================================================================
+
+function FeaturedProgramCard({
+  program,
+  tenantSlug,
+  businessName,
+}: {
+  program: ProgramData;
+  tenantSlug: string;
+  businessName: string;
+}) {
+  const [showDetailsModal, setShowDetailsModal] = React.useState(false);
+  const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
+
+  if (showWaitlistModal) {
+    return (
+      <>
+        <FeaturedProgramCardInner
           program={program}
-          tenantSlug={profile.tenantSlug}
-          businessName={profile.businessName}
+          onCardClick={() => setShowDetailsModal(true)}
         />
-      ))}
+        <WaitlistModal
+          programName={program.name}
+          businessName={businessName}
+          tenantSlug={tenantSlug}
+          onClose={() => setShowWaitlistModal(false)}
+        />
+      </>
+    );
+  }
+
+  if (showDetailsModal) {
+    return (
+      <>
+        <FeaturedProgramCardInner
+          program={program}
+          onCardClick={() => setShowDetailsModal(true)}
+        />
+        <FeaturedProgramDetailsModal
+          program={program}
+          tenantSlug={tenantSlug}
+          businessName={businessName}
+          onClose={() => setShowDetailsModal(false)}
+          onJoinWaitlist={() => {
+            setShowDetailsModal(false);
+            setShowWaitlistModal(true);
+          }}
+        />
+      </>
+    );
+  }
+
+  return (
+    <FeaturedProgramCardInner
+      program={program}
+      onCardClick={() => setShowDetailsModal(true)}
+    />
+  );
+}
+
+// Inner card component to avoid duplication - styled like Services page cards
+function FeaturedProgramCardInner({
+  program,
+  onCardClick,
+}: {
+  program: ProgramData;
+  onCardClick: () => void;
+}) {
+  const showInquireButton = program.acceptInquiries;
+  const showWaitlistBadge = program.openWaitlist;
+  const hasPhotos = program.mediaAssetIds && program.mediaAssetIds.length > 0;
+  const coverPhotoId = hasPhotos ? program.mediaAssetIds[0] : null;
+  const photoCount = hasPhotos ? program.mediaAssetIds.length : 0;
+
+  // Determine status badge
+  const getStatusBadge = () => {
+    if (program.comingSoon) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+          </svg>
+          Coming Soon
+        </span>
+      );
+    }
+    if (showInquireButton) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/15 text-green-400 border border-green-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          Accepting Inquiries
+        </span>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onCardClick}
+      className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg text-left w-full"
+    >
+      {/* Image area - matching Services page aspect ratio */}
+      <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
+        {coverPhotoId ? (
+          <img
+            src={`/api/assets/${coverPhotoId}`}
+            alt={`${program.name} program`}
+            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-12 h-12 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+          </div>
+        )}
+        {/* Photo count badge - top right */}
+        {photoCount > 1 && (
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-xs text-white">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            {photoCount}
+          </div>
+        )}
+        {/* Category badge - "Breeding Program" label */}
+        <div className="absolute top-3 left-3">
+          <span className="inline-block px-2.5 py-1 text-xs font-medium rounded-full bg-portal-bg/80 backdrop-blur-sm text-white border border-white/10">
+            Breeding Program
+          </span>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="p-4 flex-1 flex flex-col">
+        {/* Program name */}
+        <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-2">
+          {program.name}
+        </h3>
+
+        {/* Description */}
+        {program.description ? (
+          <p className="text-sm text-text-secondary mb-3 flex-grow line-clamp-2">
+            {program.description}
+          </p>
+        ) : (
+          <p className="text-sm text-text-tertiary italic mb-3 flex-grow">
+            Click to view program details
+          </p>
+        )}
+
+        {/* Waitlist badge if applicable */}
+        {showWaitlistBadge && (
+          <div className="text-[13px] text-text-tertiary mb-3">
+            <span className="inline-flex items-center gap-1.5 text-purple-400">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Waitlist Open
+            </span>
+          </div>
+        )}
+
+        {/* Footer with status and CTA */}
+        <div className="pt-3 border-t border-border-subtle flex items-center justify-between mt-auto">
+          {getStatusBadge()}
+          <span className="ml-auto text-[13px] text-text-secondary hover:text-white transition-colors">
+            View full details →
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// =============================================================================
+// Featured Program Details Modal - Full details view when clicking a program card
+// =============================================================================
+
+function FeaturedProgramDetailsModal({
+  program,
+  tenantSlug,
+  businessName,
+  onClose,
+  onJoinWaitlist,
+}: {
+  program: ProgramData;
+  tenantSlug: string;
+  businessName: string;
+  onClose: () => void;
+  onJoinWaitlist: () => void;
+}) {
+  const navigate = useNavigate();
+  const { startConversation, loading: startingConversation } = useStartConversation();
+
+  const handleInquire = async () => {
+    if (startingConversation) return;
+
+    const result = await startConversation({
+      context: {
+        type: "program_inquiry",
+        programName: program.name,
+        breederSlug: tenantSlug,
+      },
+      participant: {
+        name: businessName,
+        type: "breeder",
+        slug: tenantSlug,
+      },
+    });
+
+    if (result) {
+      navigate(`/inquiries?c=${result.conversation.id}`);
+    }
+  };
+
+  const showInquireButton = program.acceptInquiries;
+  const showWaitlistButton = program.openWaitlist;
+  const hasActions = showInquireButton || showWaitlistButton;
+  const hasPhotos = program.mediaAssetIds && program.mediaAssetIds.length > 0;
+  const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-portal-card border border-border-subtle rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+        {/* Photo gallery - show if photos exist */}
+        {hasPhotos ? (
+          <div className="relative">
+            {/* Main photo */}
+            <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-t-2xl">
+              <img
+                src={`/api/assets/${program.mediaAssetIds[activePhotoIndex]}`}
+                alt={`${program.name} - Photo ${activePhotoIndex + 1}`}
+                className="w-full h-full object-cover"
+              />
+              {/* Gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-portal-card/80 via-transparent to-transparent" />
+
+              {/* Close button overlaid on image */}
+              <button
+                type="button"
+                onClick={onClose}
+                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-all"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+
+              {/* Photo navigation arrows */}
+              {program.mediaAssetIds.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoIndex((prev) => (prev === 0 ? program.mediaAssetIds.length - 1 : prev - 1))}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-all"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoIndex((prev) => (prev === program.mediaAssetIds.length - 1 ? 0 : prev + 1))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-all"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </>
+              )}
+
+              {/* Photo counter */}
+              {program.mediaAssetIds.length > 1 && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm text-xs text-white">
+                  {activePhotoIndex + 1} / {program.mediaAssetIds.length}
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnail strip */}
+            {program.mediaAssetIds.length > 1 && (
+              <div className="flex gap-2 px-4 py-3 bg-portal-card border-b border-border-subtle overflow-x-auto">
+                {program.mediaAssetIds.map((assetId, idx) => (
+                  <button
+                    key={assetId}
+                    type="button"
+                    onClick={() => setActivePhotoIndex(idx)}
+                    className={`shrink-0 w-16 h-12 rounded-lg overflow-hidden border-2 transition-all ${
+                      idx === activePhotoIndex
+                        ? "border-accent ring-2 ring-accent/30"
+                        : "border-transparent opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    <img
+                      src={`/api/assets/${assetId}`}
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Header gradient accent - only when no photos */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[hsl(var(--brand-orange))] via-accent to-[hsl(var(--brand-orange))] rounded-t-2xl" />
+
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-border-default/50 text-text-tertiary hover:text-white hover:bg-border-default transition-all"
+            >
+              <XIcon className="w-5 h-5" />
+            </button>
+          </>
+        )}
+
+        {/* Content */}
+        <div className="p-8">
+          {/* Program header */}
+          <div className="mb-6">
+            <div className="flex items-start gap-3 pr-12 mb-3">
+              <h2 className="text-2xl font-bold text-white">{program.name}</h2>
+            </div>
+
+            {/* Status badges */}
+            <div className="flex flex-wrap gap-2">
+              {program.comingSoon && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                  </svg>
+                  Coming Soon
+                </span>
+              )}
+              {showInquireButton && !program.comingSoon && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-green-500/15 text-green-400 border border-green-500/30">
+                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  Accepting Inquiries
+                </span>
+              )}
+              {showWaitlistButton && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Waitlist Open
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Description section */}
+          <div className="mb-8">
+            <h3 className="text-sm font-semibold text-text-tertiary uppercase tracking-wide mb-3">About This Program</h3>
+            {program.description ? (
+              <p className="text-base text-text-secondary leading-relaxed whitespace-pre-wrap">
+                {program.description}
+              </p>
+            ) : (
+              <p className="text-base text-text-tertiary italic">
+                The breeder hasn't added a description for this program yet. Contact them directly for more information.
+              </p>
+            )}
+          </div>
+
+          {/* Breeder info */}
+          <div className="mb-8 p-4 rounded-xl bg-border-default/30 border border-border-subtle">
+            <p className="text-sm text-text-tertiary mb-1">Offered by</p>
+            <p className="text-lg font-semibold text-white">{businessName}</p>
+          </div>
+
+          {/* Action buttons */}
+          {hasActions ? (
+            <div className="flex flex-col sm:flex-row gap-4">
+              {showInquireButton && (
+                <button
+                  type="button"
+                  onClick={handleInquire}
+                  disabled={startingConversation}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-[hsl(var(--brand-orange))] text-white font-semibold text-lg shadow-lg shadow-[hsl(var(--brand-orange))]/25 hover:bg-[hsl(var(--brand-orange))]/90 hover:shadow-xl hover:shadow-[hsl(var(--brand-orange))]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <MessageIcon className="w-6 h-6" />
+                  {startingConversation ? "Opening..." : "Send Inquiry"}
+                </button>
+              )}
+              {showWaitlistButton && (
+                <button
+                  type="button"
+                  onClick={onJoinWaitlist}
+                  className={`flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-semibold text-lg transition-all ${
+                    showInquireButton
+                      ? "bg-purple-500/15 text-purple-400 border-2 border-purple-500/30 hover:bg-purple-500/25 hover:border-purple-500/50"
+                      : "flex-1 bg-purple-600 text-white shadow-lg shadow-purple-600/25 hover:bg-purple-500 hover:shadow-xl hover:shadow-purple-600/30"
+                  }`}
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  Join Waitlist
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-border-default/50 text-text-tertiary">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-base">This program is not currently accepting inquiries or waitlist requests</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -695,7 +1138,7 @@ function FloatingCTA({ profile }: FloatingCTAProps) {
 
     const result = await startConversation({
       context: {
-        type: "general_inquiry",
+        type: "general",
         breederSlug: profile.tenantSlug,
       },
       participant: {
@@ -718,10 +1161,10 @@ function FloatingCTA({ profile }: FloatingCTAProps) {
         type="button"
         onClick={handleContact}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-[hsl(var(--brand-orange))] text-white font-medium shadow-lg shadow-black/30 hover:bg-[hsl(var(--brand-orange))]/90 transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-accent text-white font-medium shadow-lg shadow-accent/30 hover:bg-accent/90 transition-colors disabled:opacity-50"
       >
         <MessageIcon className="w-5 h-5" />
-        {loading ? "Starting conversation..." : "Contact Breeder"}
+        {loading ? "Starting conversation..." : "Message Breeder"}
       </button>
     </div>
   );
@@ -737,18 +1180,16 @@ interface ContactCardProps {
 
 function ContactCard({ profile }: ContactCardProps) {
   const navigate = useNavigate();
-  const userProfile = useUserProfile();
   const { startConversation, loading } = useStartConversation();
 
   const canContact = profile.programs.some(p => p.acceptInquiries);
-  const isAuthenticated = !!userProfile;
 
   const handleContact = async () => {
     if (loading || !canContact) return;
 
     const result = await startConversation({
       context: {
-        type: "general_inquiry",
+        type: "general",
         breederSlug: profile.tenantSlug,
       },
       participant: {
@@ -772,10 +1213,10 @@ function ContactCard({ profile }: ContactCardProps) {
           type="button"
           onClick={handleContact}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-[hsl(var(--brand-orange))] text-white font-medium hover:bg-[hsl(var(--brand-orange))]/90 transition-colors disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
         >
           <MessageIcon className="w-5 h-5" />
-          {loading ? "Opening..." : "Contact Breeder"}
+          {loading ? "Opening..." : "Message Breeder"}
         </button>
       ) : (
         <p className="text-sm text-text-tertiary text-center py-2">
@@ -783,16 +1224,11 @@ function ContactCard({ profile }: ContactCardProps) {
         </p>
       )}
 
-      {/* Report button */}
-      {isAuthenticated && (
-        <div className="pt-4 border-t border-border-subtle">
-          <ReportBreederButton
-            breederTenantSlug={profile.tenantSlug}
-            breederName={profile.businessName}
-            variant="text"
-          />
-        </div>
-      )}
+      {/* Today's Hours - simple display */}
+      <div className="flex items-center gap-2 text-sm text-text-secondary">
+        <ClockIcon className="w-4 h-4 text-text-tertiary" />
+        <span>{getTodaysHours(profile.businessHours)}</span>
+      </div>
     </div>
   );
 }
@@ -807,7 +1243,7 @@ export function BreederPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [notPublished, setNotPublished] = React.useState(false);
   const [profile, setProfile] = React.useState<BreederProfileResponse | null>(null);
-  const [activeTab, setActiveTab] = React.useState<TabType>("about");
+  const [activeTab, setActiveTab] = React.useState<TabType>("programs");
 
   const fetchProfile = React.useCallback(async () => {
     if (!tenantSlug) {
@@ -1125,10 +1561,8 @@ function WaitlistModal({
 }
 
 // =============================================================================
-// Program Card Component
+// Program Card Component (legacy - kept for modal functionality)
 // =============================================================================
-
-type ProgramData = BreederProfileResponse["programs"][number];
 
 function ProgramDetailsModal({
   program,
@@ -1368,14 +1802,32 @@ function CredentialGroup({
 }
 
 function StandardsAndCredentialsSection({ data }: { data: StandardsAndCredentials }) {
+  // Check if any section has content to display
+  const hasRegistrations = data.registrations.length > 0 || data.registrationsNote;
+  const hasHealth = data.healthPractices.length > 0 || data.healthNote;
+  const hasBreeding = data.breedingPractices.length > 0 || data.breedingNote;
+  const hasCare = data.carePractices.length > 0 || data.careNote;
+
+  if (!hasRegistrations && !hasHealth && !hasBreeding && !hasCare) {
+    return null;
+  }
+
   return (
-    <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+    <div className="rounded-xl border border-border-subtle bg-portal-card p-5 h-fit">
       <h3 className="text-sm font-semibold text-white mb-4">Standards & Credentials</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <CredentialGroup title="Registrations" items={data.registrations} note={data.registrationsNote} />
-        <CredentialGroup title="Health Practices" items={data.healthPractices} note={data.healthNote} />
-        <CredentialGroup title="Breeding Practices" items={data.breedingPractices} note={data.breedingNote} />
-        <CredentialGroup title="Care Practices" items={data.carePractices} note={data.careNote} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6">
+        {hasRegistrations && (
+          <CredentialGroup title="Registrations & Affiliations" items={data.registrations} note={data.registrationsNote} />
+        )}
+        {hasHealth && (
+          <CredentialGroup title="Health & Genetic Practices" items={data.healthPractices} note={data.healthNote} />
+        )}
+        {hasBreeding && (
+          <CredentialGroup title="Breeding Practices" items={data.breedingPractices} note={data.breedingNote} />
+        )}
+        {hasCare && (
+          <CredentialGroup title="Care & Early Life" items={data.carePractices} note={data.careNote} />
+        )}
       </div>
     </div>
   );
@@ -1385,32 +1837,116 @@ function StandardsAndCredentialsSection({ data }: { data: StandardsAndCredential
 // Placement Policies Section
 // =============================================================================
 
-const POLICY_LABELS: Record<string, string> = {
+// Buyer Requirements policies
+const BUYER_REQUIREMENT_LABELS: Record<string, string> = {
   requireApplication: "Application Required",
   requireInterview: "Interview Required",
   requireContract: "Contract Required",
-  hasReturnPolicy: "Return Policy",
+  requireHomeVisit: "Home Visit Required",
+  requireVetReference: "Vet Reference Required",
+};
+
+// Payment policies - dynamic based on which one is selected
+const PAYMENT_LABELS: Record<string, string> = {
+  requireDeposit: "Deposit Required",
+  requireReservationFee: "Reservation Fee Required",
+};
+
+// Pet placement policies
+const PET_PLACEMENT_LABELS: Record<string, string> = {
+  requireSpayNeuter: "Spay/Neuter Required for Pets",
+};
+
+// Breeder commitment policies
+const BREEDER_COMMITMENT_LABELS: Record<string, string> = {
+  hasReturnPolicy: "Accepts Returns",
+  lifetimeTakeBack: "Lifetime Take-Back Guarantee",
   offersSupport: "Ongoing Support",
 };
 
 function PlacementPoliciesSection({ data }: { data: PlacementPolicies }) {
-  const enabledPolicies = Object.entries(POLICY_LABELS).filter(
+  const buyerReqs = Object.entries(BUYER_REQUIREMENT_LABELS).filter(
+    ([key]) => data[key as keyof PlacementPolicies] === true
+  );
+  const paymentReqs = Object.entries(PAYMENT_LABELS).filter(
+    ([key]) => data[key as keyof PlacementPolicies] === true
+  );
+  const petReqs = Object.entries(PET_PLACEMENT_LABELS).filter(
+    ([key]) => data[key as keyof PlacementPolicies] === true
+  );
+  const breederCommitments = Object.entries(BREEDER_COMMITMENT_LABELS).filter(
     ([key]) => data[key as keyof PlacementPolicies] === true
   );
 
+  const hasAnyPolicies = buyerReqs.length > 0 || paymentReqs.length > 0 || petReqs.length > 0 || breederCommitments.length > 0;
+
+  if (!hasAnyPolicies && !data.note) return null;
+
   return (
-    <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+    <div className="rounded-xl border border-border-subtle bg-portal-card p-5 h-fit">
       <h3 className="text-sm font-semibold text-white mb-4">Placement Policies</h3>
-      {enabledPolicies.length > 0 && (
-        <ul className="space-y-2">
-          {enabledPolicies.map(([key, label]) => (
-            <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
-              <CheckIcon className="w-4 h-4 text-accent flex-shrink-0" />
-              <span>{label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="space-y-4">
+        {buyerReqs.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">Buyer Requirements</div>
+            <ul className="space-y-2">
+              {buyerReqs.map(([key, label]) => (
+                <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <CheckIcon className="w-4 h-4 text-accent flex-shrink-0" />
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {paymentReqs.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">Payment</div>
+            <ul className="space-y-2">
+              {paymentReqs.map(([key, label]) => (
+                <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <CheckIcon className="w-4 h-4 text-accent flex-shrink-0" />
+                  <span>
+                    {label}
+                    {(key === "requireDeposit" || key === "requireReservationFee") && data.depositRefundable && (
+                      <span className="ml-1 text-text-tertiary">(Refundable)</span>
+                    )}
+                    {(key === "requireDeposit" || key === "requireReservationFee") && !data.depositRefundable && (
+                      <span className="ml-1 text-text-tertiary">(Non-refundable)</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {petReqs.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">Pet Placement</div>
+            <ul className="space-y-2">
+              {petReqs.map(([key, label]) => (
+                <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <CheckIcon className="w-4 h-4 text-accent flex-shrink-0" />
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {breederCommitments.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">Breeder Commitments</div>
+            <ul className="space-y-2">
+              {breederCommitments.map(([key, label]) => (
+                <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <CheckIcon className="w-4 h-4 text-accent flex-shrink-0" />
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
       {data.note && (
         <div className="pt-4 mt-4 border-t border-border-subtle">
           <p className="text-sm text-text-tertiary">{data.note}</p>

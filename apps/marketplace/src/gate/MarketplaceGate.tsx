@@ -58,13 +58,17 @@ function isPublicRoute(pathname: string): boolean {
  * Context for gate state - allows components to check if they're inside an entitled gate.
  * This is used for DEV-only warnings and ensuring demo mode requires entitlement.
  */
-interface GateContextValue {
+export interface GateContextValue {
   status: GateStatus;
   isEntitled: boolean;
   userProfile: MarketplaceUserProfile | null;
+  /** Tenant ID when user is accessing via breeder portal (seller context) */
+  tenantId: string | null;
+  /** True when user has seller/breeder context (has tenantId) */
+  isSeller: boolean;
 }
 
-const GateContext = React.createContext<GateContextValue | null>(null);
+export const GateContext = React.createContext<GateContextValue | null>(null);
 
 /**
  * Hook to get the current gate status.
@@ -93,6 +97,25 @@ export function useUserProfile(): MarketplaceUserProfile | null {
 }
 
 /**
+ * Hook to check if user has seller/breeder context.
+ * True when accessed via breeder portal with tenant context.
+ * Use this to conditionally show seller-only features.
+ */
+export function useIsSeller(): boolean {
+  const ctx = React.useContext(GateContext);
+  return ctx?.isSeller ?? false;
+}
+
+/**
+ * Hook to get the current tenant ID.
+ * Returns null if not in seller context.
+ */
+export function useTenantId(): string | null {
+  const ctx = React.useContext(GateContext);
+  return ctx?.tenantId ?? null;
+}
+
+/**
  * Backend response shape from GET /api/v1/marketplace/me.
  */
 interface MarketplaceMeResponse {
@@ -109,6 +132,20 @@ interface MarketplaceMeResponse {
   entitlements?: Array<{ key: string; status: string; grantedAt: string }>;
   error?: string;
   message?: string;
+}
+
+/**
+ * Get tenant ID from window global or localStorage.
+ * This is set when marketplace is embedded in the platform portal.
+ */
+function getTenantId(): string | null {
+  try {
+    const w = typeof window !== "undefined" ? (window as any) : {};
+    const tenantId = w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+    return tenantId || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -235,14 +272,19 @@ export function MarketplaceGate() {
     checkAccess();
   }, [checkAccess]);
 
+  // Get tenant context for seller features
+  const tenantId = getTenantId();
+
   // Compute context value
   const contextValue = React.useMemo<GateContextValue>(
     () => ({
       status: state.status,
       isEntitled: state.status === "entitled",
       userProfile,
+      tenantId,
+      isSeller: !!tenantId,
     }),
-    [state.status, userProfile]
+    [state.status, userProfile, tenantId]
   );
 
   // Check if current route is publicly accessible

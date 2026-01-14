@@ -31,6 +31,7 @@ import {
   ChevronUp,
   FilePlus2,
   LayoutGrid,
+  List,
   Plus,
   Table as TableIcon,
   Trash2,
@@ -43,6 +44,7 @@ import {
 } from "../api";
 
 import { OffspringCardView } from "../components/OffspringCardView";
+import { OffspringListView } from "../components/OffspringListView";
 import { CollarPicker, CollarSwatch } from "../components/CollarPicker";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
@@ -65,7 +67,7 @@ const MODAL_Z = 2147485000;
 
 
 /** ---------- Types for this page ---------- */
-type ViewMode = "table" | "cards";
+type ViewMode = "table" | "cards" | "list";
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
 type Status = "PLANNED" | "BORN" | "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
@@ -2854,19 +2856,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
           <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
             <button
               type="button"
-              onClick={() => setViewMode("table")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                viewMode === "table"
-                  ? "bg-[hsl(var(--brand-orange))] text-black"
-                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-              }`}
-              title="Table view"
-            >
-              <TableIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Table</span>
-            </button>
-            <button
-              type="button"
               onClick={() => setViewMode("cards")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                 viewMode === "cards"
@@ -2878,6 +2867,32 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               <LayoutGrid className="w-4 h-4" />
               <span className="hidden sm:inline">Cards</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "list"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="List view"
+            >
+              <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "table"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="Table view"
+            >
+              <TableIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Table</span>
+            </button>
           </div>
 
           {/* Sort dropdown */}
@@ -2888,8 +2903,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             onClear={() => setSorts([])}
           />
 
-          {/* Column toggle - only show in table mode */}
-          {viewMode === "table" && (
+          {/* Column toggle - show in table and list modes */}
+          {(viewMode === "table" || viewMode === "list") && (
             <ColumnsPopover
               columns={cols.map}
               onToggle={cols.toggle}
@@ -2899,7 +2914,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             />
           )}
 
-          <div className="ml-auto">
+          <div className="ml-auto" />
+
+          <div>
             <Button
               size="sm"
               variant="primary"
@@ -2929,6 +2946,25 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                 console.error("[Offspring] Failed to load row", row.id, err);
               }
             }}
+          />
+        ) : viewMode === "list" ? (
+          <OffspringListView
+            rows={rows}
+            loading={false}
+            error={null}
+            onRowClick={async (row) => {
+              try {
+                const full = await api.getById(row.id);
+                if (full) {
+                  setDrawer(full);
+                  writeUrlParam(full.id);
+                  setDrawerTab("overview");
+                }
+              } catch (err) {
+                console.error("[Offspring] Failed to load row", row.id, err);
+              }
+            }}
+            visibleColumns={visibleSafe}
           />
         ) : (
         <Table

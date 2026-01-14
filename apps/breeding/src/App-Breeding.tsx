@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2, LayoutGrid, List, Table as TableIcon } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -45,6 +45,7 @@ import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import PlanJourney from "./components/PlanJourney";
 import { BreedingPlanCardView } from "./components/BreedingPlanCardView";
+import { BreedingPlanListView } from "./components/BreedingPlanListView";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
@@ -448,6 +449,76 @@ function PlanCardViewWithDetails({
   );
 }
 
+function PlanListViewWithDetails({
+  rows,
+  loading,
+  error,
+  displayRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  showArchived,
+  setShowArchived,
+  totalRows,
+  start,
+  end,
+  visibleColumns,
+}: {
+  rows: PlanCardRow[];
+  loading: boolean;
+  error: string | null;
+  displayRows: PlanCardRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  showArchived: boolean;
+  setShowArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+  visibleColumns: { key: string; label: string }[];
+}) {
+  const { open } = useTableDetails<PlanCardRow>();
+
+  return (
+    <>
+      <BreedingPlanListView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+        visibleColumns={visibleColumns}
+      />
+      <TableFooter
+        entityLabel="plans"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={displayRows.length}
+        total={totalRows}
+        includeArchived={showArchived}
+        onIncludeArchivedChange={(checked) => {
+          setShowArchived(checked);
+          setPage(1);
+        }}
+        includeArchivedLabel="Show archived"
+      />
+    </>
+  );
+}
+
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
   const isReadOnly = !!readOnly;
   // Normalize to ensure only valid yyyy-mm-dd or empty string
@@ -670,28 +741,32 @@ type PlanRow = {
 
   // offspring tracking
   offspringGroupId?: number | null;
+
+  // tags
+  tags?: string[];
+  tagObjects?: Array<{ id: number; name: string; color?: string | null }>;
 };
 
 const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boolean }> = [
-  // Identity
+  // Default columns in order shown in list view
   { key: "name", label: "Plan Name", default: true },
-  { key: "nickname", label: "Nickname", default: false },
   { key: "species", label: "Species", default: true },
   { key: "breedText", label: "Breed", default: true },
   { key: "status", label: "Status", default: true },
   { key: "damName", label: "Dam", default: true },
   { key: "sireName", label: "Sire", default: true },
-  { key: "code", label: "Code", default: false },
+  { key: "expectedCycleStart", label: "Cycle Start (Exp)", default: true },
+  { key: "expectedBreedDate", label: "Breeding (Exp)", default: true },
+  { key: "expectedBirthDate", label: "Birth (Exp)", default: true },
+  { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: true },
+  { key: "tags", label: "Tags", default: true },
 
-  // Expected timeline (new canonical keys)
-  { key: "expectedCycleStart", label: "Cycle Start (Exp)", default: false },
+  // Additional columns (not shown by default)
+  { key: "nickname", label: "Nickname", default: false },
+  { key: "code", label: "Code", default: false },
   { key: "expectedHormoneTestingStart", label: "Hormone Testing Start (Exp)", default: false },
-  { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
-  { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
   { key: "expectedWeaned", label: "Weaning Completed (Exp)", default: false },
   { key: "expectedPlacementStartDate", label: "Placement Start (Exp)", default: false },
-  { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: false },
-
 
   // Actuals
   { key: "cycleStartDateActual", label: "Cycle Start (Actual)", default: false },
@@ -708,7 +783,6 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "lockedOvulationDate", label: "Ovulation (Locked)", default: false },
   { key: "lockedDueDate", label: "Due (Locked)", default: false },
   { key: "lockedPlacementStartDate", label: "Placement Start (Locked)", default: false },
-
 ];
 
 const SORT_OPTIONS: SortOption[] = [
@@ -724,7 +798,7 @@ const SORT_OPTIONS: SortOption[] = [
   { key: "expectedPlacementCompletedDate", label: "Placement (Exp)" },
 ];
 
-const STORAGE_KEY = "bhq_breeding_cols_v2";
+const STORAGE_KEY = "bhq_breeding_cols_v4";
 
 // Date columns for CSV export formatting
 const DATE_COLS = new Set([
@@ -4297,7 +4371,36 @@ export default function AppBreeding() {
             ? (resp as any)
             : [];
 
-        if (!cancelled) setRows(items.map(planToRow));
+        if (!cancelled) {
+          const planRows = items.map(planToRow);
+          setRows(planRows);
+
+          // Fetch tags for each plan
+          Promise.all(
+            planRows.map(async (row: PlanRow) => {
+              try {
+                const tags = await api.tags.listForBreedingPlan(Number(row.id));
+                return { id: Number(row.id), tags };
+              } catch {
+                return { id: Number(row.id), tags: [] };
+              }
+            })
+          ).then((tagResults) => {
+            if (cancelled) return;
+            const tagMap = new Map(tagResults.map((r) => [r.id, r.tags]));
+            setRows((prev) =>
+              prev.map((row) => {
+                const tags = tagMap.get(Number(row.id));
+                if (!tags || tags.length === 0) return row;
+                return {
+                  ...row,
+                  tags: tags.map((t) => t.name),
+                  tagObjects: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+                };
+              })
+            );
+          });
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.payload?.error || e?.message || "Failed to load plans");
       } finally {
@@ -4658,7 +4761,8 @@ export default function AppBreeding() {
     [speciesWire]
   );
 
-  // Fetch programs when species changes or modal opens
+  // Fetch programs when species/breed changes or modal opens
+  // Programs are filtered to only show those matching the selected breed
   React.useEffect(() => {
     if (!api || !createOpen) return;
     let cancelled = false;
@@ -4669,7 +4773,18 @@ export default function AppBreeding() {
         if (speciesWire) params.species = speciesWire;
         const res = await api.breedingPrograms.list(params);
         if (!cancelled) {
-          setPrograms(res.items || []);
+          const allPrograms = res.items || [];
+          // Filter programs to only show those matching the selected breed
+          const breedName = newBreed?.name?.toLowerCase().trim();
+          if (breedName) {
+            const filtered = allPrograms.filter((p) => {
+              const programBreed = p.breedText?.toLowerCase().trim();
+              return programBreed === breedName;
+            });
+            setPrograms(filtered);
+          } else {
+            setPrograms([]);
+          }
         }
       } catch (e) {
         console.error("Failed to fetch programs:", e);
@@ -4680,7 +4795,12 @@ export default function AppBreeding() {
     };
     run();
     return () => { cancelled = true; };
-  }, [api, createOpen, speciesWire]);
+  }, [api, createOpen, speciesWire, newBreed]);
+
+  // Reset program selection when breed changes (since programs are filtered by breed)
+  React.useEffect(() => {
+    setProgramId(null);
+  }, [newBreed]);
 
   // Create new program inline
   const doCreateProgram = React.useCallback(async () => {
@@ -4768,12 +4888,12 @@ export default function AppBreeding() {
     };
   }, [api, tenantId, speciesSelected, speciesWire, sireFocused, sireQuery, filterAnimals]);
 
-  const canCreate = Boolean(newName.trim() && newSpeciesUi && damId);
+  const canCreate = Boolean(newName.trim() && newSpeciesUi && newBreed && programId && damId);
 
   const doCreatePlan = async () => {
     if (!api) return;
     if (!canCreate) {
-      setCreateErr("Enter name, species, and select a Dam.");
+      setCreateErr("Enter name, species, breed, breeding program, and select a Dam.");
       return;
     }
     try {
@@ -4784,10 +4904,10 @@ export default function AppBreeding() {
         name: newName.trim(),
         species: toWireSpecies(newSpeciesUi),
         damId: damId!,
+        programId: programId!,
       };
       if (sireId != null) payload.sireId = sireId;
       if (newBreed?.name) payload.breedText = newBreed.name;
-      if (programId != null) payload.programId = programId;
 
       const res = await api.createPlan(payload);
       const plan = (res as any)?.plan ?? res;
@@ -5159,7 +5279,26 @@ export default function AppBreeding() {
 
       <div className="p-4 space-y-4">
         <div className="relative">
-          <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
+          <PageHeader
+            title={
+              currentView === "calendar"
+                ? "Breeding Calendar"
+                : currentView === "planner"
+                ? "Breeding Planner"
+                : currentView === "genetics-lab"
+                ? "Genetics Lab"
+                : "Breeding Plans"
+            }
+            subtitle={
+              currentView === "calendar"
+                ? "View breeding timeline and events"
+                : currentView === "planner"
+                ? "Plan and schedule future breedings"
+                : currentView === "genetics-lab"
+                ? "Analyze genetics and predict outcomes"
+                : "Create and manage breeding plans"
+            }
+          />
 
           {/* Right-aligned Tab Navigation with emojis and orange underline */}
           <div className="absolute right-0 top-0 h-full flex items-center">
@@ -5299,20 +5438,6 @@ export default function AppBreeding() {
 
                   {/* View mode toggle */}
                   <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
-                    <Tooltip content="Table view">
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("table")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                          viewMode === "table"
-                            ? "bg-[hsl(var(--brand-orange))] text-black"
-                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                        }`}
-                      >
-                        <TableIcon className="w-4 h-4" />
-                        <span className="hidden sm:inline">Table</span>
-                      </button>
-                    </Tooltip>
                     <Tooltip content="Card view">
                       <button
                         type="button"
@@ -5327,6 +5452,34 @@ export default function AppBreeding() {
                         <span className="hidden sm:inline">Cards</span>
                       </button>
                     </Tooltip>
+                    <Tooltip content="List view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("list")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "list"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <List className="w-4 h-4" />
+                        <span className="hidden sm:inline">List</span>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Table view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("table")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "table"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <TableIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Table</span>
+                      </button>
+                    </Tooltip>
                   </div>
 
                   {/* Sort dropdown */}
@@ -5337,8 +5490,8 @@ export default function AppBreeding() {
                     onClear={() => setSorts([])}
                   />
 
-                  {/* Column toggle - only show in table mode */}
-                  {viewMode === "table" && (
+                  {/* Column toggle - show in table and list modes */}
+                  {(viewMode === "table" || viewMode === "list") && (
                     <ColumnsPopover
                       columns={map}
                       onToggle={toggle}
@@ -5354,7 +5507,7 @@ export default function AppBreeding() {
                     size="sm"
                     onClick={() => setCreateOpen(true)}
                     disabled={!api}
-                    className={viewMode === "cards" ? "ml-auto shrink-0" : "shrink-0"}
+                    className="shrink-0"
                   >
                     New Breeding Plan
                   </Button>
@@ -5466,6 +5619,24 @@ export default function AppBreeding() {
                       includeArchivedLabel="Show archived"
                     />
                   </Table>
+                ) : viewMode === "list" ? (
+                  <PlanListViewWithDetails
+                    rows={pageRows}
+                    loading={loading}
+                    error={error}
+                    displayRows={displayRows}
+                    pageSize={pageSize}
+                    page={clampedPage}
+                    pageCount={pageCount}
+                    setPage={setPage}
+                    setPageSize={setPageSize}
+                    showArchived={showArchived}
+                    setShowArchived={setShowArchived}
+                    totalRows={rows.length}
+                    start={start}
+                    end={end}
+                    visibleColumns={visibleSafe}
+                  />
                 ) : (
                   <PlanCardViewWithDetails
                     rows={pageRows}
@@ -5694,10 +5865,10 @@ export default function AppBreeding() {
                         </div>
                       </div>
 
-                      {/* Breeding Program (optional - links to marketplace) */}
+                      {/* Breeding Program (required - links to marketplace) */}
                       <div>
                         <div className="text-xs text-secondary mb-1">
-                          Breeding Program <span className="text-secondary">(optional)</span>
+                          Breeding Program <span className="text-[hsl(var(--brand-orange))]">*</span>
                         </div>
                         {!showNewProgram ? (
                           <div className="flex items-center gap-2">
@@ -5708,20 +5879,28 @@ export default function AppBreeding() {
                                 const val = e.currentTarget.value;
                                 setProgramId(val ? Number(val) : null);
                               }}
-                              disabled={programsLoading}
+                              disabled={programsLoading || !newBreed}
                             >
-                              <option value="">— No program —</option>
-                              {programs.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} {p.breedText ? `(${p.breedText})` : ""}
-                                </option>
-                              ))}
+                              {!newBreed ? (
+                                <option value="">Select breed first</option>
+                              ) : programs.length === 0 ? (
+                                <option value="">No programs for this breed</option>
+                              ) : (
+                                <>
+                                  <option value="">— Select program —</option>
+                                  {programs.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </>
+                              )}
                             </select>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => setShowNewProgram(true)}
-                              disabled={!speciesSelected}
+                              disabled={!speciesSelected || !newBreed}
                             >
                               New
                             </Button>
@@ -5757,7 +5936,7 @@ export default function AppBreeding() {
                           </div>
                         )}
                         <div className="text-xs text-secondary mt-1">
-                          Link this plan to a marketplace breeding program for public visibility.
+                          Only programs matching the selected breed are shown.
                         </div>
                       </div>
 

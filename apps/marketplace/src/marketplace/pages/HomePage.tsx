@@ -1,6 +1,7 @@
 // apps/marketplace/src/marketplace/pages/HomePage.tsx
 // Marketplace home page - Landing page with hero, categories, featured content
 // Per design spec: Hero + Search, Category Tiles, Featured Programs, Trust Section
+// For sellers: Shows SellerHomePage with management dashboard
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,8 +9,13 @@ import {
   getPrograms,
   getPublicOffspringGroups,
   getPublicServices,
+  getBreederAnimalListings,
+  getBreederOffspringGroups,
+  getBreederServices,
+  getBreederInquiries,
 } from "../../api/client";
 import { formatCents } from "../../utils/format";
+import { useIsSeller, useTenantId } from "../../gate/MarketplaceGate";
 
 // ============================================================================
 // ICONS
@@ -624,7 +630,7 @@ function RecentBreedersSection() {
           species: Array.isArray(b.species) ? b.species : (b.species ? [b.species] : []),
           breed: b.breed || null,
           location: b.location || null,
-          imageUrl: b.imageUrl || null,
+          imageUrl: b.photoUrl || null,
           isVerified: true, // All breeders on platform are verified
         }));
 
@@ -937,7 +943,340 @@ function CTASection() {
 // MAIN PAGE
 // ============================================================================
 
+// ============================================================================
+// SELLER HOME PAGE - Dashboard for breeders accessing via platform portal
+// ============================================================================
+
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 15a3 3 0 100-6 3 3 0 000 6z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function InboxIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M22 12h-6l-2 3h-4l-2-3H2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UsersIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LayersIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+interface SellerStats {
+  totalAnimals: number;
+  totalOffspring: number;
+  totalServices: number;
+  pendingInquiries: number;
+}
+
+function SellerHomePage() {
+  const tenantId = useTenantId();
+  const navigate = useNavigate();
+  const [stats, setStats] = React.useState<SellerStats | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!tenantId) return;
+    let dead = false;
+
+    async function fetchStats() {
+      try {
+        const [animalsRes, offspringRes, servicesRes, inquiriesRes] = await Promise.all([
+          getBreederAnimalListings(tenantId!, { limit: 1 }),
+          getBreederOffspringGroups(tenantId!, { limit: 1 }),
+          getBreederServices(tenantId!, { limit: 1 }),
+          getBreederInquiries(tenantId!, { limit: 1, status: "pending" }),
+        ]);
+        if (dead) return;
+
+        setStats({
+          totalAnimals: animalsRes.total || 0,
+          totalOffspring: offspringRes.total || 0,
+          totalServices: servicesRes.total || 0,
+          pendingInquiries: inquiriesRes.total || 0,
+        });
+      } catch (err) {
+        console.error("Failed to fetch seller stats:", err);
+        // Set zeros on error so UI still renders
+        setStats({
+          totalAnimals: 0,
+          totalOffspring: 0,
+          totalServices: 0,
+          pendingInquiries: 0,
+        });
+      } finally {
+        if (!dead) setLoading(false);
+      }
+    }
+
+    fetchStats();
+    return () => { dead = true; };
+  }, [tenantId]);
+
+  return (
+    <div className="max-w-portal mx-auto px-4 md:px-6 py-8 space-y-8">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
+          Marketplace Dashboard
+        </h1>
+        <p className="text-text-secondary">
+          Manage your marketplace presence and connect with buyers
+        </p>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
+              <PawFilledIcon className="h-5 w-5 text-[hsl(var(--brand-orange))]" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {loading ? "-" : stats?.totalAnimals ?? 0}
+          </p>
+          <p className="text-sm text-text-tertiary">Animal Listings</p>
+        </div>
+
+        <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg bg-[hsl(var(--brand-blue))]/10 flex items-center justify-center">
+              <LayersIcon className="h-5 w-5 text-[hsl(var(--brand-blue))]" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {loading ? "-" : stats?.totalOffspring ?? 0}
+          </p>
+          <p className="text-sm text-text-tertiary">Offspring Listings</p>
+        </div>
+
+        <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <BriefcaseIcon className="h-5 w-5 text-green-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {loading ? "-" : stats?.totalServices ?? 0}
+          </p>
+          <p className="text-sm text-text-tertiary">Service Listings</p>
+        </div>
+
+        <div className="rounded-xl border border-border-subtle bg-portal-card p-5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+              <InboxIcon className="h-5 w-5 text-yellow-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {loading ? "-" : stats?.pendingInquiries ?? 0}
+          </p>
+          <p className="text-sm text-text-tertiary">Pending Inquiries</p>
+        </div>
+      </div>
+
+      {/* Primary Action - Manage Storefront */}
+      <Link
+        to="/manage/breeder"
+        className="block w-full text-left rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent p-6 md:p-8 hover:border-emerald-500/50 transition-all group cursor-pointer"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-xl bg-emerald-500/20 flex items-center justify-center group-hover:bg-emerald-500/30 transition-colors">
+              <SettingsIcon className="h-7 w-7 text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white mb-1">Manage Your Storefront and Breeding Program Listings</h2>
+              <p className="text-text-secondary">
+                Set up your business profile, location, credentials, and breeding programs
+              </p>
+            </div>
+          </div>
+          <ArrowRightIcon className="h-6 w-6 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </Link>
+
+      {/* Quick Actions Grid */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Link
+          to="/manage/animals"
+          className="block text-left rounded-xl border border-border-subtle bg-portal-card p-5 hover:bg-portal-card-hover hover:border-border-default transition-all group cursor-pointer"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center group-hover:bg-[hsl(var(--brand-orange))]/20 transition-colors">
+              <PawFilledIcon className="h-6 w-6 text-[hsl(var(--brand-orange))]" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors">
+                Manage Animals
+              </h3>
+              <p className="text-sm text-text-tertiary">
+                List individual animals for sale or showcase your breeding stock
+              </p>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          to="/manage/services"
+          className="block text-left rounded-xl border border-border-subtle bg-portal-card p-5 hover:bg-portal-card-hover hover:border-border-default transition-all group cursor-pointer"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
+              <BriefcaseIcon className="h-6 w-6 text-green-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-1 group-hover:text-green-400 transition-colors">
+                Manage Services
+              </h3>
+              <p className="text-sm text-text-tertiary">
+                Offer stud services, training, grooming, or other professional services
+              </p>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Secondary Actions */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Link
+          to="/manage/inquiries"
+          className="block text-left rounded-xl border border-border-subtle bg-portal-card p-5 hover:bg-portal-card-hover hover:border-border-default transition-all group cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                <InboxIcon className="h-6 w-6 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white group-hover:text-yellow-400 transition-colors">
+                  View Inquiries
+                </h3>
+                <p className="text-sm text-text-tertiary">
+                  Respond to buyer questions and requests
+                </p>
+              </div>
+            </div>
+            {stats && stats.pendingInquiries > 0 && (
+              <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-yellow-500/20 text-yellow-400">
+                {stats.pendingInquiries} pending
+              </span>
+            )}
+          </div>
+        </Link>
+
+        <Link
+          to="/manage/waitlist"
+          className="block text-left rounded-xl border border-border-subtle bg-portal-card p-5 hover:bg-portal-card-hover hover:border-border-default transition-all group cursor-pointer"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-purple-500/10 flex items-center justify-center">
+              <UsersIcon className="h-6 w-6 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                Waitlist Management
+              </h3>
+              <p className="text-sm text-text-tertiary">
+                View and manage buyers on your waitlists
+              </p>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Browse Marketplace Link */}
+      <div className="border-t border-border-subtle pt-8">
+        <div className="text-center">
+          <p className="text-text-secondary mb-4">
+            Want to see how your listings appear to buyers?
+          </p>
+          <Link
+            to="/animals"
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg border border-border-subtle text-text-secondary hover:text-white hover:border-border-default transition-colors cursor-pointer"
+          >
+            Browse the Marketplace
+            <ArrowRightIcon className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HomePage() {
+  const isSeller = useIsSeller();
+
+  // Sellers get a completely different home page focused on management
+  if (isSeller) {
+    return <SellerHomePage />;
+  }
+
+  // Buyers get the standard marketplace browsing experience
   return (
     <div className="space-y-8 pb-0">
       {/* Hero with search and primary category cards (Animals, Breeders, Services) */}

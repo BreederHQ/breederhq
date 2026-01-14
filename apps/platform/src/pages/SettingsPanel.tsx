@@ -467,9 +467,6 @@ type Tab =
   | "breeding"
   | "offspring"
   | "programProfile"
-  | "breeds"
-  | "policies"
-  | "credentials"
   | "general"
   | "users"
   | "groups"
@@ -503,9 +500,7 @@ const NAV: NavSection[] = [
     title: "Breeding Program",
     items: [
       { key: "programProfile", label: "Program Profile" },
-      { key: "breeds", label: "Breeds" },
-      { key: "policies", label: "Policies" },
-      { key: "credentials", label: "Standards and Credentials" },
+      // Breeds, Policies, and Standards & Credentials moved to Marketplace Storefront (/marketplace/manage/breeder)
     ],
   },
   {
@@ -533,7 +528,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, billing: false, subscription: false, payments: false, transactions: false,
-    breeding: false, offspring: false, programProfile: false, breeds: false, policies: false, credentials: false,
+    breeding: false, offspring: false, programProfile: false,
     general: false, users: false, groups: false, tags: false, genetics: false, accessibility: false,
   });
   // Edit mode state at panel level
@@ -541,15 +536,12 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
   const offspringRef = React.useRef<OffspringHandle>(null);
-  const breedsRef = React.useRef<BreedsHandle>(null);
-  const policiesRef = React.useRef<PoliciesHandle>(null);
-  const credentialsRef = React.useRef<CredentialsHandle>(null);
   const programRef = React.useRef<ProgramProfileHandle>(null);
   const generalRef = React.useRef<GeneralSettingsHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   // Tabs that support edit mode
-  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "credentials"];
+  const editableTabs: Tab[] = ["profile", "programProfile"];
   const isEditableTab = editableTabs.includes(active);
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
@@ -624,12 +616,6 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
       await offspringRef.current?.save(); markDirty("offspring", false);
     } else if (active === "programProfile") {
       await programRef.current?.save(); markDirty("programProfile", false);
-    } else if (active === "breeds") {
-      await breedsRef.current?.save(); markDirty("breeds", false);
-    } else if (active === "policies") {
-      await policiesRef.current?.save(); markDirty("policies", false);
-    } else if (active === "credentials") {
-      await credentialsRef.current?.save(); markDirty("credentials", false);
     } else if (active === "general") {
       await generalRef.current?.save(); markDirty("general", false);
     } else {
@@ -745,9 +731,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "breeding" && <BreedingTab ref={breedingRef} dirty={dirtyMap.breeding} onDirty={(v) => markDirty("breeding", v)} />}
                 {active === "offspring" && <OffspringTab ref={offspringRef} dirty={dirtyMap.offspring} onDirty={(v) => markDirty("offspring", v)} />}
                 {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} editMode={editMode} />}
-                {active === "breeds" && <BreedsTab ref={breedsRef} dirty={dirtyMap.breeds} onDirty={(v) => markDirty("breeds", v)} />}
-                {active === "policies" && <PoliciesTab ref={policiesRef} dirty={dirtyMap.policies} onDirty={(v) => markDirty("policies", v)} />}
-                {active === "credentials" && <CredentialsTab ref={credentialsRef} dirty={dirtyMap.credentials} onDirty={(v) => markDirty("credentials", v)} editMode={editMode} />}
+                {/* Breeds, Policies, and Standards & Credentials moved to Marketplace Storefront (/marketplace/manage/breeder) */}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
@@ -2760,8 +2744,19 @@ type PoliciesProfile = {
     showRequireInterview: boolean;
     requireContract: boolean;
     showRequireContract: boolean;
+    requireDeposit: boolean;
+    showRequireDeposit: boolean;
+    depositRefundable: boolean;
+    requireHomeVisit: boolean;
+    showRequireHomeVisit: boolean;
+    requireVetReference: boolean;
+    showRequireVetReference: boolean;
+    requireSpayNeuter: boolean;
+    showRequireSpayNeuter: boolean;
     hasReturnPolicy: boolean;
     showHasReturnPolicy: boolean;
+    lifetimeTakeBack: boolean;
+    showLifetimeTakeBack: boolean;
     offersSupport: boolean;
     showOffersSupport: boolean;
     note: string;
@@ -2778,8 +2773,19 @@ const EMPTY_POLICIES: PoliciesProfile = {
     showRequireInterview: false,
     requireContract: false,
     showRequireContract: false,
+    requireDeposit: false,
+    showRequireDeposit: false,
+    depositRefundable: false,
+    requireHomeVisit: false,
+    showRequireHomeVisit: false,
+    requireVetReference: false,
+    showRequireVetReference: false,
+    requireSpayNeuter: false,
+    showRequireSpayNeuter: false,
     hasReturnPolicy: false,
     showHasReturnPolicy: false,
+    lifetimeTakeBack: false,
+    showLifetimeTakeBack: false,
     offersSupport: false,
     showOffersSupport: false,
     note: "",
@@ -2829,8 +2835,19 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
               showRequireInterview: (prData as any)?.placementPolicies?.showRequireInterview ?? false,
               requireContract: (prData as any)?.placementPolicies?.requireContract ?? false,
               showRequireContract: (prData as any)?.placementPolicies?.showRequireContract ?? false,
+              requireDeposit: (prData as any)?.placementPolicies?.requireDeposit ?? false,
+              showRequireDeposit: (prData as any)?.placementPolicies?.showRequireDeposit ?? false,
+              depositRefundable: (prData as any)?.placementPolicies?.depositRefundable ?? false,
+              requireHomeVisit: (prData as any)?.placementPolicies?.requireHomeVisit ?? false,
+              showRequireHomeVisit: (prData as any)?.placementPolicies?.showRequireHomeVisit ?? false,
+              requireVetReference: (prData as any)?.placementPolicies?.requireVetReference ?? false,
+              showRequireVetReference: (prData as any)?.placementPolicies?.showRequireVetReference ?? false,
+              requireSpayNeuter: (prData as any)?.placementPolicies?.requireSpayNeuter ?? false,
+              showRequireSpayNeuter: (prData as any)?.placementPolicies?.showRequireSpayNeuter ?? false,
               hasReturnPolicy: (prData as any)?.placementPolicies?.hasReturnPolicy ?? false,
               showHasReturnPolicy: (prData as any)?.placementPolicies?.showHasReturnPolicy ?? false,
+              lifetimeTakeBack: (prData as any)?.placementPolicies?.lifetimeTakeBack ?? false,
+              showLifetimeTakeBack: (prData as any)?.placementPolicies?.showLifetimeTakeBack ?? false,
               offersSupport: (prData as any)?.placementPolicies?.offersSupport ?? false,
               showOffersSupport: (prData as any)?.placementPolicies?.showOffersSupport ?? false,
               note: (prData as any)?.placementPolicies?.note ?? "",
@@ -2908,7 +2925,7 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
               <div className="flex items-center justify-between mb-3">
                 <div className="text-base font-semibold text-primary">Placement Policies</div>
                 <VisibilityToggle
-                  isPublic={profile.placementPolicies.requireApplication || profile.placementPolicies.requireInterview || profile.placementPolicies.requireContract || profile.placementPolicies.hasReturnPolicy || profile.placementPolicies.offersSupport}
+                  isPublic={profile.placementPolicies.requireApplication || profile.placementPolicies.requireInterview || profile.placementPolicies.requireContract || profile.placementPolicies.requireDeposit || profile.placementPolicies.requireHomeVisit || profile.placementPolicies.requireVetReference || profile.placementPolicies.requireSpayNeuter || profile.placementPolicies.hasReturnPolicy || profile.placementPolicies.lifetimeTakeBack || profile.placementPolicies.offersSupport}
                   onChange={(v) => {
                     setProfile(p => ({
                       ...p,
@@ -2917,61 +2934,148 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
                         showRequireApplication: v && p.placementPolicies.requireApplication,
                         showRequireInterview: v && p.placementPolicies.requireInterview,
                         showRequireContract: v && p.placementPolicies.requireContract,
+                        showRequireDeposit: v && p.placementPolicies.requireDeposit,
+                        showRequireHomeVisit: v && p.placementPolicies.requireHomeVisit,
+                        showRequireVetReference: v && p.placementPolicies.requireVetReference,
+                        showRequireSpayNeuter: v && p.placementPolicies.requireSpayNeuter,
                         showHasReturnPolicy: v && p.placementPolicies.hasReturnPolicy,
+                        showLifetimeTakeBack: v && p.placementPolicies.lifetimeTakeBack,
                         showOffersSupport: v && p.placementPolicies.offersSupport,
                         showNote: v && !!p.placementPolicies.note.trim()
                       }
                     }));
                   }}
-                  disabled={!profile.placementPolicies.requireApplication && !profile.placementPolicies.requireInterview && !profile.placementPolicies.requireContract && !profile.placementPolicies.hasReturnPolicy && !profile.placementPolicies.offersSupport}
+                  disabled={!profile.placementPolicies.requireApplication && !profile.placementPolicies.requireInterview && !profile.placementPolicies.requireContract && !profile.placementPolicies.requireDeposit && !profile.placementPolicies.requireHomeVisit && !profile.placementPolicies.requireVetReference && !profile.placementPolicies.requireSpayNeuter && !profile.placementPolicies.hasReturnPolicy && !profile.placementPolicies.lifetimeTakeBack && !profile.placementPolicies.offersSupport}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={profile.placementPolicies.requireApplication}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireApplication: e.target.checked } }))}
-                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                  />
-                  <span className="text-sm">Require application</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={profile.placementPolicies.requireInterview}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireInterview: e.target.checked } }))}
-                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                  />
-                  <span className="text-sm">Require interview/meeting</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={profile.placementPolicies.requireContract}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireContract: e.target.checked } }))}
-                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                  />
-                  <span className="text-sm">Require signed contract</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={profile.placementPolicies.hasReturnPolicy}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, hasReturnPolicy: e.target.checked } }))}
-                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                  />
-                  <span className="text-sm">Lifetime return policy</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={profile.placementPolicies.offersSupport}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, offersSupport: e.target.checked } }))}
-                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                  />
-                  <span className="text-sm">Ongoing breeder support</span>
-                </label>
+
+              {/* Buyer Requirements */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-secondary uppercase tracking-wide">Buyer Requirements</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireApplication}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireApplication: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require application</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireInterview}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireInterview: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require interview/meeting</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireContract}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireContract: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require signed contract</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireHomeVisit}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireHomeVisit: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require home visit</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireVetReference}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireVetReference: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require vet reference</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Payment & Deposit */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-secondary uppercase tracking-wide">Payment & Deposit</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireDeposit}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireDeposit: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require deposit/reservation fee</span>
+                  </label>
+                  {profile.placementPolicies.requireDeposit && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={profile.placementPolicies.depositRefundable}
+                        onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, depositRefundable: e.target.checked } }))}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                      />
+                      <span className="text-sm">Deposit is refundable</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Pet Placement */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-secondary uppercase tracking-wide">Pet Placement</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireSpayNeuter}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireSpayNeuter: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require spay/neuter for pets</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Breeder Commitments */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-secondary uppercase tracking-wide">Breeder Commitments</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.hasReturnPolicy}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, hasReturnPolicy: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Accept returns</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.lifetimeTakeBack}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, lifetimeTakeBack: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Lifetime take-back guarantee</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.offersSupport}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, offersSupport: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Ongoing breeder support</span>
+                  </label>
+                </div>
               </div>
               <textarea
                 value={profile.placementPolicies.note}

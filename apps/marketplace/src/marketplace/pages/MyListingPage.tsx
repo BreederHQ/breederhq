@@ -247,7 +247,7 @@ export function MyListingPage() {
       {/* Listed Programs */}
       {programs.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-white">Programs</h2>
+          <h2 className="text-lg font-semibold text-white">Breeding Programs</h2>
           <div className="grid grid-cols-1 gap-4">
             {programs.map((program, idx) => {
               const name = program?.name?.trim() || "Untitled Program";
