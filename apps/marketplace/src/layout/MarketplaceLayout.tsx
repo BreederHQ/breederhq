@@ -213,8 +213,8 @@ interface MarketplaceLayoutProps {
 export function MarketplaceLayout({ authenticated, children }: MarketplaceLayoutProps) {
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
-  const { totalUnread, refresh: refreshUnread } = useUnreadCounts();
-  const { requests: waitlistRequests, refresh: refreshWaitlist } = useWaitlistRequests();
+  const { totalUnread, refresh: refreshUnread } = useUnreadCounts(authenticated);
+  const { requests: waitlistRequests, refresh: refreshWaitlist } = useWaitlistRequests(authenticated);
   const userProfile = useUserProfile();
 
   // Calculate notification counts
@@ -288,7 +288,9 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
         console.warn("Logout request failed:", err);
       }
     } finally {
-      window.location.reload();
+      // Clear any cached data and redirect to home
+      // This forces a full re-authentication flow
+      window.location.href = "/";
     }
   };
 

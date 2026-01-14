@@ -2,6 +2,7 @@
 // Buyer-facing breeder tile with "View litters" CTA
 import { Link } from "react-router-dom";
 import { SponsorDisclosure } from "./SponsorDisclosure";
+import { DefaultCoverImage } from "../shared/DefaultCoverImage";
 
 interface ProgramTileProps {
   slug: string;
@@ -25,7 +26,7 @@ export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false,
       }`}
     >
       {/* Image area */}
-      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default overflow-hidden flex-shrink-0 relative">
+      <div className="h-[100px] overflow-hidden flex-shrink-0 relative">
         {photoUrl ? (
           <img
             src={photoUrl}
@@ -36,11 +37,7 @@ export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false,
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-2xl font-semibold text-text-tertiary">
-              {name.charAt(0).toUpperCase()}
-            </span>
-          </div>
+          <DefaultCoverImage />
         )}
         {/* Boosted badge */}
         {isBoosted && (

@@ -8,6 +8,8 @@ import { Tooltip } from "@bhq/ui";
 import { apiGet } from "../../api/client";
 import { VerificationBadge } from "../components/VerificationBadge";
 import { Breadcrumb } from "../components/Breadcrumb";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
+import { updateSEO } from "../../utils/seo";
 
 // =============================================================================
 // Types
@@ -635,17 +637,17 @@ function BreederCard({ breeder }: { breeder: BreederSummary }) {
 
   if (!hasValidSlug) {
     return (
-      <div className="rounded-xl border border-border-subtle bg-portal-card p-5 opacity-50 cursor-not-allowed">
-        <div className="flex items-start gap-4">
-          <div className="h-14 w-14 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center flex-shrink-0">
-            <span className="text-xl font-bold text-[hsl(var(--brand-orange))]">
+      <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden opacity-50 cursor-not-allowed">
+        <div className="relative aspect-[4/3] bg-border-default flex items-center justify-center">
+          <div className="h-20 w-20 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
+            <span className="text-2xl font-bold text-[hsl(var(--brand-orange))]">
               {getInitials(breeder.businessName)}
             </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-white truncate">{breeder.businessName}</h3>
-            <p className="text-sm text-red-400 mt-0.5">Profile unavailable</p>
-          </div>
+        </div>
+        <div className="p-4">
+          <h3 className="font-semibold text-white truncate">{breeder.businessName}</h3>
+          <p className="text-sm text-red-400 mt-0.5">Profile unavailable</p>
         </div>
       </div>
     );
@@ -653,57 +655,78 @@ function BreederCard({ breeder }: { breeder: BreederSummary }) {
 
   return (
     <Link to={`/breeders/${breeder.tenantSlug}`} className="block group">
-      <div className="rounded-xl border border-border-subtle bg-portal-card p-5 h-full transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
-        <div className="flex items-start gap-4">
-          {/* Avatar */}
-          <div className="h-14 w-14 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center flex-shrink-0">
-            {breeder.logoAssetId ? (
-              <img
-                src={`/api/assets/${breeder.logoAssetId}`}
-                alt={breeder.businessName}
-                className="h-14 w-14 rounded-full object-cover"
-              />
-            ) : (
-              <span className="text-xl font-bold text-[hsl(var(--brand-orange))]">
-                {getInitials(breeder.businessName)}
-              </span>
-            )}
-          </div>
+      <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
+        {/* Image area - using logo or default */}
+        <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
+          {breeder.logoAssetId ? (
+            <img
+              src={`/api/assets/${breeder.logoAssetId}`}
+              alt={breeder.businessName}
+              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            />
+          ) : (
+            <DefaultCoverImage />
+          )}
 
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-white truncate group-hover:text-[hsl(var(--brand-orange))] transition-colors">
-                {breeder.businessName}
-              </h3>
-              {(breeder.isVerified || breeder.verificationLevel) && (
-                <VerificationBadge
-                  level={breeder.verificationLevel || "verified"}
-                  size="sm"
-                  showLabel={false}
-                />
+          {/* Verification badge overlay - top right */}
+          {(breeder.isVerified || breeder.verificationLevel) && (
+            <div className="absolute top-2 right-2">
+              <VerificationBadge
+                level={breeder.verificationLevel || "verified"}
+                size="sm"
+                showLabel={false}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Content area */}
+        <div className="p-4 flex-1 flex flex-col">
+          {/* Breeder name */}
+          <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-1">
+            {breeder.businessName}
+          </h3>
+
+          {/* Location */}
+          {showLocation && (
+            <p className="text-[13px] text-text-tertiary mb-3">{breeder.location}</p>
+          )}
+
+          {/* Breeds */}
+          {visibleBreeds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-auto">
+              {visibleBreeds.map((breed, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-0.5 text-xs rounded-full bg-border-default text-text-secondary"
+                >
+                  {breed.name}
+                </span>
+              ))}
+              {extraCount > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-border-default text-text-tertiary">
+                  +{extraCount} more
+                </span>
               )}
             </div>
-            {showLocation && (
-              <p className="text-sm text-text-tertiary mt-0.5 truncate">{breeder.location}</p>
+          )}
+
+          {/* Footer - availability or CTA */}
+          <div className="pt-3 border-t border-border-subtle flex items-center justify-between mt-auto">
+            {breeder.availabilityStatus?.availableNowCount > 0 ? (
+              <span className="text-[13px] text-green-400 font-medium">
+                {breeder.availabilityStatus.availableNowCount} Available
+              </span>
+            ) : breeder.availabilityStatus?.upcomingLittersCount > 0 ? (
+              <span className="text-[13px] text-blue-400 font-medium">
+                {breeder.availabilityStatus.upcomingLittersCount} Upcoming
+              </span>
+            ) : (
+              <span className="text-[13px] text-text-muted">View Profile</span>
             )}
-            {visibleBreeds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {visibleBreeds.map((breed, i) => (
-                  <span
-                    key={i}
-                    className="px-2 py-0.5 text-xs rounded-full bg-border-default text-text-secondary"
-                  >
-                    {breed.name}
-                  </span>
-                ))}
-                {extraCount > 0 && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-border-default text-text-tertiary">
-                    +{extraCount} more
-                  </span>
-                )}
-              </div>
-            )}
+            <span className="text-[13px] text-text-secondary group-hover:text-white transition-colors">
+              View details →
+            </span>
           </div>
         </div>
       </div>
@@ -1306,7 +1329,35 @@ export function BreedersIndexPage() {
 
   // UI state
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
-  const [displayMode, setDisplayMode] = React.useState<DisplayMode>("list");
+  const [displayMode, setDisplayMode] = React.useState<DisplayMode>("grid");
+
+  // SEO - Update meta tags based on current filters
+  React.useEffect(() => {
+    const speciesLabel = filters.species
+      ? SPECIES_OPTIONS.find((s) => s.value === filters.species)?.label
+      : null;
+
+    const titleParts = ["Find Verified"];
+    if (speciesLabel) titleParts.push(speciesLabel);
+    titleParts.push("Breeders – BreederHQ Marketplace");
+
+    const descParts = ["Browse verified breeders"];
+    if (speciesLabel) descParts.push(`specializing in ${speciesLabel.toLowerCase()}`);
+    descParts.push("and their programs. Direct connection with trusted breeding programs.");
+
+    const canonicalParams = new URLSearchParams();
+    if (filters.species) canonicalParams.set("species", filters.species);
+    if (filters.location) canonicalParams.set("location", filters.location);
+    const canonicalQuery = canonicalParams.toString();
+
+    updateSEO({
+      title: titleParts.join(" "),
+      description: descParts.join(" "),
+      canonical: `https://marketplace.breederhq.com/breeders${canonicalQuery ? `?${canonicalQuery}` : ""}`,
+      keywords: `${speciesLabel ? `${speciesLabel.toLowerCase()} breeders, ` : ""}animal breeders, verified breeders, breeding programs, professional breeders`,
+      noindex: false,
+    });
+  }, [filters.species, filters.location]);
 
   // Derived state
   const totalPages = Math.ceil(total / PAGE_SIZE);

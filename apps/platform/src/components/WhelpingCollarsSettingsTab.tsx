@@ -450,7 +450,7 @@ const WhelpingCollarsSettingsTab = React.forwardRef<
   if (loading) {
     return (
       <SectionCard
-        title="Whelping Collar Colors"
+        title="Identification Collar Colors"
         subtitle="Configure collar color options for the Offspring module"
       >
         <div className="text-sm text-secondary">Loading...</div>
@@ -468,9 +468,10 @@ const WhelpingCollarsSettingsTab = React.forwardRef<
 
       {/* Info Box */}
       <Card className="p-4 bg-blue-500/10 border-blue-500/30">
-        <div className="text-sm font-medium text-blue-300 mb-2">Whelping Collar Colors</div>
+        <div className="text-sm font-medium text-blue-300 mb-2">Identification Collar Colors</div>
         <ul className="text-xs text-blue-200 space-y-1 list-disc list-inside">
-          <li>Configure which collar colors appear when assigning collars to offspring</li>
+          <li>Configure collar colors for identifying offspring in litters (dogs, cats, rabbits, goats, sheep, pigs)</li>
+          <li>Not applicable for horses, cattle, or chickens (typically single births or eggs)</li>
           <li>Default colors match standard whelping collar sets available from retailers</li>
           <li>Add custom colors with patterns (striped, polka dot, camo, plaid) for patterned collars</li>
           <li>Disabled colors won&apos;t appear in dropdowns but are preserved</li>

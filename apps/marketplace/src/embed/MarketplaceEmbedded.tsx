@@ -13,7 +13,7 @@ import { HomePage } from "../marketplace/pages/HomePage";
 import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
 import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
 import { BreederPage } from "../marketplace/pages/BreederPage";
-import { ServicesPage } from "../marketplace/pages/ServicesPage";
+import { ServicesIndexPage } from "../marketplace/pages/ServicesIndexPage";
 import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
@@ -21,6 +21,10 @@ import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePortal";
 import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
 import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
+import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgramsPage";
+import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
+import { CreateProgramWizard } from "../breeder/pages/CreateProgramWizard";
+import { ProgramDetailPage } from "../breeder/pages/ProgramDetailPage";
 // Import the shared GateContext so hooks work correctly
 import { GateContext, type GateContextValue } from "../gate/MarketplaceGate";
 
@@ -150,12 +154,16 @@ export function MarketplaceEmbedded() {
             {/* Seller management pages */}
             <Route path="/manage/breeder" element={<MarketplaceManagePortal />} />
             <Route path="/manage/animals" element={<ManageAnimalsPage />} />
+            <Route path="/manage/animal-programs" element={<AnimalProgramsPage />} />
+            <Route path="/manage/animal-programs/new" element={<CreateProgramWizard />} />
+            <Route path="/manage/animal-programs/:programId" element={<ProgramDetailPage />} />
+            <Route path="/manage/breeding-programs" element={<ManageBreedingProgramsPage />} />
             <Route path="/manage/services" element={<ManageServicesPage />} />
             <Route path="/manage" element={<Navigate to="/manage/breeder" replace />} />
             <Route path="/animals" element={<AnimalsIndexPage />} />
             <Route path="/breeders" element={<BreedersIndexPage />} />
             <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
-            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/services" element={<ServicesIndexPage />} />
             <Route path="/inquiries" element={<InquiriesPage />} />
             <Route path="/updates" element={<UpdatesPage />} />
             <Route path="/litters" element={<Navigate to="/animals" replace />} />

@@ -4,13 +4,16 @@
 
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { apiGet, submitWaitlistRequest } from "../../api/client";
+import { apiGet, submitWaitlistRequest, getPublicAnimalPrograms, getPublicServices } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
+import type { PublicAnimalProgramSummaryDTO, PublicServiceListing } from "../../api/types";
+import { AnimalProgramTile } from "../components/AnimalProgramTile";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useStartConversation } from "../../messages/hooks";
 import { useUserProfile } from "../../gate/MarketplaceGate";
 import { ReportBreederButton } from "../components/ReportBreederModal";
 import { getOriginData, setOriginProgramSlug } from "../../utils/origin-tracking";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 
 // =============================================================================
 // Types
@@ -97,7 +100,7 @@ interface BreederProfileResponse {
   establishedYear?: number;
 }
 
-type TabType = "programs" | "about" | "reviews";
+type TabType = "programs" | "services" | "about" | "reviews";
 
 type ProgramData = BreederProfileResponse["programs"][number];
 
@@ -464,12 +467,14 @@ interface TabsNavProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   programCount: number;
+  servicesCount: number;
   reviewCount?: number;
 }
 
-function TabsNav({ activeTab, onTabChange, programCount, reviewCount = 0 }: TabsNavProps) {
+function TabsNav({ activeTab, onTabChange, programCount, servicesCount, reviewCount = 0 }: TabsNavProps) {
   const tabs: { id: TabType; label: string; count?: number }[] = [
-    { id: "programs", label: "Our Breeding Programs", count: programCount },
+    { id: "programs", label: "Our Current Programs", count: programCount },
+    { id: "services", label: "Our Services", count: servicesCount },
     { id: "about", label: "About" },
     { id: "reviews", label: "Reviews", count: reviewCount },
   ];
@@ -636,10 +641,15 @@ function AboutTab({ profile }: AboutTabProps) {
 
 interface ProgramsTabProps {
   profile: BreederProfileResponse;
+  tenantId: string;
+  animalPrograms: PublicAnimalProgramSummaryDTO[];
+  loading: boolean;
 }
 
-function ProgramsTab({ profile }: ProgramsTabProps) {
-  if (profile.programs.length === 0) {
+function ProgramsTab({ profile, tenantId, animalPrograms, loading }: ProgramsTabProps) {
+  const totalPrograms = profile.programs.length + animalPrograms.length;
+
+  if (!loading && totalPrograms === 0) {
     return (
       <div className="rounded-2xl border border-border-subtle bg-gradient-to-br from-portal-card to-portal-bg p-12 text-center">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
@@ -656,23 +666,137 @@ function ProgramsTab({ profile }: ProgramsTabProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Programs intro text */}
-      <div className="text-center mb-8">
-        <p className="text-text-secondary">
-          Explore our {profile.programs.length} breeding program{profile.programs.length !== 1 ? 's' : ''} below
+      {/* Animal Programs Section */}
+      {animalPrograms.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Our Animal Programs</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {animalPrograms.map((program) => (
+              <AnimalProgramTile key={`animal-program-${program.id}`} program={program} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Breeding Programs Section (offspring groups) */}
+      {profile.programs.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Our Breeding Programs</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {profile.programs.map((program, idx) => (
+              <FeaturedProgramCard
+                key={`${program.name}-${idx}`}
+                program={program}
+                tenantSlug={profile.tenantSlug}
+                businessName={profile.businessName}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-64 bg-portal-card rounded-lg animate-pulse" />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Services Tab Content
+// =============================================================================
+
+interface ServicesTabProps {
+  services: PublicServiceListing[];
+  loading: boolean;
+}
+
+function ServicesTab({ services, loading }: ServicesTabProps) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-64 bg-portal-card rounded-lg animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (services.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border-subtle bg-gradient-to-br from-portal-card to-portal-bg p-12 text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
+          <svg className="w-8 h-8 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-white mb-2">No Services Listed Yet</h3>
+        <p className="text-text-secondary max-w-sm mx-auto">
+          This breeder hasn't published any services yet. Check back soon or contact them for more information.
         </p>
       </div>
+    );
+  }
 
-      {/* Program cards - grid layout matching Services page */}
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold text-white">Available Services</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {profile.programs.map((program, idx) => (
-          <FeaturedProgramCard
-            key={`${program.name}-${idx}`}
-            program={program}
-            tenantSlug={profile.tenantSlug}
-            businessName={profile.businessName}
-          />
+        {services.map((service) => (
+          <Link
+            key={service.id}
+            to={`/services/${service.id}`}
+            className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg"
+          >
+            {/* Image */}
+            <div className="relative h-[140px] overflow-hidden flex-shrink-0">
+              {service.coverImageUrl ? (
+                <img
+                  src={service.coverImageUrl}
+                  alt={service.title}
+                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-portal-card to-portal-bg flex items-center justify-center">
+                  <svg className="w-12 h-12 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              )}
+              {/* Service type badge */}
+              <div className="absolute top-2 left-2">
+                <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-accent/90 text-white">
+                  {service.type}
+                </span>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 flex flex-col flex-grow">
+              <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-accent transition-colors line-clamp-2">
+                {service.title}
+              </h3>
+              {service.summary && (
+                <p className="text-[13px] text-text-secondary mb-3 line-clamp-2">
+                  {service.summary}
+                </p>
+              )}
+
+              {/* Price */}
+              <div className="mt-auto pt-2">
+                <div className="text-sm font-medium text-accent">
+                  {service.priceDisplay || 'Contact for pricing'}
+                </div>
+              </div>
+            </div>
+          </Link>
         ))}
       </div>
     </div>
@@ -784,8 +908,8 @@ function FeaturedProgramCardInner({
       onClick={onCardClick}
       className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg text-left w-full"
     >
-      {/* Image area - matching Services page aspect ratio */}
-      <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
+      {/* Image area - matching marketplace cards */}
+      <div className="relative aspect-[4/3] overflow-hidden">
         {coverPhotoId ? (
           <img
             src={`/api/assets/${coverPhotoId}`}
@@ -793,11 +917,7 @@ function FeaturedProgramCardInner({
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-12 h-12 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-          </div>
+          <DefaultCoverImage />
         )}
         {/* Photo count badge - top right */}
         {photoCount > 1 && (
@@ -1245,6 +1365,12 @@ export function BreederPage() {
   const [profile, setProfile] = React.useState<BreederProfileResponse | null>(null);
   const [activeTab, setActiveTab] = React.useState<TabType>("programs");
 
+  // Animal Programs and Services state
+  const [animalPrograms, setAnimalPrograms] = React.useState<PublicAnimalProgramSummaryDTO[]>([]);
+  const [animalProgramsLoading, setAnimalProgramsLoading] = React.useState(true);
+  const [services, setServices] = React.useState<PublicServiceListing[]>([]);
+  const [servicesLoading, setServicesLoading] = React.useState(true);
+
   const fetchProfile = React.useCallback(async () => {
     if (!tenantSlug) {
       setError("Invalid breeder URL");
@@ -1275,6 +1401,62 @@ export function BreederPage() {
   React.useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  // Fetch Animal Programs
+  React.useEffect(() => {
+    if (!tenantSlug) return;
+
+    let dead = false;
+
+    const fetchAnimalPrograms = async () => {
+      try {
+        const result = await getPublicAnimalPrograms({ tenantId: tenantSlug, limit: 100 });
+        if (!dead) {
+          setAnimalPrograms(result.items || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch animal programs:", err);
+        if (!dead) {
+          setAnimalPrograms([]);
+        }
+      } finally {
+        if (!dead) {
+          setAnimalProgramsLoading(false);
+        }
+      }
+    };
+
+    fetchAnimalPrograms();
+    return () => { dead = true; };
+  }, [tenantSlug]);
+
+  // Fetch Services
+  React.useEffect(() => {
+    if (!tenantSlug) return;
+
+    let dead = false;
+
+    const fetchServices = async () => {
+      try {
+        const result = await getPublicServices({ tenantId: tenantSlug, limit: 100 });
+        if (!dead) {
+          setServices(result.items || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch services:", err);
+        if (!dead) {
+          setServices([]);
+        }
+      } finally {
+        if (!dead) {
+          setServicesLoading(false);
+        }
+      }
+    };
+
+    fetchServices();
+    return () => { dead = true; };
+  }, [tenantSlug]);
 
   React.useEffect(() => {
     if (tenantSlug) {
@@ -1325,6 +1507,9 @@ export function BreederPage() {
 
   const locationDisplay = buildLocationDisplay(profile.location, profile.publicLocationMode);
 
+  // Calculate total program count (breeding programs + animal programs)
+  const totalProgramCount = profile.programs.length + animalPrograms.length;
+
   return (
     <div className="pb-32 md:pb-8">
       {/* Breadcrumb */}
@@ -1348,14 +1533,28 @@ export function BreederPage() {
           <TabsNav
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            programCount={profile.programs.length}
+            programCount={totalProgramCount}
+            servicesCount={services.length}
             reviewCount={profile.reviewCount}
           />
 
           {/* Tab Content */}
           <div className="min-h-[300px]">
             {activeTab === "about" && <AboutTab profile={profile} />}
-            {activeTab === "programs" && <ProgramsTab profile={profile} />}
+            {activeTab === "programs" && (
+              <ProgramsTab
+                profile={profile}
+                tenantId={profile.tenantSlug}
+                animalPrograms={animalPrograms}
+                loading={animalProgramsLoading}
+              />
+            )}
+            {activeTab === "services" && (
+              <ServicesTab
+                services={services}
+                loading={servicesLoading}
+              />
+            )}
             {activeTab === "reviews" && <ReviewsTab />}
           </div>
         </div>

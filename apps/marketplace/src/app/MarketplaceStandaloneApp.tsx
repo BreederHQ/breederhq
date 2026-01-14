@@ -5,6 +5,7 @@ import { MarketplaceGate } from "../gate/MarketplaceGate";
 import { LoginPage } from "../auth/LoginPage";
 import { RegisterPage } from "../auth/RegisterPage";
 import { TermsPage } from "../pages/TermsPage";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 /**
  * Root component for standalone Marketplace app.
@@ -16,18 +17,20 @@ import { TermsPage } from "../pages/TermsPage";
  */
 export function MarketplaceStandaloneApp() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true }}>
-      <Routes>
-        {/* Auth routes are outside the gate - accessible without authentication */}
-        <Route path="/auth" element={<Navigate to="/auth/login" replace />} />
-        <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/register" element={<RegisterPage />} />
-        {/* Legal pages are public - accessible without authentication */}
-        <Route path="/terms" element={<TermsPage />} />
-        {/* All other routes go through the gate */}
-        <Route path="*" element={<MarketplaceGate />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          {/* Auth routes are outside the gate - accessible without authentication */}
+          <Route path="/auth" element={<Navigate to="/auth/login" replace />} />
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route path="/auth/register" element={<RegisterPage />} />
+          {/* Legal pages are public - accessible without authentication */}
+          <Route path="/terms" element={<TermsPage />} />
+          {/* All other routes go through the gate */}
+          <Route path="*" element={<MarketplaceGate />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

@@ -1,5 +1,5 @@
-// apps/marketplace/src/marketplace/pages/ServicesPage.tsx
-// Services browse page - updated to match Animals/Breeders layout pattern
+// apps/marketplace/src/marketplace/pages/ServicesIndexPage.tsx
+// Services browse/index page - updated to match Animals/Breeders layout pattern
 // Two-column layout with sidebar filter panel, search bar, grid/list toggle
 
 import * as React from "react";
@@ -14,6 +14,8 @@ import { formatCents } from "../../utils/format";
 import { VerificationBadge } from "../components/VerificationBadge";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useGateStatus } from "../../gate/MarketplaceGate";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
+import { updateSEO } from "../../utils/seo";
 
 // =============================================================================
 // Types
@@ -504,7 +506,7 @@ function ServiceCard({ service }: { service: PublicServiceListing }) {
   return (
     <div className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
       {/* Image area */}
-      <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
+      <div className="relative h-[140px] overflow-hidden flex-shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -512,9 +514,7 @@ function ServiceCard({ service }: { service: PublicServiceListing }) {
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <ImagePlaceholderIcon className="w-12 h-12 text-text-tertiary" />
-          </div>
+          <DefaultCoverImage />
         )}
         {/* Category badge overlay */}
         <div className="absolute top-3 left-3">
@@ -1009,7 +1009,7 @@ function AuthRequiredState() {
 // Main Page Component
 // =============================================================================
 
-export function ServicesPage() {
+export function ServicesIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Parse URL params into filters state
@@ -1039,6 +1039,39 @@ export function ServicesPage() {
   // UI state
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
   const [displayMode, setDisplayMode] = React.useState<DisplayMode>("grid");
+
+  // SEO - Update meta tags based on current filters
+  React.useEffect(() => {
+    const categoryLabel = filters.category
+      ? SERVICE_TYPE_LABELS[filters.category] || "Services"
+      : "Services";
+
+    const speciesLabel = filters.species
+      ? SPECIES_OPTIONS.find((s) => s.value === filters.species)?.label
+      : null;
+
+    const titleParts = ["Browse"];
+    if (categoryLabel !== "Services") titleParts.push(categoryLabel);
+    if (speciesLabel) titleParts.push(`for ${speciesLabel}`);
+    titleParts.push("– BreederHQ Marketplace");
+
+    const descParts = [`Find ${categoryLabel.toLowerCase()}`];
+    if (speciesLabel) descParts.push(`for ${speciesLabel.toLowerCase()}`);
+    descParts.push("from verified providers. Professional breeding services and products.");
+
+    const canonicalParams = new URLSearchParams();
+    if (filters.category) canonicalParams.set("category", filters.category);
+    if (filters.species) canonicalParams.set("species", filters.species);
+    const canonicalQuery = canonicalParams.toString();
+
+    updateSEO({
+      title: titleParts.join(" "),
+      description: descParts.join(" "),
+      canonical: `https://marketplace.breederhq.com/services${canonicalQuery ? `?${canonicalQuery}` : ""}`,
+      keywords: `${categoryLabel.toLowerCase()}, ${speciesLabel ? `${speciesLabel.toLowerCase()} services, ` : ""}breeding services, stud services, animal services`,
+      noindex: false,
+    });
+  }, [filters.category, filters.species]);
 
   // Derived state
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -1423,4 +1456,4 @@ export function ServicesPage() {
   );
 }
 
-export default ServicesPage;
+export default ServicesIndexPage;

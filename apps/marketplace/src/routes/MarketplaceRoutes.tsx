@@ -13,13 +13,15 @@ import { HomePage } from "../marketplace/pages/HomePage";
 import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
 import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
 import { BreederPage } from "../marketplace/pages/BreederPage";
-import { ServicesPage } from "../marketplace/pages/ServicesPage";
+import { BreedingProgramPage } from "../marketplace/pages/BreedingProgramPage";
+import { ServicesIndexPage } from "../marketplace/pages/ServicesIndexPage";
 import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MyListingPage } from "../marketplace/pages/MyListingPage";
-import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage";
+// import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage"; // ARCHIVED
+import { AnimalProgramDetailPage } from "../marketplace/pages/AnimalProgramDetailPage";
 import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
 import { SavedListingsPage } from "../marketplace/pages/SavedListingsPage";
 import { WaitlistPositionsPage } from "../marketplace/pages/WaitlistPositionsPage";
@@ -29,6 +31,7 @@ import { BuyerDashboardPage } from "../buyer/pages/BuyerDashboardPage";
 import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePortal";
 import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
 import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
+import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgramsPage";
 
 /**
  * Route guard for seller-only routes.
@@ -59,8 +62,10 @@ export function MarketplaceRoutes() {
       <Route path="/animals" element={<AnimalsIndexPage />} />
       <Route path="/breeders" element={<BreedersIndexPage />} />
       <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
-      <Route path="/breeding-programs" element={<BreedingProgramsIndexPage />} />
-      <Route path="/services" element={<ServicesPage />} />
+      {/* <Route path="/breeding-programs" element={<BreedingProgramsIndexPage />} /> */} {/* ARCHIVED - redundant with animal-programs */}
+      <Route path="/breeding-programs/:slug" element={<BreedingProgramPage />} />
+      <Route path="/animal-programs/:slug" element={<AnimalProgramDetailPage />} />
+      <Route path="/services" element={<ServicesIndexPage />} />
 
       {/* Buyer activity */}
       <Route path="/dashboard" element={<BuyerDashboardPage />} />
@@ -96,6 +101,14 @@ export function MarketplaceRoutes() {
         element={
           <SellerOnlyRoute>
             <ManageServicesPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/breeding-programs"
+        element={
+          <SellerOnlyRoute>
+            <ManageBreedingProgramsPage />
           </SellerOnlyRoute>
         }
       />

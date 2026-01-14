@@ -72,3 +72,6 @@ CLAUDE.md
 .eslintcache
 *.nul
 /nul
+
+# Claude Code temporary files
+tmpclaude-*-cwd

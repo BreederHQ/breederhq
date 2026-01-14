@@ -8,11 +8,14 @@ import { formatCents } from "../../utils/format";
 import {
   getAnimalListings,
   getPublicOffspringGroups,
+  getPublicAnimalPrograms,
   type PublicOffspringGroupListing,
 } from "../../api/client";
-import type { PublicAnimalListingDTO } from "../../api/types";
+import type { PublicAnimalListingDTO, PublicAnimalProgramSummaryDTO } from "../../api/types";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useSaveButton } from "../../hooks/useSavedListings";
+import { AnimalProgramTile } from "../components/AnimalProgramTile";
+import { updateSEO } from "../../utils/seo";
 
 // =============================================================================
 // Icons
@@ -214,7 +217,7 @@ function SortIcon({ className, direction }: { className?: string; direction?: "a
 // Types and Constants
 // =============================================================================
 
-type ListingViewType = "all" | "offspring" | "animals";
+type ListingViewType = "all" | "offspring" | "animals" | "programs";
 type SortType = "newest" | "price_low" | "price_high" | "name_asc" | "name_desc" | "breed_asc" | "breed_desc" | "location_asc" | "location_desc";
 type DisplayMode = "grid" | "list";
 
@@ -495,6 +498,7 @@ function FilterPanel({
             { value: "all", label: "All Listings" },
             { value: "animals", label: "Individual Animals" },
             { value: "offspring", label: "Offspring Groups" },
+            { value: "programs", label: "Animal Programs" },
           ].map((opt) => (
             <label
               key={opt.value}
@@ -1149,12 +1153,46 @@ export function AnimalsIndexPage() {
     PublicOffspringGroupListing[]
   >([]);
   const [animalListings, setAnimalListings] = React.useState<PublicAnimalListingDTO[]>([]);
+  const [animalPrograms, setAnimalPrograms] = React.useState<PublicAnimalProgramSummaryDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [totalCount, setTotalCount] = React.useState(0);
 
   // UI state
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
   const [displayMode, setDisplayMode] = React.useState<DisplayMode>("grid");
+
+  // SEO - Update meta tags based on current filters
+  React.useEffect(() => {
+    const speciesLabel = filters.species
+      ? SPECIES_OPTIONS.find((s) => s.value === filters.species)?.label || "Animals"
+      : "Animals";
+
+    const breedLabel = filters.breed && filters.species
+      ? BREED_OPTIONS[filters.species]?.find((b) => b.value === filters.breed)?.label
+      : null;
+
+    const titleParts = ["Browse"];
+    if (breedLabel) titleParts.push(breedLabel);
+    else if (speciesLabel !== "Animals") titleParts.push(speciesLabel);
+    titleParts.push("from Verified Breeders – BreederHQ");
+
+    const descParts = [`Find quality ${speciesLabel.toLowerCase()}`];
+    if (breedLabel) descParts.push(`(${breedLabel})`);
+    descParts.push("from trusted breeding programs. Direct connection with professional breeders.");
+
+    const canonicalParams = new URLSearchParams();
+    if (filters.species) canonicalParams.set("species", filters.species);
+    if (filters.breed) canonicalParams.set("breed", filters.breed);
+    const canonicalQuery = canonicalParams.toString();
+
+    updateSEO({
+      title: titleParts.join(" "),
+      description: descParts.join(" "),
+      canonical: `https://marketplace.breederhq.com/animals${canonicalQuery ? `?${canonicalQuery}` : ""}`,
+      keywords: `${speciesLabel.toLowerCase()}, ${breedLabel ? `${breedLabel.toLowerCase()}, ` : ""}animal breeders, verified breeders, breeding programs`,
+      noindex: false,
+    });
+  }, [filters.species, filters.breed]);
 
   // Sync URL params when filters change
   React.useEffect(() => {
@@ -1181,8 +1219,9 @@ export function AnimalsIndexPage() {
       const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
       // Determine which APIs to call based on view filter
-      const fetchOffspring = filters.view !== "animals";
-      const fetchAnimals = filters.view !== "offspring";
+      const fetchOffspring = filters.view !== "animals" && filters.view !== "programs";
+      const fetchAnimals = filters.view !== "offspring" && filters.view !== "programs";
+      const fetchPrograms = filters.view !== "offspring" && filters.view !== "animals";
 
       const promises: Promise<any>[] = [];
 
@@ -1216,7 +1255,22 @@ export function AnimalsIndexPage() {
         promises.push(Promise.resolve({ items: [], total: 0 }));
       }
 
-      const [offspringResult, animalResult] = await Promise.allSettled(promises);
+      if (fetchPrograms) {
+        promises.push(
+          getPublicAnimalPrograms({
+            search: filters.search || undefined,
+            species: filters.species || undefined,
+            breed: filters.breed || undefined,
+            location: filters.location || undefined,
+            limit: ITEMS_PER_PAGE,
+            offset,
+          })
+        );
+      } else {
+        promises.push(Promise.resolve({ items: [], total: 0, limit: 0, offset: 0 }));
+      }
+
+      const [offspringResult, animalResult, programsResult] = await Promise.allSettled(promises);
 
       if (!dead) {
         // Handle offspring groups
@@ -1235,12 +1289,22 @@ export function AnimalsIndexPage() {
           setAnimalListings([]);
         }
 
+        // Handle animal programs
+        if (programsResult.status === "fulfilled") {
+          setAnimalPrograms(programsResult.value?.items || []);
+        } else {
+          console.error("Failed to fetch animal programs:", programsResult.reason);
+          setAnimalPrograms([]);
+        }
+
         // Calculate total count (for pagination)
         const offspringTotal =
           offspringResult.status === "fulfilled" ? offspringResult.value.total || 0 : 0;
         const animalTotal =
           animalResult.status === "fulfilled" ? animalResult.value?.total || 0 : 0;
-        setTotalCount(offspringTotal + animalTotal);
+        const programsTotal =
+          programsResult.status === "fulfilled" ? programsResult.value?.total || 0 : 0;
+        setTotalCount(offspringTotal + animalTotal + programsTotal);
 
         setLoading(false);
       }
@@ -1278,8 +1342,9 @@ export function AnimalsIndexPage() {
   };
 
   // Combine and filter listings
-  const filteredOffspring = filters.view === "animals" ? [] : offspringGroupListings;
-  const filteredAnimals = filters.view === "offspring" ? [] : animalListings;
+  const filteredOffspring = filters.view === "animals" || filters.view === "programs" ? [] : offspringGroupListings;
+  const filteredAnimals = filters.view === "offspring" || filters.view === "programs" ? [] : animalListings;
+  const filteredPrograms = filters.view === "offspring" || filters.view === "animals" ? [] : animalPrograms;
 
   // Apply client-side price filtering if set
   const applyPriceFilter = <T extends { priceCents?: number | null; priceMinCents?: number | null }>(
@@ -1297,8 +1362,9 @@ export function AnimalsIndexPage() {
 
   const displayedOffspring = applyPriceFilter(filteredOffspring);
   const displayedAnimals = applyPriceFilter(filteredAnimals);
+  const displayedPrograms = applyPriceFilter(filteredPrograms);
 
-  const totalDisplayed = displayedOffspring.length + displayedAnimals.length;
+  const totalDisplayed = displayedOffspring.length + displayedAnimals.length + displayedPrograms.length;
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
@@ -1577,6 +1643,14 @@ export function AnimalsIndexPage() {
                     />
                   );
                 })}
+
+                {/* Animal Program Listings */}
+                {displayMode === "grid" && displayedPrograms.map((program) => (
+                  <AnimalProgramTile
+                    key={`program-${program.id}`}
+                    program={program}
+                  />
+                ))}
               </div>
 
               {/* Pagination */}

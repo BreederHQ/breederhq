@@ -7,7 +7,12 @@ import type {
   ListingDetailDTO,
   AnimalListingsResponse,
   PublicAnimalListingDTO,
+  AnimalProgramsResponse,
+  PublicAnimalProgramSummaryDTO,
+  PublicAnimalProgramDetailDTO,
 } from "./types";
+
+export type { GetAnimalProgramsParams };
 
 /**
  * API client utilities for marketplace.
@@ -79,7 +84,7 @@ export function joinApi(path: string): string {
  * Get CSRF token from cookies.
  */
 export function getCsrfToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -300,6 +305,55 @@ export async function getAnimalListing(
   const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}`;
   devLogFetch(path);
   const { data } = await apiGet<PublicAnimalListingDTO>(path);
+  return data;
+}
+
+// ============================================================================
+// Public Animal Programs
+// ============================================================================
+
+export interface GetAnimalProgramsParams {
+  search?: string;
+  species?: string;
+  breed?: string;
+  location?: string;
+  templateType?: string;
+  tenantId?: string; // Filter by breeder for storefront context
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Get all published Animal Programs across all breeders.
+ * Used in the public Animals browse page to show grouped programs.
+ */
+export async function getPublicAnimalPrograms(params: GetAnimalProgramsParams = {}): Promise<AnimalProgramsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.species) query.set("species", params.species);
+  if (params.breed) query.set("breed", params.breed);
+  if (params.location) query.set("location", params.location);
+  if (params.templateType) query.set("templateType", params.templateType);
+  if (params.tenantId) query.set("tenantId", params.tenantId);
+  if (params.limit != null) query.set("limit", String(params.limit));
+  if (params.offset != null) query.set("offset", String(params.offset));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/marketplace/animal-programs${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<AnimalProgramsResponse>(path);
+  return data;
+}
+
+/**
+ * Get a single Animal Program by slug.
+ * Used in the public Animal Program detail page.
+ */
+export async function getAnimalProgramDetail(slug: string): Promise<PublicAnimalProgramDetailDTO> {
+  const path = `/api/v1/marketplace/animal-programs/${encodeURIComponent(slug)}`;
+  devLogFetch(path);
+  const { data } = await apiGet<PublicAnimalProgramDetailDTO>(path);
   return data;
 }
 
@@ -3107,4 +3161,491 @@ export async function unpublishMarketplaceProfile(
 
   const data = await safeReadJson<{ ok: boolean }>(response);
   return data || { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// V2 MARKETPLACE - DIRECT ANIMAL LISTINGS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get direct animal listings
+ * GET /api/v2/marketplace/direct-listings
+ */
+export async function getDirectListings(
+  tenantId: string,
+  params?: { status?: string; templateType?: string; page?: number; limit?: number }
+): Promise<{ items: DirectAnimalListing[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+  if (params?.status) {
+    qs.append("status", params.status);
+  }
+  if (params?.templateType) {
+    qs.append("templateType", params.templateType);
+  }
+  if (params?.page) {
+    qs.append("page", String(params.page));
+  }
+  if (params?.limit) {
+    qs.append("limit", String(params.limit));
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/direct-listings?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ items: DirectAnimalListing[]; total: number; page: number; limit: number }>(
+    response
+  );
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Get a single direct listing
+ * GET /api/v2/marketplace/direct-listings/:id
+ */
+export async function getDirectListing(tenantId: string, id: number): Promise<DirectAnimalListing> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/direct-listings/${id}?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<DirectAnimalListing>(response);
+  if (!data) {
+    throw new ApiError("No data returned", response.status);
+  }
+  return data;
+}
+
+/**
+ * Create or update a direct listing
+ * POST /api/v2/marketplace/direct-listings
+ */
+export async function saveDirectListing(
+  tenantId: string,
+  input: DirectAnimalListingCreate
+): Promise<DirectAnimalListing> {
+  const xsrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/direct-listings?tenantId=${tenantId}`), {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<DirectAnimalListing>(response);
+  if (!data) {
+    throw new ApiError("No data returned", response.status);
+  }
+  return data;
+}
+
+/**
+ * Update direct listing status
+ * PATCH /api/v2/marketplace/direct-listings/:id/status
+ */
+export async function updateDirectListingStatus(
+  tenantId: string,
+  id: number,
+  status: DirectListingStatus
+): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(
+    joinApi(`/api/v2/marketplace/direct-listings/${id}/status?tenantId=${tenantId}`),
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+/**
+ * Delete a direct listing
+ * DELETE /api/v2/marketplace/direct-listings/:id
+ */
+export async function deleteDirectListing(tenantId: string, id: number): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const url = joinApi(`/api/v2/marketplace/direct-listings/${id}?tenantId=${tenantId}`);
+  const headers: Record<string, string> = {
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// V2 MARKETPLACE - ANIMAL PROGRAMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get animal programs
+ * GET /api/v2/marketplace/animal-programs
+ */
+export async function getAnimalPrograms(
+  tenantId: string,
+  params?: { published?: boolean; templateType?: string; page?: number; limit?: number }
+): Promise<{ items: AnimalProgram[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+  if (params?.published !== undefined) {
+    qs.append("published", String(params.published));
+  }
+  if (params?.templateType) {
+    qs.append("templateType", params.templateType);
+  }
+  if (params?.page) {
+    qs.append("page", String(params.page));
+  }
+  if (params?.limit) {
+    qs.append("limit", String(params.limit));
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/animal-programs?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ items: AnimalProgram[]; total: number; page: number; limit: number }>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Get a single animal program
+ * GET /api/v2/marketplace/animal-programs/:id
+ */
+export async function getAnimalProgram(tenantId: string, id: number): Promise<AnimalProgram> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/animal-programs/${id}?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<AnimalProgram>(response);
+  if (!data) {
+    throw new ApiError("No data returned", response.status);
+  }
+  return data;
+}
+
+/**
+ * Create or update an animal program
+ * POST /api/v2/marketplace/animal-programs
+ */
+export async function saveAnimalProgram(tenantId: string, input: AnimalProgramCreate): Promise<AnimalProgram> {
+  const xsrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/animal-programs?tenantId=${tenantId}`), {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<AnimalProgram>(response);
+  if (!data) {
+    throw new ApiError("No data returned", response.status);
+  }
+  return data;
+}
+
+/**
+ * Update animal program published status
+ * PATCH /api/v2/marketplace/animal-programs/:id/publish
+ */
+export async function updateAnimalProgramPublished(
+  tenantId: string,
+  id: number,
+  published: boolean
+): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(
+    joinApi(`/api/v2/marketplace/animal-programs/${id}/publish?tenantId=${tenantId}`),
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ published }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+/**
+ * Delete an animal program
+ * DELETE /api/v2/marketplace/animal-programs/:id
+ */
+export async function deleteAnimalProgram(tenantId: string, id: number): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const url = joinApi(`/api/v2/marketplace/animal-programs/${id}?tenantId=${tenantId}`);
+  const headers: Record<string, string> = {
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+/**
+ * Add animals to a program
+ * POST /api/v2/marketplace/animal-programs/:id/participants
+ */
+export async function addAnimalsToProgram(
+  tenantId: string,
+  programId: number,
+  animalIds: number[]
+): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(
+    joinApi(`/api/v2/marketplace/animal-programs/${programId}/participants?tenantId=${tenantId}`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ animalIds }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+/**
+ * Remove an animal from a program
+ * DELETE /api/v2/marketplace/animal-programs/:programId/participants/:participantId
+ */
+export async function removeAnimalFromProgram(
+  tenantId: string,
+  programId: number,
+  participantId: number
+): Promise<{ success: boolean }> {
+  const xsrf = getCsrfToken();
+  const url = joinApi(`/api/v2/marketplace/animal-programs/${programId}/participants/${participantId}?tenantId=${tenantId}`);
+  const headers: Record<string, string> = {
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = xsrf;
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean }>(response);
+  return data || { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TENANT ANIMALS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface TenantAnimalItem {
+  id: number;
+  name: string;
+  species: string;
+  breed: string | null;
+  sex: string | null;
+  photoUrl: string | null;
+}
+
+/**
+ * Get tenant animals for animal selector (lightweight)
+ * GET /api/v2/marketplace/animals?search=&limit=
+ */
+export async function getTenantAnimals(
+  tenantId: string,
+  params?: { search?: string; limit?: number }
+): Promise<{ items: TenantAnimalItem[]; total: number }> {
+  const qs = new URLSearchParams();
+  if (params?.search) {
+    qs.append("search", params.search);
+  }
+  if (params?.limit) {
+    qs.append("limit", String(params.limit));
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/animals?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ items: TenantAnimalItem[]; total: number }>(response);
+  return data || { items: [], total: 0 };
 }

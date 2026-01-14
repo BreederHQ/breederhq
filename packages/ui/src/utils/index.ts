@@ -59,3 +59,19 @@ export function pickPlacementCompletedAny(x: any): any {
 // Species helpers and a few focused types
 export { SPECIES_UI, toApiSpecies, toUiSpecies } from "./species";
 export type { BreedHit, SpeciesUI, SpeciesAPI } from "./types";
+
+// Species Terminology System (STS)
+export {
+  getSpeciesTerminology,
+  getOffspringName,
+  getOffspringNameCap,
+  getBirthProcess,
+  getBirthVerb,
+  getGroupName,
+  getParentName,
+  speciesUsesCollars,
+  speciesEmphasizesCounts,
+  speciesShowsGroupConcept,
+  speciesUsesLitterWaitlist,
+} from "./speciesTerminology";
+export type { SpeciesCode, SpeciesTerminology } from "./speciesTerminology";

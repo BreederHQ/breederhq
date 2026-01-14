@@ -16,6 +16,7 @@ import {
 } from "../../api/client";
 import { formatCents } from "../../utils/format";
 import { useIsSeller, useTenantId } from "../../gate/MarketplaceGate";
+import { updateSEO, addStructuredData, getOrganizationStructuredData } from "../../utils/seo";
 
 // ============================================================================
 // ICONS
@@ -1270,6 +1271,51 @@ function SellerHomePage() {
 
 export function HomePage() {
   const isSeller = useIsSeller();
+  const [renderError, setRenderError] = React.useState<Error | null>(null);
+
+  // SEO for home page (public, indexable)
+  React.useEffect(() => {
+    updateSEO({
+      title: "BreederHQ Marketplace – Find Verified Animal Breeders",
+      description:
+        "Connect with verified breeders for dogs, cats, horses, rabbits, and more. Browse quality animals from trusted breeding programs. Direct connection with professional breeders.",
+      canonical: "https://marketplace.breederhq.com/",
+      keywords:
+        "animal breeders, puppies for sale, kittens for sale, horse breeders, verified breeders, breeding programs, dog breeders, cat breeders",
+      noindex: false, // Public page - allow indexing
+    });
+    addStructuredData(getOrganizationStructuredData());
+  }, []);
+
+  // Catch any errors during render
+  React.useEffect(() => {
+    const errorHandler = (event: ErrorEvent) => {
+      console.error("HomePage render error:", event.error);
+      setRenderError(event.error);
+    };
+    window.addEventListener("error", errorHandler);
+    return () => window.removeEventListener("error", errorHandler);
+  }, []);
+
+  if (renderError) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6">
+          <h2 className="text-xl font-bold text-white mb-2">Error Loading Page</h2>
+          <p className="text-text-secondary mb-4">
+            There was a problem loading the marketplace home page.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Sellers get a completely different home page focused on management
   if (isSeller) {

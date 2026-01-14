@@ -21,7 +21,7 @@ type Props = {
 type OffspringSubTab = "collars";
 
 const OFFSPRING_SUBTABS: Array<{ key: OffspringSubTab; label: string }> = [
-  { key: "collars", label: "Whelping Collars" },
+  { key: "collars", label: "Identification Collars" },
   // Future: add more subtabs here (e.g., "defaults", "workflows")
 ];
 

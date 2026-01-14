@@ -35,6 +35,7 @@ const PUBLIC_ROUTES = [
   "/services",
   "/programs",
   "/breeding-programs",
+  "/animal-programs",
 ];
 
 /**
@@ -48,6 +49,8 @@ function isPublicRoute(pathname: string): boolean {
   // Prefix matches for nested public routes
   if (pathname.startsWith("/breeders/") ||
       pathname.startsWith("/programs/") ||
+      pathname.startsWith("/breeding-programs/") ||
+      pathname.startsWith("/animal-programs/") ||
       pathname.startsWith("/animals/")) {
     return true;
   }

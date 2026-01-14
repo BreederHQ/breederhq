@@ -17,6 +17,7 @@ import { GeneticsAdminTab } from "../components/GeneticsAdminTab";
 import BillingTab from "../components/BillingTab";
 import { OffspringTab, type OffspringHandle } from "../components/OffspringTab";
 import { GeneralSettingsTab, type GeneralSettingsHandle } from "../components/GeneralSettingsTab";
+import { NotificationPreferencesTab } from "../components/NotificationPreferencesTab";
 // Marketplace settings moved to marketplace module at /marketplace/manage
 import { api } from "../api";
 
@@ -472,7 +473,8 @@ type Tab =
   | "groups"
   | "tags"
   | "genetics"
-  | "accessibility";
+  | "accessibility"
+  | "notifications";
 
 type Props = { open: boolean; dirty: boolean; onDirtyChange: (v: boolean) => void; onClose: () => void; };
 
@@ -483,6 +485,7 @@ const NAV: NavSection[] = [
     items: [
       { key: "profile", label: "Your Profile" },
       { key: "security", label: "Security" },
+      { key: "notifications", label: "Notifications" },
       { key: "billing", label: "Billing & Subscription" },
       { key: "subscription", label: "Subscription" },
       { key: "payments", label: "Payment Methods" },
@@ -527,7 +530,7 @@ function getTabLabel(k: Tab): string {
 export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: Props) {
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
-    profile: false, security: false, billing: false, subscription: false, payments: false, transactions: false,
+    profile: false, security: false, notifications: false, billing: false, subscription: false, payments: false, transactions: false,
     breeding: false, offspring: false, programProfile: false,
     general: false, users: false, groups: false, tags: false, genetics: false, accessibility: false,
   });
@@ -724,6 +727,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                   <ProfileTab ref={profileRef} dirty={dirtyMap.profile} onDirty={(v) => markDirty("profile", v)} onTitle={setProfileTitle} editMode={editMode} />
                 )}
                 {active === "security" && <SecurityTab dirty={dirtyMap.security} onDirty={(v) => markDirty("security", v)} />}
+                {active === "notifications" && <NotificationPreferencesTab onDirty={(v) => markDirty("notifications", v)} />}
                 {active === "billing" && <BillingTab dirty={dirtyMap.billing} onDirty={(v) => markDirty("billing", v)} />}
                 {active === "subscription" && <SubscriptionTab dirty={dirtyMap.subscription} onDirty={(v) => markDirty("subscription", v)} />}
                 {active === "payments" && <PaymentsTab dirty={dirtyMap.payments} onDirty={(v) => markDirty("payments", v)} />}

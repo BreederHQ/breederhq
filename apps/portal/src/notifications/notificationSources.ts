@@ -16,7 +16,11 @@ export type NotificationType =
   | "invoice_overdue"
   | "agreement_sent"
   | "agreement_signed"
-  | "offspring_ready";
+  | "offspring_ready"
+  | "vaccination_due"
+  | "vaccination_overdue"
+  | "breeding_timeline"
+  | "foaling_approaching";
 
 // Unified notification interface
 export interface Notification {
@@ -190,18 +194,74 @@ async function fetchMessageNotifications(portalFetch: PortalFetchFn): Promise<No
   }
 }
 
+// Fetch health and breeding notifications from persistent storage
+async function fetchHealthAndBreedingNotifications(portalFetch: PortalFetchFn): Promise<Notification[]> {
+  try {
+    const res = await portalFetch<{ notifications: any[] }>("/notifications?status=UNREAD&limit=50");
+    const dbNotifications = res?.notifications || [];
+    const notifications: Notification[] = [];
+
+    for (const notif of dbNotifications) {
+      // Map notification types to portal notification types
+      let portalType: NotificationType;
+
+      if (
+        notif.type === "vaccination_expiring_7d" ||
+        notif.type === "vaccination_expiring_3d" ||
+        notif.type === "vaccination_expiring_1d"
+      ) {
+        portalType = "vaccination_due";
+      } else if (notif.type === "vaccination_overdue") {
+        portalType = "vaccination_overdue";
+      } else if (
+        notif.type === "foaling_30d" ||
+        notif.type === "foaling_14d" ||
+        notif.type === "foaling_7d" ||
+        notif.type === "foaling_approaching" ||
+        notif.type === "foaling_overdue"
+      ) {
+        portalType = "foaling_approaching";
+      } else if (
+        notif.type === "breeding_heat_cycle_expected" ||
+        notif.type === "breeding_hormone_testing_due" ||
+        notif.type === "breeding_window_approaching"
+      ) {
+        portalType = "breeding_timeline";
+      } else {
+        // Skip unknown types
+        continue;
+      }
+
+      notifications.push({
+        id: `${notif.type}-${notif.id}`,
+        type: portalType,
+        title: notif.title,
+        timestamp: notif.createdAt,
+        href: notif.linkUrl || "/animals",
+        sourceId: notif.id,
+      });
+    }
+
+    return notifications;
+  } catch (err: any) {
+    console.error("[notificationSources] Failed to fetch health/breeding notifications:", err);
+    return [];
+  }
+}
+
 // Aggregate all notification sources
 export async function fetchAllNotifications(tenantSlug: string | null): Promise<Notification[]> {
   // Create a bound fetch function with the tenant slug
   const portalFetch = createPortalFetch(tenantSlug);
 
   // Run all sources in parallel, each handles its own errors
-  const [invoiceNotifs, agreementNotifs, offspringNotifs, messageNotifs] =
+  const [invoiceNotifs, agreementNotifs, offspringNotifs, messageNotifs, healthBreedingNotifs] =
     await Promise.all([
       fetchInvoiceNotifications(portalFetch),
       fetchAgreementNotifications(portalFetch),
       fetchOffspringNotifications(portalFetch),
       fetchMessageNotifications(portalFetch),
+      fetchHealthAndBreedingNotifications(portalFetch),
     ]);
 
   const allNotifications = [
@@ -209,6 +269,7 @@ export async function fetchAllNotifications(tenantSlug: string | null): Promise<
     ...agreementNotifs,
     ...offspringNotifs,
     ...messageNotifs,
+    ...healthBreedingNotifs,
   ];
 
   // Deduplicate by id (composite key ensures uniqueness)

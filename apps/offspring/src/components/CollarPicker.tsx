@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
-import { hooks } from "@bhq/ui";
+import { hooks, useSpeciesTerminology, speciesUsesCollars } from "@bhq/ui";
 import type { CollarColorOption, CollarPattern } from "@bhq/api";
 import { COLLAR_PATTERNS } from "@bhq/api";
 
@@ -56,6 +56,8 @@ export type CollarPickerProps = {
   value: string | null | undefined;
   /** Called when collar is selected */
   onChange: (colorId: string, pattern?: CollarPattern) => void;
+  /** Species code - if provided, collar picker only shows for species that use collars */
+  species?: string | null;
   /** Optional placeholder text */
   placeholder?: string;
   /** Additional CSS classes */
@@ -65,16 +67,23 @@ export type CollarPickerProps = {
 };
 
 /**
- * Dropdown picker for whelping collar colors.
+ * Dropdown picker for identification collar colors.
  * Fetches available colors from tenant settings automatically.
+ * Returns null for species that don't use collars (horses, cattle, chickens).
  */
 export function CollarPicker({
   value,
   onChange,
+  species,
   placeholder = "Select collar color",
   className = "",
   disabled = false,
 }: CollarPickerProps) {
+  // Hide collar picker for species that don't use collars
+  if (species && !speciesUsesCollars(species)) {
+    return null;
+  }
+
   const { colors, loading, resolveColor } = useCollarOptions();
   const [showPalette, setShowPalette] = React.useState(false);
   const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
