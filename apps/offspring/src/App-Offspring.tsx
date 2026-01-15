@@ -4135,6 +4135,95 @@ function OffspringGroupsTab(
 
                   {effectiveTab === "overview" && (
                     <>
+                      {/* Hierarchy Tree Section */}
+                      <SectionCard title="Hierarchy">
+                        {(() => {
+                          const hasProgramLink = !!tblRow.programName;
+                          const hasPlanLink = !!tblRow.planName;
+                          const isBroken = !hasProgramLink;
+                          const lineColorClass = hasProgramLink ? "bg-emerald-500" : "bg-red-500";
+
+                          return (
+                            <div className="text-sm relative" style={{ paddingLeft: 6 }}>
+                              {/* Continuous vertical line from program down */}
+                              <div
+                                className={`absolute left-[10px] top-[20px] w-[2px] ${lineColorClass}`}
+                                style={{ height: 28, opacity: 0.5 }}
+                              />
+                              {/* Continuous vertical line from plan down */}
+                              <div
+                                className="absolute left-[30px] top-[48px] w-[2px] bg-emerald-500"
+                                style={{ height: 28, opacity: 0.5 }}
+                              />
+
+                              {/* Program Level */}
+                              <div className="flex items-center h-7">
+                                <span
+                                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                    hasProgramLink ? "bg-emerald-500" : "bg-red-500 animate-pulse"
+                                  }`}
+                                />
+                                <span className={`ml-3 ${hasProgramLink ? "text-primary font-medium" : "text-red-400 font-medium"}`}>
+                                  {tblRow.programName || "No Breeding Program"}
+                                </span>
+                                {!hasProgramLink && (
+                                  <span className="text-xs text-red-400/80 ml-2">(not marketplace eligible)</span>
+                                )}
+                              </div>
+
+                              {/* Plan Level */}
+                              <div className="flex items-center h-7 ml-5">
+                                {/* Horizontal connector */}
+                                <div className={`w-3 h-[2px] ${lineColorClass}`} style={{ opacity: 0.5 }} />
+                                <span
+                                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                    hasPlanLink ? "bg-emerald-500" : "bg-yellow-500"
+                                  }`}
+                                />
+                                <span className="ml-3">
+                                  {tblRow.planName && tblRow.planId ? (
+                                    <a
+                                      href={`/breeding?planId=${tblRow.planId}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary underline hover:text-primary/80"
+                                    >
+                                      {tblRow.planName}
+                                    </a>
+                                  ) : (
+                                    <span className="text-secondary">{tblRow.planName || "No Breeding Plan"}</span>
+                                  )}
+                                </span>
+                              </div>
+
+                              {/* Group Level */}
+                              <div className="flex items-center h-7 ml-10">
+                                {/* Horizontal connector */}
+                                <div className="w-3 h-[2px] bg-emerald-500" style={{ opacity: 0.5 }} />
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-500 ring-2 ring-emerald-500/30" />
+                                <span className="text-primary font-semibold ml-3">
+                                  {tblRow.groupName || "This Group"}
+                                </span>
+                                <span className="text-xs text-secondary/60 ml-2">(current)</span>
+                              </div>
+
+                              {/* Warning message for broken linkage */}
+                              {isBroken && (
+                                <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-red-400 text-sm">⚠️</span>
+                                    <div className="text-xs text-red-300">
+                                      <strong>Marketplace Ineligible:</strong> This offspring group's breeding plan is not linked to a breeding program.
+                                      To list offspring in the marketplace, link the breeding plan to a program first.
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </SectionCard>
+
                       {/* Group Info Section */}
                       <SectionCard title="Group Info">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -4165,46 +4254,19 @@ function OffspringGroupsTab(
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <div className="text-xs text-secondary mb-1">Linked Breeding Program</div>
-                            <div className="h-[42px] flex items-center text-sm text-primary">
-                              {tblRow.programName || "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Species + Breed row */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-                          <div className="min-w-0">
                             <div className="text-xs text-secondary mb-1">Species</div>
                             <div className="h-[42px] flex items-center text-sm text-primary">
                               {tblRow.species || "—"}
                             </div>
                           </div>
-                          <div className="min-w-0 sm:col-span-2">
+                        </div>
+
+                        {/* Breed row */}
+                        <div className="grid grid-cols-1 gap-4 mt-4">
+                          <div className="min-w-0">
                             <div className="text-xs text-secondary mb-1">Breed</div>
                             <div className="h-[42px] flex items-center text-sm text-primary">
                               {tblRow.breed || "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Linked Breeding Plan row */}
-                        <div className="grid grid-cols-1 gap-4 mt-4">
-                          <div className="min-w-0">
-                            <div className="text-xs text-secondary mb-1">Linked Breeding Plan</div>
-                            <div className="h-[42px] flex items-center text-sm">
-                              {tblRow.planName && tblRow.planId ? (
-                                <a
-                                  href={`/breeding?planId=${tblRow.planId}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-primary underline hover:text-primary/80"
-                                >
-                                  {tblRow.planName}
-                                </a>
-                              ) : (
-                                <span className="text-primary">{tblRow.planName || "—"}</span>
-                              )}
                             </div>
                           </div>
                         </div>

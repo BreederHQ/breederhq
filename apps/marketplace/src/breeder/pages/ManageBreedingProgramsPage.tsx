@@ -455,15 +455,30 @@ function ProgramDashboardCard({
 
       {/* ═══ BREEDING PLANS FLAT LIST ═══ */}
       {matchingPlans.length > 0 && (
-        <div className="mt-4 space-y-3">
-          {matchingPlans.map((plan) => {
-            const planOffspring = getOffspringForPlan(plan.id);
-            const statusStyle = getStatusStyle(plan.status);
+        <div className="mt-6 relative">
+          {/* Section Label */}
+          <div className="pl-6 mb-3">
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-text-muted uppercase tracking-wide">
+              <Activity className="w-3.5 h-3.5" />
+              Breeding Plans ({matchingPlans.length})
+            </div>
+          </div>
 
-            return (
-              <div key={plan.id} className="ml-6">
-                {/* BREEDING PLAN ROW */}
-                <div className={`border border-l-4 ${statusStyle.borderColor} ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card`}>
+          {/* Visual connection line */}
+          <div className="absolute left-0 top-8 bottom-0 w-0.5 bg-accent/30" />
+
+          <div className="space-y-3">
+            {matchingPlans.map((plan) => {
+              const planOffspring = getOffspringForPlan(plan.id);
+              const statusStyle = getStatusStyle(plan.status);
+
+              return (
+                <div key={plan.id} className="relative pl-6">
+                  {/* Connection dot */}
+                  <div className="absolute left-0 top-6 w-2 h-2 bg-accent rounded-full -translate-x-[3px]" />
+
+                  {/* BREEDING PLAN ROW */}
+                  <div className={`border border-l-4 ${statusStyle.borderColor} ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card`}>
                   <div className="p-4">
                     {/* Plan Header */}
                     <div className="flex items-start justify-between gap-4 mb-3">
@@ -609,12 +624,6 @@ function ProgramDashboardCard({
                                         Born {formatDate(group.actualBirthOn)}
                                       </span>
                                     )}
-                                    {!group.actualBirthOn && group.expectedBirthOn && (
-                                      <span className="flex items-center gap-1 text-amber-400 font-medium">
-                                        <Clock className="w-3 h-3" />
-                                        Expected {formatDate(group.expectedBirthOn)}
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -648,9 +657,21 @@ function ProgramDashboardCard({
                                 </div>
 
                                 {/* Available */}
-                                <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
-                                  <div className="text-xs text-emerald-400 mb-1">Available</div>
-                                  <div className="text-xl font-bold text-emerald-400">{group.availableCount || 0}</div>
+                                <div className={`rounded-lg p-3 border ${
+                                  group.availableCount > 0
+                                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                                    : 'bg-portal-bg/50 border-border-subtle'
+                                }`}>
+                                  <div className={`text-xs mb-1 ${
+                                    group.availableCount > 0 ? 'text-emerald-400' : 'text-text-tertiary'
+                                  }`}>
+                                    Available
+                                  </div>
+                                  <div className={`text-xl font-bold ${
+                                    group.availableCount > 0 ? 'text-emerald-400' : 'text-text-tertiary'
+                                  }`}>
+                                    {group.availableCount > 0 ? group.availableCount : '—'}
+                                  </div>
                                 </div>
 
                                 {/* Waitlist - TODO: Need API support */}
@@ -792,6 +813,7 @@ function ProgramDashboardCard({
               </div>
             );
           })}
+          </div>
         </div>
       )}
 

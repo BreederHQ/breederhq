@@ -251,40 +251,19 @@ function HeroSection() {
   };
 
   return (
-    <section className="relative pt-6 pb-8 md:pt-8 md:pb-10">
-      <div className="text-center max-w-4xl mx-auto px-4">
-        {/* Updated headline per spec */}
-        <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight leading-tight mb-4">
-          THE PROFESSIONAL ANIMAL MARKETPLACE
+    <section className="relative pt-12 pb-16 md:pt-16 md:pb-20">
+      <div className="text-center mx-auto px-4">
+        {/* Hero headline */}
+        <h1 className="text-4xl md:text-6xl font-bold text-white tracking-tight leading-tight mb-6">
+          The Animal Professionals<br />
+          <span className="text-[#FF6B35]">Marketplace</span>
         </h1>
-        <p className="text-lg text-text-secondary mb-8 max-w-2xl mx-auto">
-          Breeding programs, animals, and services - all in one place.
+        <p className="text-xl text-text-secondary mb-16 max-w-3xl mx-auto leading-relaxed">
+          Verified Breeding Programs, Quality Animals, And Trusted Services.
         </p>
 
-        {/* Search Bar */}
-        <form onSubmit={handleSearch} className="max-w-xl mx-auto mb-10">
-          <div className="relative">
-            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-tertiary" aria-hidden="true" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search breeds, breeders, or services..."
-              aria-label="Search for breeds, breeders, or services"
-              className="w-full h-14 pl-12 pr-4 rounded-xl border border-border-subtle bg-portal-card text-white text-base placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-[hsl(var(--brand-orange))]"
-            />
-            <button
-              type="submit"
-              className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 rounded-lg bg-[hsl(var(--brand-blue))] text-white text-sm font-medium hover:bg-[hsl(var(--brand-blue))]/90 transition-colors"
-              style={{ minHeight: "48px" }}
-            >
-              Search
-            </button>
-          </div>
-        </form>
-
         {/* Three Pathway Cards using HeroPathwayCard component */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch max-w-7xl mx-auto">
           <HeroPathwayCard
             variant="neutral"
             icon={<PawFilledIcon className="h-9 w-9" />}
@@ -451,6 +430,59 @@ function FeaturedCard({ item }: { item: FeaturedItem }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+// ============================================================================
+// THREE AUDIENCES SECTION - One Platform. Three Audiences.
+// ============================================================================
+
+function ThreeAudiencesSection() {
+  return (
+    <section className="bg-[#FF6B35] py-16 md:py-20">
+      <div className="max-w-7xl mx-auto px-4">
+        {/* Section title */}
+        <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-12">
+          One Platform. Three Audiences.
+        </h2>
+
+        {/* Three columns */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* For Buyers */}
+          <div className="text-center">
+            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-6">
+              <SearchIcon className="h-10 w-10 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">For Buyers</h3>
+            <p className="text-white/90 leading-relaxed">
+              Find verified breeding programs, quality animals, and professional services.
+            </p>
+          </div>
+
+          {/* For Breeders */}
+          <div className="text-center">
+            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-6">
+              <PawIcon className="h-10 w-10 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">For Breeders</h3>
+            <p className="text-white/90 leading-relaxed">
+              Showcase your program to qualified buyers actively searching for what you offer.
+            </p>
+          </div>
+
+          {/* For Service Providers */}
+          <div className="text-center">
+            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-6">
+              <BriefcaseIcon className="h-10 w-10 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">For Service Providers</h3>
+            <p className="text-white/90 leading-relaxed">
+              Reach breeders and buyers who value professional animal care. No platform fees.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1243,20 +1275,8 @@ export function HomePage() {
       {/* Hero with search and 3 pathway cards (Animals, Breeders, Services) */}
       <HeroSection />
 
-      {/* Trust bar - marketplace stats or cold start messaging */}
-      <TrustBar />
-
-      {/* How It Works - 3-step explainer for first-time visitors */}
-      <HowItWorks />
-
       {/* Recent Listings - the actual inventory buyers are here for */}
       <RecentListingsSection />
-
-      {/* Trust section - why buy here vs elsewhere (for BUYERS) */}
-      <TrustSection />
-
-      {/* Dual Recruitment - side-by-side provider + breeder CTAs */}
-      <DualRecruitmentSection />
     </div>
   );
 }
