@@ -188,20 +188,85 @@ Similar section for the services marketplace.
 
 ---
 
-### 6. CTA Section Copy
+### 6. Service Provider Recruitment Section (NEW - HIGH PRIORITY)
 
-The section at the bottom encouraging breeders and service providers to join.
+**Problem**: The current homepage does NOTHING to encourage service providers to list. A trainer, groomer, or transport company visiting the site sees a breeder marketplace with no reason to join.
+
+**Context**: BreederHQ supports 16+ service categories:
+- Training (obedience, specialty, behavioral)
+- Grooming
+- Boarding & Day Care
+- Transport & Shipping
+- Photography & Videography
+- Veterinary & Health Testing
+- Stud Services
+- Whelping/Breeding Assistance
+- Working Dog Training (herding, hunting, protection)
+- Livestock Services (shearing, farrier)
+- And more...
+
+**Key differentiator**: Unlike Rover (20% fee) and Wag (40% fee), BreederHQ charges NO transaction fees. Providers keep 100% of what they charge.
+
+**Target audience**: Professional service providers — trainers, groomers, transporters, photographers, vets, farriers, shearers, etc.
+
+**Provide copy for**:
+
+1. **Section Headline** (5-10 words)
+   - Current placeholder: "Offer your services to the breeding community"
+   - Should speak TO providers, not ABOUT them
+   - Provide 2-3 alternatives
+
+2. **Section Description** (20-30 words)
+   - Current placeholder: "Trainers, groomers, transporters, photographers, vets — breeders and buyers need your expertise. List your services and connect with clients who understand the value of professional animal care."
+   - Should answer: "Why should I list here?"
+   - Provide 2-3 alternatives
+
+3. **Three Value Propositions** (title ~3-5 words + description ~15-20 words each)
+
+   Current placeholders:
+   - "Reach the right clients" / "Connect with serious breeders and pet owners who value quality over price."
+   - "No platform fees" / "Direct contact with clients. No commissions, no middleman fees on bookings."
+   - "Build your reputation" / "Collect reviews, showcase your credentials, and stand out in your specialty."
+
+   **Questions**:
+   - Are these the right three selling points?
+   - Is "No platform fees" strong enough? (This is a MAJOR differentiator)
+   - What else matters to service providers?
+
+4. **CTA Button Text**
+   - Current: "List Your Services"
+   - Alternatives? ("Get Listed", "Join as Provider", "Start Listing", etc.)
+
+---
+
+### 7. Breeder CTA Section Copy
+
+Separate CTA specifically for breeders (distinct from service providers).
 
 **Current copy**:
 - Headline: "Join the BreederHQ Marketplace"
 - Description: "List your breeding program, animals, or professional services. Reach qualified buyers actively searching for what you offer."
-- CTA 1: "List as Breeder"
-- CTA 2: "List Services"
+- CTA: "List as Breeder"
 
-**Review and improve**:
-- Is this compelling enough?
-- Should we have different CTAs for different audiences?
-- What's the strongest call-to-action wording?
+**Problems**:
+- Too generic — lumps breeders and service providers together
+- Doesn't explain why a breeder should list HERE vs elsewhere
+
+**Provide improved versions**:
+
+1. **Headline** (5-10 words)
+   - Current: "Join the BreederHQ Marketplace"
+   - Should speak specifically to breeders
+   - Provide 2-3 alternatives
+
+2. **Description** (20-30 words)
+   - Should answer: "Why list my breeding program here?"
+   - Key point: Breeders already use BreederHQ to manage their program — marketplace is an extension
+   - Provide 2-3 alternatives
+
+3. **CTA Button Text**
+   - Current: "List as Breeder"
+   - Alternatives? ("Show Your Program", "Get Listed", "Join as Breeder", etc.)
 
 ---
 

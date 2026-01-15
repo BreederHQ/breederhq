@@ -28,6 +28,8 @@ export type OffspringPlanLite = {
   breedText: string | null;
   dam: { id: number; name: string } | null;
   sire: { id: number; name: string } | null;
+  program?: { id: number; name: string } | null;
+  programId?: number | null;
   expectedPlacementStart: string | null;
   expectedPlacementCompleted: string | null;
   placementStartDateActual?: string | null;
@@ -98,6 +100,7 @@ export type AnimalLite = {
   species: Species | null;
   sex: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   registryNumber?: string | null;
   microchip?: string | null;
   birthDate?: string | null;
@@ -200,6 +203,7 @@ export type CreateOffspringIndividualBody = {
   species?: Species | null;
   sex?: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   birthDate?: string | null;
   notes?: string | null;
   placementState?: string | null;
@@ -233,6 +237,7 @@ export type CreateOffspringAnimalBody = {
   species?: Species | null;
   sex?: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   birthDate?: string | null;
   notes?: string | null;
   [key: string]: any;

@@ -1076,17 +1076,112 @@ className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounde
 
 ---
 
+## Task 8: Add Service Provider Recruitment Section
+
+**Priority**: P1 - Critical for marketplace growth
+**Estimated Effort**: 2-3 hours
+**Dependencies**: Copy content from copywriter
+
+### Problem
+
+The homepage does **nothing** to encourage service providers to list. A trainer, groomer, or transport company visiting the site sees a breeder marketplace with no reason to join.
+
+### Solution
+
+Add a dedicated `ServiceProviderCTA` section that:
+1. Shows the breadth of service categories (Training, Grooming, Transport, Photography, etc.)
+2. Explains the value proposition (reach right clients, no fees, build reputation)
+3. Has a prominent CTA to `/provider`
+
+### Implementation
+
+See separate spec: `docs/marketplace/homepage-service-provider-section-spec.md`
+
+**Summary**:
+1. Create `apps/marketplace/src/marketplace/components/ServiceProviderCTA.tsx`
+2. Add to HomePage between TrustSection and CTASection
+3. Shows 6+ service category badges with "+10 more"
+4. Three numbered value props on the right
+5. Orange-themed to differentiate from blue breeder section
+
+### Acceptance Criteria
+- [ ] Service providers have dedicated recruitment section
+- [ ] Service categories are visible (at least 6)
+- [ ] Value proposition is clear (reach clients, no fees, build reputation)
+- [ ] CTA links to /provider
+- [ ] Visually distinct from breeder sections (orange vs blue)
+- [ ] Mobile responsive
+
+---
+
+## Task 9: Update CTASection to Differentiate Breeders vs Providers
+
+**Priority**: P2
+**Estimated Effort**: 1 hour
+**Dependencies**: Task 8 (ServiceProviderCTA)
+
+### Problem
+
+Current CTASection lumps breeders and service providers together with generic messaging.
+
+### Solution
+
+Split into two distinct cards:
+1. **Breeder CTA** - Blue themed, speaks to breeders specifically
+2. **Service Provider CTA** - Orange themed (or remove if Task 8 handles this)
+
+### Implementation
+
+If ServiceProviderCTA (Task 8) is implemented, update CTASection to be **breeder-only**:
+
+```tsx
+function CTASection() {
+  return (
+    <section className="rounded-2xl border border-[hsl(var(--brand-blue))]/30 bg-[hsl(var(--brand-blue))]/5 p-8 md:p-10">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="max-w-xl">
+          <h2 className="text-xl font-bold text-white mb-2">
+            Are you a breeder?
+          </h2>
+          <p className="text-text-secondary">
+            Already using BreederHQ to manage your program? Showcase your animals and breeding program to qualified buyers.
+          </p>
+        </div>
+        <a
+          href="https://breederhq.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[hsl(var(--brand-blue))] text-white font-medium hover:bg-[hsl(var(--brand-blue))]/90 transition-colors whitespace-nowrap"
+        >
+          Join as a Breeder
+          <ArrowRightIcon className="h-4 w-4" />
+        </a>
+      </div>
+    </section>
+  );
+}
+```
+
+### Acceptance Criteria
+- [ ] Breeder CTA has specific messaging for breeders
+- [ ] No longer lumps breeders and providers together
+- [ ] Links to breederhq.com for breeder signup
+
+---
+
 ## Implementation Order
 
-1. **Task 1**: TrustBar Component (P1) - 2-3 hours
-2. **Task 2**: Empty State Handling (P1) - 3-4 hours
-3. **Task 3**: Render Category Section (P2) - 30 min
-4. **Task 4**: Accessibility Improvements (P2) - 2 hours
-5. **Task 5**: How It Works Section (P2) - 2-3 hours
-6. **Task 6**: Fix Hardcoded isVerified (P2) - 30 min
-7. **Task 7**: Button Touch Targets (P3) - 1 hour
+1. **Task 8**: Service Provider Recruitment Section (P1) - 2-3 hours **← NEW**
+2. **Task 1**: TrustBar Component (P1) - 2-3 hours
+3. **Task 2**: Empty State Handling (P1) - 3-4 hours
+4. **Task 9**: Update CTASection for Breeders Only (P2) - 1 hour **← NEW**
+5. **Task 3**: Render Category Section (P2) - 30 min
+6. **Task 4**: Accessibility Improvements (P2) - 2 hours
+7. **Task 5**: How It Works Section (P2) - 2-3 hours
+8. **Task 6**: Fix Hardcoded isVerified (P2) - 30 min
+9. **Task 7**: Button Touch Targets (P3) - 1 hour
 
-**Total Estimated Effort**: 11-15 hours
+**Total Estimated Effort**: 15-20 hours
 
 ---
 

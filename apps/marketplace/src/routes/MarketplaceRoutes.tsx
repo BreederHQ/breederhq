@@ -32,6 +32,7 @@ import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePorta
 import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
 import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
 import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgramsPage";
+import BreedingProgramRulesPage from "../breeder/pages/BreedingProgramRulesPage";
 
 /**
  * Route guard for seller-only routes.
@@ -109,6 +110,14 @@ export function MarketplaceRoutes() {
         element={
           <SellerOnlyRoute>
             <ManageBreedingProgramsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/breeding-programs/:programSlug/rules"
+        element={
+          <SellerOnlyRoute>
+            <BreedingProgramRulesPage />
           </SellerOnlyRoute>
         }
       />

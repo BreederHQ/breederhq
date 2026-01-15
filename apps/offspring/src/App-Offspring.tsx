@@ -599,6 +599,8 @@ type GroupTableRow = {
   planCode?: string | null;
   planName?: string | null;
   planId?: number | null;
+  programId?: number | null;
+  programName?: string | null;
   groupName?: string | null;
   species?: string | null;
   breed?: string | null;
@@ -883,6 +885,8 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     planCode: plan?.code ?? null,
     planName: plan?.name ?? null,
     planId: plan?.id ?? null,
+    programId: plan?.program?.id ?? plan?.programId ?? null,
+    programName: plan?.program?.name ?? null,
     groupName: d.identifier ?? plan?.name ?? `Group #${d.id}`,
     species: plan?.species ?? d.species ?? null,
     breed: plan?.breedText ?? null,
@@ -4131,9 +4135,11 @@ function OffspringGroupsTab(
 
                   {effectiveTab === "overview" && (
                     <>
-                      <SectionCard title="Identity">
-                        <div className="mt-2 grid grid-cols-1 gap-y-16 text-xs md:text-sm md:grid-cols-2 md:gap-x-10">
-                          <IdentityField label="Offspring Group Name">
+                      {/* Group Info Section */}
+                      <SectionCard title="Group Info">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Offspring Group Name</div>
                             {isEdit ? (
                               <Input
                                 type="text"
@@ -4142,80 +4148,115 @@ function OffspringGroupsTab(
                                   const v = e.currentTarget.value.trim();
                                   setDraft({ identifier: v || null });
                                 }}
-                                className="h-8 w-full bg-background text-sm"
+                                className="h-[42px] w-full bg-surface text-sm"
+                                style={{ height: 42, minHeight: 42 }}
                                 placeholder="Enter group name..."
                               />
                             ) : (
-                              tblRow.groupName || "-"
+                              <div className="h-[42px] flex items-center text-sm text-primary">
+                                {tblRow.groupName || "—"}
+                              </div>
                             )}
-                          </IdentityField>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Status</div>
+                            <div className="h-[42px] flex items-center text-sm text-primary">
+                              {tblRow.status || "—"}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Linked Breeding Program</div>
+                            <div className="h-[42px] flex items-center text-sm text-primary">
+                              {tblRow.programName || "—"}
+                            </div>
+                          </div>
+                        </div>
 
-                          <IdentityField label="Linked Breeding Plan">
-                            {tblRow.planName && tblRow.planId ? (
-                              <a
-                                href={`/breeding?planId=${tblRow.planId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.planName}
-                              </a>
-                            ) : (
-                              tblRow.planName || "-"
-                            )}
-                          </IdentityField>
+                        {/* Species + Breed row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Species</div>
+                            <div className="h-[42px] flex items-center text-sm text-primary">
+                              {tblRow.species || "—"}
+                            </div>
+                          </div>
+                          <div className="min-w-0 sm:col-span-2">
+                            <div className="text-xs text-secondary mb-1">Breed</div>
+                            <div className="h-[42px] flex items-center text-sm text-primary">
+                              {tblRow.breed || "—"}
+                            </div>
+                          </div>
+                        </div>
 
-                          <IdentityField label="Species">
-                            {tblRow.species || "-"}
-                          </IdentityField>
-
-                          <IdentityField label="Breed">
-                            {tblRow.breed || "-"}
-                          </IdentityField>
-
-                          <IdentityField label="Dam">
-                            {tblRow.damName && tblRow.damId ? (
-                              <a
-                                href={`/animals/${tblRow.damId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.damName}
-                              </a>
-                            ) : (
-                              tblRow.damName || "-"
-                            )}
-                          </IdentityField>
-
-                          <IdentityField label="Sire">
-                            {tblRow.sireName && tblRow.sireId ? (
-                              <a
-                                href={`/animals/${tblRow.sireId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.sireName}
-                              </a>
-                            ) : (
-                              tblRow.sireName || "-"
-                            )}
-                          </IdentityField>
-
-                          <div className="md:col-span-2">
-                            <IdentityField label="Status">
-                              {tblRow.status || "-"}
-                            </IdentityField>
+                        {/* Linked Breeding Plan row */}
+                        <div className="grid grid-cols-1 gap-4 mt-4">
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Linked Breeding Plan</div>
+                            <div className="h-[42px] flex items-center text-sm">
+                              {tblRow.planName && tblRow.planId ? (
+                                <a
+                                  href={`/breeding?planId=${tblRow.planId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline hover:text-primary/80"
+                                >
+                                  {tblRow.planName}
+                                </a>
+                              ) : (
+                                <span className="text-primary">{tblRow.planName || "—"}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </SectionCard>
 
+                      {/* Parents Section */}
+                      <SectionCard title="Parents">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Dam</div>
+                            <div className="h-[42px] flex items-center text-sm">
+                              {tblRow.damName && tblRow.damId ? (
+                                <a
+                                  href={`/animals/${tblRow.damId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline hover:text-primary/80"
+                                >
+                                  {tblRow.damName}
+                                </a>
+                              ) : (
+                                <span className="text-primary">{tblRow.damName || "—"}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs text-secondary mb-1">Sire</div>
+                            <div className="h-[42px] flex items-center text-sm">
+                              {tblRow.sireName && tblRow.sireId ? (
+                                <a
+                                  href={`/animals/${tblRow.sireId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline hover:text-primary/80"
+                                >
+                                  {tblRow.sireName}
+                                </a>
+                              ) : (
+                                <span className="text-primary">{tblRow.sireName || "—"}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </SectionCard>
+
+                      {/* Tags Section */}
                       <SectionCard
-                        title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                        title="Tags"
                         right={<GroupTagsSection groupId={row.id} api={api} disabled={!isEdit} />}
                       />
 
+                      {/* Counts Section - via DetailsSpecRenderer */}
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}
                         mode={isEdit ? "edit" : "view"}

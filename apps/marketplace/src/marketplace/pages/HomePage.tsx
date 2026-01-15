@@ -17,6 +17,10 @@ import {
 import { formatCents } from "../../utils/format";
 import { useIsSeller, useTenantId } from "../../gate/MarketplaceGate";
 import { updateSEO, addStructuredData, getOrganizationStructuredData } from "../../utils/seo";
+import { HeroPathwayCard } from "../components/HeroPathwayCard";
+import { TrustBar } from "../components/TrustBar";
+import { HowItWorks } from "../components/HowItWorks";
+import { DualRecruitmentSection } from "../components/DualRecruitmentSection";
 
 // ============================================================================
 // ICONS
@@ -249,89 +253,64 @@ function HeroSection() {
   return (
     <section className="relative pt-6 pb-8 md:pt-8 md:pb-10">
       <div className="text-center max-w-4xl mx-auto px-4">
-        {/* Clean headline - no corporate buzzwords */}
+        {/* Updated headline per spec */}
         <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight leading-tight mb-4">
-          Animals. Breeders. Services.
+          THE PROFESSIONAL ANIMAL MARKETPLACE
         </h1>
         <p className="text-lg text-text-secondary mb-8 max-w-2xl mx-auto">
-          Where Breeders and Buyers Connect
+          Breeding programs, animals, and services - all in one place.
         </p>
 
         {/* Search Bar */}
         <form onSubmit={handleSearch} className="max-w-xl mx-auto mb-10">
           <div className="relative">
-            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-tertiary" />
+            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-tertiary" aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search breeds, breeders, or services..."
+              aria-label="Search for breeds, breeders, or services"
               className="w-full h-14 pl-12 pr-4 rounded-xl border border-border-subtle bg-portal-card text-white text-base placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-[hsl(var(--brand-orange))]"
             />
             <button
               type="submit"
               className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 rounded-lg bg-[hsl(var(--brand-blue))] text-white text-sm font-medium hover:bg-[hsl(var(--brand-blue))]/90 transition-colors"
+              style={{ minHeight: "48px" }}
             >
               Search
             </button>
           </div>
         </form>
 
-        {/* PRIMARY CATEGORY CARDS - Animals, Breeders, Services */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Animals Card */}
-          <div className="rounded-2xl border border-border-subtle bg-portal-card p-8 h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-[hsl(var(--brand-blue))]/40 hover:-translate-y-1 hover:shadow-xl group">
-            <div className="w-16 h-16 rounded-2xl bg-[#f27517] flex items-center justify-center mb-5 mx-auto">
-              <PawFilledIcon className="h-9 w-9 text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 text-center">Animals</h3>
-            <p className="text-sm text-text-tertiary mb-5 text-center flex-grow">
-              Browse Animals from Breeding Programs
-            </p>
-            <Link
-              to="/animals"
-              className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-[#005dc3] text-sm font-medium text-white hover:bg-[#005dc3]/80 transition-colors mt-auto"
-            >
-              Browse Animals
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
-          </div>
+        {/* Three Pathway Cards using HeroPathwayCard component */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          <HeroPathwayCard
+            variant="neutral"
+            icon={<PawFilledIcon className="h-9 w-9" />}
+            title="Animals"
+            description="Browse dogs, cats, horses, and more from verified breeders"
+            primaryCTA={{ label: "Browse Animals", href: "/animals" }}
+            secondaryCTA={{ label: "List Animals", href: "https://breederhq.com", external: true }}
+          />
 
-          {/* Breeders Card */}
-          <div className="rounded-2xl border border-border-subtle bg-portal-card p-8 h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-[hsl(var(--brand-blue))]/40 hover:-translate-y-1 hover:shadow-xl group">
-            <div className="w-16 h-16 rounded-2xl bg-[#f27517] flex items-center justify-center mb-5 mx-auto">
-              <ShieldCheckIcon className="h-8 w-8 text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 text-center">Breeders</h3>
-            <p className="text-sm text-text-tertiary mb-5 text-center flex-grow">
-              Find the Right Breeder for You
-            </p>
-            <Link
-              to="/breeders"
-              className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-[#005dc3] text-sm font-medium text-white hover:bg-[#005dc3]/80 transition-colors mt-auto"
-            >
-              Find Breeders
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
-          </div>
+          <HeroPathwayCard
+            variant="breeder"
+            icon={<ShieldCheckIcon className="h-8 w-8" />}
+            title="Breeders"
+            description="Find verified breeding programs with full transparency"
+            primaryCTA={{ label: "Find Breeders", href: "/breeders" }}
+            secondaryCTA={{ label: "List Your Program", href: "https://breederhq.com", external: true }}
+          />
 
-          {/* Services Card */}
-          <div className="rounded-2xl border border-border-subtle bg-portal-card p-8 h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-[hsl(var(--brand-blue))]/40 hover:-translate-y-1 hover:shadow-xl group">
-            <div className="w-16 h-16 rounded-2xl bg-[#f27517] flex items-center justify-center mb-5 mx-auto">
-              <BriefcaseIcon className="h-8 w-8 text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 text-center">Services</h3>
-            <p className="text-sm text-text-tertiary mb-5 text-center flex-grow">
-              Explore Animal-Related Service Providers
-            </p>
-            <Link
-              to="/services"
-              className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-[#005dc3] text-sm font-medium text-white hover:bg-[#005dc3]/80 transition-colors mt-auto"
-            >
-              Explore Services
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
-          </div>
+          <HeroPathwayCard
+            variant="provider"
+            icon={<BriefcaseIcon className="h-8 w-8" />}
+            title="Services"
+            description="Training, grooming, transport, photography & more"
+            primaryCTA={{ label: "Find Services", href: "/services" }}
+            secondaryCTA={{ label: "List Yours", href: "/provider" }}
+          />
         </div>
       </div>
     </section>
@@ -691,129 +670,65 @@ function RecentBreedersSection() {
 
 function TrustSection() {
   return (
-    <div className="space-y-6">
-      {/* BREEDERS CARD - Text left, icons right */}
-      <section className="rounded-2xl bg-gradient-to-br from-portal-card to-portal-card-hover border border-border-subtle p-8 md:p-10">
-        <div className="grid md:grid-cols-2 gap-8 items-center">
-          {/* Left: Value statement */}
-          <div>
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Not a classified ad. A breeding program.
-            </h2>
-            <p className="text-text-secondary mb-6 leading-relaxed">
-              BreederHQ breeders use our platform to manage their entire program - animals, health records, pedigrees, litters. What you see here is their real operation, not a one-off listing.
-            </p>
-            <Link
-              to="/breeders"
-              className="inline-flex items-center gap-2 text-[hsl(var(--brand-orange))] font-medium hover:underline"
-            >
-              Browse breeders
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
+    <section className="rounded-2xl bg-gradient-to-br from-portal-card to-portal-card-hover border border-border-subtle p-8 md:p-10">
+      <div className="grid md:grid-cols-2 gap-8 items-center">
+        {/* Left: Value statement */}
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-4">
+            NOT A CLASSIFIED AD. A BREEDING PROGRAM.
+          </h2>
+          <p className="text-text-secondary mb-6 leading-relaxed">
+            BreederHQ breeders use our platform to manage their entire program - animals, health records, pedigrees, litters. What you see here is their real operation, not a one-off listing.
+          </p>
+          <Link
+            to="/breeders"
+            className="inline-flex items-center gap-2 text-[hsl(var(--brand-orange))] font-medium hover:underline"
+          >
+            Browse breeders
+            <ArrowRightIcon className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {/* Right: What's actually different */}
+        <div className="space-y-4">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
+              <PawIcon className="h-5 w-5 text-white/60" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-1">Full Program Visibility</h3>
+              <p className="text-sm text-text-tertiary">
+                See their animals, breeding history, health testing, and past litters - not just one listing.
+              </p>
+            </div>
           </div>
 
-          {/* Right: What's actually different */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <PawIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Full Program Visibility</h3>
-                <p className="text-sm text-text-tertiary">
-                  See their animals, breeding history, health testing, and past litters - not just one listing.
-                </p>
-              </div>
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
+              <MessageCircleIcon className="h-5 w-5 text-white/60" />
             </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <MessageCircleIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Direct Connection</h3>
-                <p className="text-sm text-text-tertiary">
-                  Message breeders directly. Ask questions, request more info, schedule visits.
-                </p>
-              </div>
+            <div>
+              <h3 className="font-semibold text-white mb-1">Direct Connection</h3>
+              <p className="text-sm text-text-tertiary">
+                Message breeders directly. Ask questions, request more info.
+              </p>
             </div>
+          </div>
 
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <StarIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Established Programs</h3>
-                <p className="text-sm text-text-tertiary">
-                  Breeders actively managing their animals, health records, and breeding plans on our platform.
-                </p>
-              </div>
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
+              <StarIcon className="h-5 w-5 text-white/60" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-1">Established Programs</h3>
+              <p className="text-sm text-text-tertiary">
+                Breeders actively managing their animals and breeding plans.
+              </p>
             </div>
           </div>
         </div>
-      </section>
-
-      {/* SERVICES CARD - Icons left, text right (flipped layout) */}
-      <section className="rounded-2xl bg-gradient-to-br from-portal-card to-portal-card-hover border border-border-subtle p-8 md:p-10">
-        <div className="grid md:grid-cols-2 gap-8 items-center">
-          {/* Left: Service features */}
-          <div className="space-y-4 md:order-1">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <BriefcaseIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Professional Services</h3>
-                <p className="text-sm text-text-tertiary">
-                  Training, grooming, transport, photography, and more from verified providers.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <ShieldCheckIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Vetted Providers</h3>
-                <p className="text-sm text-text-tertiary">
-                  Service providers connected to the breeding community, not random listings.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                <MessageCircleIcon className="h-5 w-5 text-white/60" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Direct Booking</h3>
-                <p className="text-sm text-text-tertiary">
-                  Contact providers directly to discuss your needs and schedule services.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Value statement */}
-          <div className="md:order-2 md:text-right">
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Services for breeders and buyers.
-            </h2>
-            <p className="text-text-secondary mb-6 leading-relaxed">
-              Find professional services to support your animals - from training and grooming to transport and health testing. All from providers who understand the breeding community.
-            </p>
-            <Link
-              to="/services"
-              className="inline-flex items-center gap-2 text-[hsl(var(--brand-orange))] font-medium hover:underline md:justify-end"
-            >
-              Browse services
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -1325,17 +1240,23 @@ export function HomePage() {
   // Buyers get the standard marketplace browsing experience
   return (
     <div className="space-y-8 pb-0">
-      {/* Hero with search and primary category cards (Animals, Breeders, Services) */}
+      {/* Hero with search and 3 pathway cards (Animals, Breeders, Services) */}
       <HeroSection />
+
+      {/* Trust bar - marketplace stats or cold start messaging */}
+      <TrustBar />
+
+      {/* How It Works - 3-step explainer for first-time visitors */}
+      <HowItWorks />
 
       {/* Recent Listings - the actual inventory buyers are here for */}
       <RecentListingsSection />
 
-      {/* Trust section - why buy here vs elsewhere */}
+      {/* Trust section - why buy here vs elsewhere (for BUYERS) */}
       <TrustSection />
 
-      {/* Supplier CTA - unified breeder + service provider recruitment */}
-      <CTASection />
+      {/* Dual Recruitment - side-by-side provider + breeder CTAs */}
+      <DualRecruitmentSection />
     </div>
   );
 }

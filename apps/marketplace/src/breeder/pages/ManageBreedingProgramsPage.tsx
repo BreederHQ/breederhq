@@ -39,10 +39,15 @@ import {
   saveMarketplaceProfileDraft,
   getBreederBreedingPlans,
   getBreederOffspringGroups,
+  getBreedingPrograms,
+  syncBreedingProgramsFromProfile,
   type MarketplaceProfileDraft,
   type BreederBreedingPlanItem,
   type BreederOffspringGroupItem,
 } from "../../api/client";
+
+// Component imports
+import InlineRulesWidget from "../components/InlineRulesWidget";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES & CONSTANTS
@@ -280,6 +285,7 @@ function ProgramDashboardCard({
   loadingStats,
   matchingPlans,
   matchingGroups,
+  programSlug,
   onEdit,
   onRemove,
   onOffspringGroupClick,
@@ -290,6 +296,7 @@ function ProgramDashboardCard({
   loadingStats: boolean;
   matchingPlans: BreederBreedingPlanItem[];
   matchingGroups: BreederOffspringGroupItem[];
+  programSlug: string | null;
   onEdit: () => void;
   onRemove: () => void;
   onOffspringGroupClick: (group: BreederOffspringGroupItem) => void;
@@ -444,6 +451,8 @@ function ProgramDashboardCard({
         </div>
       </div>
 
+      {/* Rules management moved to program editor */}
+
       {/* ═══ BREEDING PLANS FLAT LIST ═══ */}
       {matchingPlans.length > 0 && (
         <div className="mt-4 space-y-3">
@@ -550,6 +559,8 @@ function ProgramDashboardCard({
                         </button>
                       </div>
                     </div>
+
+                    {/* Rules moved to settings modal */}
 
                     {/* OFFSPRING GROUP (Single per plan) */}
                     {planOffspring.length > 0 && (
@@ -661,6 +672,8 @@ function ProgramDashboardCard({
                                 </div>
                               </div>
 
+                              {/* Rules moved to group settings */}
+
                               {/* Individual Offspring List (Expandable) */}
                               {hasOffspring && showIndividualOffspring && (
                                 <div className="pt-4 border-t border-border-subtle">
@@ -754,6 +767,8 @@ function ProgramDashboardCard({
                                               </button>
                                             </div>
                                           </div>
+
+                                          {/* Rules available via offspring detail page */}
                                         </div>
                                       );
                                     })}
@@ -795,25 +810,28 @@ function ProgramDashboardCard({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PROGRAM EDITOR (Expanded View)
+// PROGRAM EDITOR DRAWER (Modern Slide-out Modal)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ProgramEditor({
+function ProgramEditorDrawer({
   program,
   index,
   onChange,
-  onCollapse,
+  onClose,
   onRemove,
   breederBreeds,
+  programSlug,
 }: {
   program: ListedProgramItem;
   index: number;
   onChange: (updates: Partial<ListedProgramItem>) => void;
-  onCollapse: () => void;
+  onClose: () => void;
   onRemove: () => void;
   breederBreeds: SelectedBreed[];
+  programSlug: string | null;
 }) {
   const isMissingRequired = !program.name?.trim() || !program.breedText?.trim();
+  const [activeTab, setActiveTab] = React.useState<'details' | 'listing'>('details');
 
   // Filter breeds by selected species
   const currentSpecies = (program.species || "DOG").toUpperCase();
@@ -838,38 +856,73 @@ function ProgramEditor({
   };
 
   return (
-    <div className={`bg-portal-card border rounded-xl overflow-hidden ${isMissingRequired ? "border-amber-500/50" : "border-accent/50"}`}>
-      {/* Header - clickable to collapse */}
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      {/* Modal */}
       <div
-        className="flex items-center justify-between px-6 py-4 bg-portal-surface/50 cursor-pointer hover:bg-portal-surface/70 transition-colors"
-        onClick={onCollapse}
+        className="w-full max-w-3xl max-h-[90vh] bg-portal-bg border border-border-subtle rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3">
-          <ChevronUp className="w-5 h-5 text-text-secondary" />
-          <div>
-            <h4 className="text-lg font-semibold text-white">
-              {program.name || `Program ${index + 1}`}
-            </h4>
-            <p className="text-sm text-text-secondary">
-              {program.species ? PROGRAM_SPECIES_OPTIONS.find(s => s.value === program.species)?.label || program.species : "Dog"}
-              {program.breedText ? ` — ${program.breedText}` : ""}
-            </p>
+        {/* Header */}
+        <div className="bg-portal-surface border-b border-border-subtle flex-shrink-0">
+          <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
+              <PawPrint className="w-5 h-5 text-accent" />
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  {program.name || 'New Program'}
+                </h2>
+                <p className="text-sm text-text-muted">
+                  {program.species && program.breedText ? `${program.species} · ${program.breedText}` : 'Configure your breeding program'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onRemove}
+                className="p-2 hover:bg-red-500/10 text-text-muted hover:text-red-400 rounded-lg transition-colors"
+                title="Delete program"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/10 text-text-muted hover:text-white rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex px-6 gap-1">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'details'
+                  ? 'border-accent text-white'
+                  : 'border-transparent text-text-muted hover:text-white'
+              }`}
+            >
+              Program Details
+            </button>
+            <button
+              onClick={() => setActiveTab('listing')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'listing'
+                  ? 'border-accent text-white'
+                  : 'border-transparent text-text-muted hover:text-white'
+              }`}
+            >
+              Listing & Rules
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="p-2.5 text-text-secondary hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
-            title="Remove program"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-      </div>
 
-      {/* Editor Content */}
-      <div className="p-6 space-y-6 border-t border-border-subtle">
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-6">
         {/* Program Identity */}
         <div className="space-y-4">
           <h5 className="text-sm font-semibold text-white border-b border-border-subtle pb-2">
@@ -1111,6 +1164,30 @@ function ProgramEditor({
             </div>
           </div>
         </div>
+
+          {/* Tab: Details */}
+          {activeTab === 'details' && (
+            <>
+              {/* All existing form fields stay here - they're already rendered above */}
+            </>
+          )}
+
+          {/* Tab: Listing & Rules */}
+          {activeTab === 'listing' && programSlug && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-base font-semibold text-white mb-2">Listing Rules</h3>
+                <p className="text-sm text-text-muted mb-4">
+                  Automate how offspring from this program are listed and managed in your marketplace.
+                </p>
+                <InlineRulesWidget
+                  level="PROGRAM"
+                  levelId={programSlug}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1137,6 +1214,9 @@ export function ManageBreedingProgramsPage() {
   const [offspringGroups, setOffspringGroups] = React.useState<BreederOffspringGroupItem[]>([]);
   const [loadingStats, setLoadingStats] = React.useState(false);
 
+  // Actual breeding programs with slugs (for rules management)
+  const [breedingPrograms, setBreedingPrograms] = React.useState<any[]>([]);
+
   // Offspring modal state
   const [selectedOffspringGroup, setSelectedOffspringGroup] = React.useState<BreederOffspringGroupItem | null>(null);
 
@@ -1157,21 +1237,79 @@ export function ManageBreedingProgramsPage() {
       });
   }, [tenantId]);
 
-  // Fetch breeding plans and offspring groups for stats
+  // Fetch breeding plans, offspring groups, and actual breeding programs
   React.useEffect(() => {
     if (!tenantId) return;
 
     setLoadingStats(true);
-    Promise.all([
-      getBreederBreedingPlans(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
-      getBreederOffspringGroups(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
-    ])
-      .then(([plansRes, groupsRes]) => {
+
+    // First sync programs from profile to database (idempotent)
+    syncBreedingProgramsFromProfile(tenantId)
+      .catch((err) => {
+        console.warn("Failed to sync breeding programs:", err);
+      })
+      .then(() => {
+        // Then fetch all data
+        return Promise.all([
+          getBreederBreedingPlans(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
+          getBreederOffspringGroups(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
+          getBreedingPrograms(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
+        ]);
+      })
+      .then(([plansRes, groupsRes, programsRes]) => {
         setBreedingPlans(plansRes.items || []);
         setOffspringGroups(groupsRes.items || []);
+        setBreedingPrograms(programsRes.items || []);
       })
       .finally(() => setLoadingStats(false));
   }, [tenantId]);
+
+  // Find matching breeding program with slug
+  const findProgramSlug = React.useCallback(
+    (program: ListedProgramItem): string | null => {
+      if (!program.species) {
+        console.log('[findProgramSlug] No species for program:', program.name);
+        return null;
+      }
+
+      const species = program.species.toUpperCase();
+      const breedText = program.breedText?.toLowerCase();
+
+      console.log('[findProgramSlug] Looking for program:', {
+        name: program.name,
+        species,
+        breedText,
+        availablePrograms: breedingPrograms.length,
+        programs: breedingPrograms.map(bp => ({ slug: bp.slug, species: bp.species, breedText: bp.breedText }))
+      });
+
+      const match = breedingPrograms.find((bp) => {
+        if (bp.species?.toUpperCase() !== species) return false;
+        if (breedText && bp.breedText) {
+          const bpBreed = bp.breedText.toLowerCase();
+          return bpBreed.includes(breedText) || breedText.includes(bpBreed);
+        }
+        return true;
+      });
+
+      if (match?.slug) {
+        console.log('[findProgramSlug] Found match:', match.slug);
+        return match.slug;
+      }
+
+      // FALLBACK: If no database record exists, create a temporary slug from program name
+      // This allows rules UI to work even before proper BreedingProgram records exist
+      if (program.name) {
+        const fallbackSlug = program.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        console.log('[findProgramSlug] Using fallback slug:', fallbackSlug);
+        return fallbackSlug;
+      }
+
+      console.log('[findProgramSlug] No slug found');
+      return null;
+    },
+    [breedingPrograms]
+  );
 
   // Get matching plans for a program, sorted by status priority then expected birth date
   const getMatchingPlans = React.useCallback(
@@ -1421,17 +1559,6 @@ export function ManageBreedingProgramsPage() {
                 return 0;
               })
               .map(({ program, originalIndex, stats }) => (
-              expandedIndex === originalIndex ? (
-                <ProgramEditor
-                  key={originalIndex}
-                  program={program}
-                  index={originalIndex}
-                  onChange={(updates) => updateProgram(originalIndex, updates)}
-                  onCollapse={() => setExpandedIndex(null)}
-                  onRemove={() => removeProgram(originalIndex)}
-                  breederBreeds={(profile.breeds || []) as SelectedBreed[]}
-                />
-              ) : (
                 <ProgramDashboardCard
                   key={originalIndex}
                   program={program}
@@ -1440,12 +1567,12 @@ export function ManageBreedingProgramsPage() {
                   loadingStats={loadingStats}
                   matchingPlans={getMatchingPlans(program)}
                   matchingGroups={getMatchingGroups(program)}
+                  programSlug={findProgramSlug(program)}
                   onEdit={() => setExpandedIndex(originalIndex)}
                   onRemove={() => removeProgram(originalIndex)}
                   onOffspringGroupClick={setSelectedOffspringGroup}
                 />
-              )
-            ))}
+              ))}
 
             <Button variant="secondary" onClick={addProgram} className="w-full">
               <Plus size={16} className="mr-1.5" />
@@ -1454,6 +1581,19 @@ export function ManageBreedingProgramsPage() {
           </div>
         )}
       </div>
+
+      {/* Program Editor Drawer */}
+      {expandedIndex !== null && (
+        <ProgramEditorDrawer
+          program={programs[expandedIndex]}
+          index={expandedIndex}
+          onChange={(updates) => updateProgram(expandedIndex, updates)}
+          onClose={() => setExpandedIndex(null)}
+          onRemove={() => removeProgram(expandedIndex)}
+          breederBreeds={(profile?.breeds || []) as SelectedBreed[]}
+          programSlug={findProgramSlug(programs[expandedIndex])}
+        />
+      )}
 
       {/* Offspring Group Modal */}
       {selectedOffspringGroup && (

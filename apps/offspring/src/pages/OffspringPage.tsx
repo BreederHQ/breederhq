@@ -22,17 +22,21 @@ import {
   SortDropdown,
   type SortOption,
   speciesUsesCollars,
+  Popover,
 } from "@bhq/ui";
 import type { BadgeProps } from "@bhq/ui";
 
 
 import { Overlay } from "@bhq/ui/overlay";
 import {
+  Archive,
+  Check,
   ChevronDown,
   ChevronUp,
   FilePlus2,
   LayoutGrid,
   List,
+  MoreVertical,
   Plus,
   Table as TableIcon,
   Trash2,
@@ -47,6 +51,10 @@ import {
 import { OffspringCardView } from "../components/OffspringCardView";
 import { OffspringListView } from "../components/OffspringListView";
 import { CollarPicker, CollarSwatch } from "../components/CollarPicker";
+import { CoatColorPicker, CoatColorSwatch, CoatPatternPicker, CoatPatternSwatch } from "../components/CoatColorPicker";
+import { OffspringDeleteModal } from "../components/OffspringDeleteModal";
+import { OffspringDeleteBlockedModal } from "../components/OffspringDeleteBlockedModal";
+import { OffspringArchiveModal } from "../components/OffspringArchiveModal";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
@@ -63,6 +71,17 @@ function cx(...parts: Array<string | false | null | undefined>) {
 const labelClass = "mt-3 text-xs text-secondary";
 
 const MODAL_Z = 2147485000;
+
+/** Helper to render section titles with emoji icons (matching animal drawer pattern) */
+function SectionTitle({ icon, children }: { icon?: string; children: React.ReactNode }) {
+  if (!icon) return <>{children}</>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-secondary">{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
+}
 
 
 
@@ -389,6 +408,7 @@ export type OffspringRow = {
   species: string | null;
   breed: string | null;
   color: string | null;
+  pattern: string | null;
   birthWeightOz: number | null;
   dob: string | null;
   microchip: string | null;
@@ -419,13 +439,33 @@ export type OffspringRow = {
   groupName?: string | null;
   groupCode?: string | null;
   groupSeasonLabel?: string | null;
+  groupBirthDate?: string | null;
   identifier?: string | null;
   placeholderLabel?: string | null;
 
   // Siblings and waitlist
   siblings?: SiblingLite[] | null;
   waitlistEntry?: WaitlistRefLite | null;
-  group?: { id: number; name?: string; code?: string } | null;
+  group?: {
+    id: number;
+    name?: string;
+    code?: string;
+    birthedStartAt?: string | null;
+    birthed_start_at?: string | null;
+    birthedEndAt?: string | null;
+    birthed_end_at?: string | null;
+    birthDate?: string | null;
+    birth_date?: string | null;
+    breedName?: string | null;
+    breed?: string | null;
+    breedText?: string | null;
+    plan?: {
+      id: number;
+      birthedAt?: string | null;
+      birthDateActual?: string | null;
+      breedText?: string | null;
+    } | null;
+  } | null;
 
   // new fields
   whelpingCollarColor: string | null;
@@ -452,6 +492,7 @@ export type OffspringUpdateInput = Partial<{
   name: string | null;
   sex: Sex | null;
   color: string | null;
+  pattern: string | null;
   birthWeightOz: number | null;
   status: OffspringStatus;
   buyerPartyId: number | null;
@@ -526,6 +567,7 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     species,
     breed,
     color,
+    pattern,
     birthDate,
     microchip,
     registryNumber,
@@ -618,6 +660,7 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     species: species ?? null,
     breed: typeof breed === "string" ? breed : null,
     color: color ?? null,
+    pattern: pattern ?? null,
     birthWeightOz:
       typeof birth_weight_oz === "number" ? birth_weight_oz : null,
     dob: birthDate ?? null,
@@ -671,6 +714,19 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
 
 function mapDetailToRow(detail: any): OffspringRow {
   const base = mapAnimalLiteToRow(detail as any);
+  const group = (detail as any).group ?? null;
+  // Extract group birth date from group or linked breeding plan
+  // Priority: group.birthedStartAt > group.birthedEndAt > plan.birthedAt
+  const groupBirthDate =
+    group?.birthedStartAt ??
+    group?.birthed_start_at ??
+    group?.birthedEndAt ??
+    group?.birthed_end_at ??
+    group?.birthDate ??
+    group?.birth_date ??
+    group?.plan?.birthedAt ??
+    group?.plan?.birthDateActual ??
+    null;
   return {
     ...base,
     buyer: (detail as any).buyer ?? null,
@@ -678,7 +734,8 @@ function mapDetailToRow(detail: any): OffspringRow {
       (detail as any).buyerRiskScore ??
       (detail as any).buyer_risk_score ??
       null,
-    group: (detail as any).group ?? null,
+    group,
+    groupBirthDate,
     healthSummary:
       (detail as any).healthSummary ??
       (detail as any).health_summary ??
@@ -997,8 +1054,6 @@ const lifeStateOptions: Array<{ value: LifeState; label: string }> = [
 
 const keeperIntentOptions: Array<{ value: KeeperIntent; label: string }> = [
   { value: "AVAILABLE", label: "Available" },
-  { value: "UNDER_EVALUATION", label: "Under evaluation" },
-  { value: "WITHHELD", label: "Withheld" },
   { value: "KEEP", label: "Keeper" },
 ];
 
@@ -1281,21 +1336,18 @@ function buildOffspringStatusPresentation(offspring: Partial<OffspringRow>): {
     normalizeState((offspring as any)?.paperworkState ?? (offspring as any)?.paperwork_state);
   const diedAt = (offspring as any)?.diedAt ?? (offspring as any)?.died_at ?? null;
 
+  // Primary badge shows availability (Available, Keeper, or Sold if paid in full)
   const primaryBadge: StatusBadge | null =
     lifeState === "DECEASED"
       ? null
-      : {
-          label: getPlacementLabel(placementState) ?? "Placement not set",
-          variant: getPlacementVariant(placementState),
-        };
+      : getAvailabilityBadge(keeperIntent, financialState);
 
   const chips: StatusChip[] = [];
 
   const lifeChip = getLifeChip(lifeState, diedAt);
   if (lifeChip) chips.push(lifeChip);
 
-  const keeperChip = getKeeperChip(keeperIntent);
-  if (keeperChip) chips.push(keeperChip);
+  // Don't add keeper chip - it's now the primary badge
 
   const financialChip = getFinancialChip(financialState);
   if (financialChip) chips.push(financialChip);
@@ -1304,6 +1356,24 @@ function buildOffspringStatusPresentation(offspring: Partial<OffspringRow>): {
   if (paperworkChip) chips.push(paperworkChip);
 
   return { primaryBadge, chips };
+}
+
+/** Get primary badge for availability - derives Sold from financial state. Returns null for default "Available" state. */
+function getAvailabilityBadge(keeperIntent?: KeeperIntent | null, financialState?: FinancialState | null): StatusBadge | null {
+  // Sold overrides everything
+  if (financialState === "PAID_IN_FULL") {
+    return { label: "Sold", variant: "success" };
+  }
+
+  const normalized = normalizeState(keeperIntent);
+  switch (normalized) {
+    case "KEEP":
+    case "KEEPER":
+      return { label: "Keeper", variant: "blue" };
+    default:
+      // "Available" is the default state - no badge needed
+      return null;
+  }
 }
 
 const primaryBadgeClass =
@@ -1355,27 +1425,6 @@ function getBuyerSectionTitle(placementState?: PlacementState | null): string {
   if (normalized === "TRANSFERRED") return "Buyer (Transferred)";
   if (normalized === "RESERVED" || normalized === "OPTION_HOLD") return "Buyer (Reserved)";
   return "Buyer (Unassigned)";
-}
-
-const isDevRuntime =
-  typeof window !== "undefined" &&
-  (typeof (globalThis as any).process === "undefined" || ((globalThis as any).process as any)?.env?.NODE_ENV !== "production");
-
-if (isDevRuntime) {
-  const deceased = buildOffspringStatusPresentation({
-    lifeState: "DECEASED",
-    placementState: "UNASSIGNED",
-  } as Partial<OffspringRow>);
-  if (
-    !deceased.chips.some((c) => c.label === "Deceased") ||
-    (deceased.primaryBadge && deceased.primaryBadge.label === "Available")
-  ) {
-    console.warn("[Offspring] Deceased status presentation is missing required dominance.");
-  }
-  const placed = buildOffspringStatusPresentation({ placementState: "PLACED" } as Partial<OffspringRow>);
-  if (placed.primaryBadge?.label !== "Placed") {
-    console.warn("[Offspring] Placement badge regression detected for PLACED state.");
-  }
 }
 
 /** ---------- Offspring Tags Section ---------- */
@@ -2305,6 +2354,16 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     setCoreForm((prev) => (prev ? { ...prev, ...fields } : prev));
   }, []);
 
+  // Deletion and archive modal states
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+  const [showArchiveModal, setShowArchiveModal] = React.useState(false);
+  const [showBlockedModal, setShowBlockedModal] = React.useState(false);
+  const [deleteBlockers, setDeleteBlockers] = React.useState<any>(null);
+
+  // Overflow menu state (3-dot menu in edit mode)
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
+  const [isArchiving, setIsArchiving] = React.useState(false);
+
   // edit state for parent group override in the drawer
   const [allowWithoutParent, setAllowWithoutParent] = React.useState(false);
   const groupOptions = useOffspringGroupOptions(true);
@@ -2469,6 +2528,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       placeholderLabel: drawer.placeholderLabel,
       sex: drawer.sex,
       color: drawer.color,
+      pattern: drawer.pattern ?? null,
       birthWeightOz: drawer.birthWeightOz,
       status: drawer.status,
       dob: drawer.dob,
@@ -2625,6 +2685,44 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     }
   }
 
+  // Deletion and archive handlers
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+  };
+
+  const handleArchiveClick = () => {
+    setShowArchiveModal(true);
+  };
+
+  const handleArchive = async (_reason?: string) => {
+    // Archive functionality not yet implemented in API
+    alert("Archive functionality is not yet available");
+    setShowArchiveModal(false);
+  };
+
+  const handleDelete = async () => {
+    if (!drawer) return;
+    try {
+      await api.remove(drawer.id);
+      setShowDeleteModal(false);
+      // Remove from list
+      setRows((prev) => prev.filter((o) => o.id !== drawer.id));
+      // Close drawer
+      setDrawer(null);
+      alert("Offspring deleted permanently");
+    } catch (err: any) {
+      console.error(err);
+      if (err.status === 409 && err.data?.blockers) {
+        // Show blocked modal
+        setDeleteBlockers(err.data.blockers);
+        setShowDeleteModal(false);
+        setShowBlockedModal(true);
+      } else {
+        alert(`Failed to delete: ${err.message || "Unknown error"}`);
+      }
+    }
+  };
+
   const handleAssignBuyerFromGroup = React.useCallback(async () => {
     if (!drawer || !selectedGroupBuyerKey) return;
 
@@ -2776,6 +2874,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             ? null
             : ((coreForm.sex as Sex) ?? drawer.sex ?? null),
         color: coreForm.color ?? null,
+        pattern: coreForm.pattern ?? null,
         birthWeightOz: coreForm.birthWeightOz ?? null,
         status: (coreForm.status as OffspringStatus) ?? drawer.status,
         placementDate: coreForm.placementDate ?? drawer.placementDate,
@@ -2971,7 +3070,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                 console.error("[Offspring] Failed to load row", row.id, err);
               }
             }}
-            visibleColumns={visibleSafe}
+            visibleColumns={visibleSafe as any}
           />
         ) : (
         <Table
@@ -3272,7 +3371,11 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto">
               <div
                 ref={detailsPanelRef}
-                className="pointer-events-auto mb-10 flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+                className={`pointer-events-auto mb-10 flex flex-col overflow-hidden rounded-xl bg-surface shadow-xl transition-all duration-200 ${
+                  drawerMode === "edit"
+                    ? "border-2 border-amber-500/60 ring-2 ring-amber-500/20"
+                    : "border border-hairline"
+                }`}
                 style={{ width: 760, maxWidth: "calc(100vw - 64px)", marginTop: "6vh" }}
                 onMouseDown={(e) => {
                   // keep clicks inside the panel from bubbling to the outer close handler
@@ -3413,6 +3516,50 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                   ]}
                   activeTab={drawerTab}
                   onTabChange={(key) => setDrawerTab(key as any)}
+                  tabsRightContent={
+                    drawerMode === "edit" ? (
+                      <Popover
+                        open={overflowMenuOpen}
+                        onOpenChange={setOverflowMenuOpen}
+                      >
+                        <Popover.Trigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
+                            aria-label="More actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span>More</span>
+                          </button>
+                        </Popover.Trigger>
+                        <Popover.Content align="end" className="w-48 p-1">
+                          {/* Archive */}
+                          <button
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+                            disabled={isArchiving}
+                            onClick={() => {
+                              setOverflowMenuOpen(false);
+                              setShowArchiveModal(true);
+                            }}
+                          >
+                            <Archive className="h-4 w-4" />
+                            {isArchiving ? "Archiving…" : "Archive"}
+                          </button>
+                          {/* Delete */}
+                          <button
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded"
+                            onClick={() => {
+                              setOverflowMenuOpen(false);
+                              setShowDeleteModal(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </Popover.Content>
+                      </Popover>
+                    ) : undefined
+                  }
                   rightActions={
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="outline" onClick={closeDrawer}>
@@ -3450,8 +3597,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     const sireLabel =
                       row.groupSireName || row.sireName || "Not set";
 
-                    const dobLabel = row.dob
-                      ? formatDate(row.dob)
+                    // DOB: use individual's DOB, or inherit from group birth date if linked
+                    const effectiveDob = row.dob || row.groupBirthDate;
+                    const dobLabel = effectiveDob
+                      ? formatDate(effectiveDob)
                       : "Not set";
                     const lifeState =
                       normalizeState(
@@ -3609,14 +3758,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "overview" && (
                           <div className="space-y-4 max-w-4xl mx-auto">
 
-                            {/* Identity Card - Matches Animal Drawer Style */}
-                            <div className="bg-white/[0.02] rounded-xl border border-white/5 overflow-hidden">
-                              <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-2">
-                                <span className="text-base" style={{ opacity: 0.7 }}>🆔</span>
-                                <h3 className="text-sm font-semibold text-white/90">Identity</h3>
-                              </div>
-                              <div className="p-4">
-                                <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                            {/* Identity Card */}
+                            <SectionCard title={<SectionTitle icon="🆔">Identity</SectionTitle>} highlight={drawerMode === "edit"}>
+                              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
                                   {/* Row 1: Name, Sex, Species */}
                                   <div>
                                     <div className="text-xs text-white/50 mb-0.5">Name</div>
@@ -3655,8 +3799,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         <option value="UNKNOWN">Unknown</option>
                                       </select>
                                     ) : (
-                                      <div className="text-sm text-white/90 flex items-center gap-1.5">
-                                        <span className={`w-2 h-2 rounded-full ${row.sex === "FEMALE" ? "bg-pink-400" : row.sex === "MALE" ? "bg-blue-400" : "bg-gray-400"}`} />
+                                      <div className="text-sm text-white/90">
                                         {row.sex === "FEMALE" ? "Female" : row.sex === "MALE" ? "Male" : "Unknown"}
                                       </div>
                                     )}
@@ -3689,7 +3832,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                       <div className="text-sm text-white/90">{dobLabel}</div>
                                     )}
                                   </div>
-                                  {speciesUsesCollars(row.species) ? (
+                                  {/* Collar (only for species that use collars like dogs/cats) */}
+                                  {speciesUsesCollars(row.species) && (
                                     <div>
                                       <div className="text-xs text-white/50 mb-0.5">Collar</div>
                                       {drawerMode === "edit" && coreForm ? (
@@ -3715,31 +3859,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         </div>
                                       )}
                                     </div>
-                                  ) : (
-                                    <div>
-                                      <div className="text-xs text-white/50 mb-0.5">Color</div>
-                                      {drawerMode === "edit" && coreForm ? (
-                                        <input
-                                          className={inputClass}
-                                          value={coreForm.color ?? drawer.color ?? ""}
-                                          onChange={(e) =>
-                                            setCoreForm((prev) =>
-                                              prev ? { ...prev, color: e.target.value } : prev,
-                                            )
-                                          }
-                                          placeholder="Enter color"
-                                          autoComplete="off"
-                                          data-1p-ignore
-                                          data-lpignore="true"
-                                          data-form-type="other"
-                                        />
-                                      ) : (
-                                        <div className="text-sm text-white/90">{row.color || "—"}</div>
-                                      )}
-                                    </div>
                                   )}
 
-                                  {/* Row 3: Microchip, Status, Color (if species uses collars) */}
+                                  {/* Row 3: Microchip, Status, Registration */}
                                   <div>
                                     <div className="text-xs text-white/50 mb-0.5">Microchip #</div>
                                     {drawerMode === "edit" && coreForm ? (
@@ -3792,37 +3914,61 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         ))}
                                       </select>
                                     ) : (
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`w-2 h-2 rounded-full ${lifeState === "DECEASED" ? "bg-red-400" : "bg-emerald-400"}`} />
-                                        <span className={`text-sm ${lifeState === "DECEASED" ? "text-red-300" : "text-emerald-300"}`}>
-                                          {lifeState === "DECEASED" ? "Deceased" : "Active"}
-                                        </span>
+                                      <div className={`text-sm ${lifeState === "DECEASED" ? "text-red-300" : "text-emerald-300"}`}>
+                                        {lifeState === "DECEASED" ? "Deceased" : "Active"}
                                       </div>
                                     )}
                                   </div>
-                                  {speciesUsesCollars(row.species) && (
-                                    <div>
-                                      <div className="text-xs text-white/50 mb-0.5">Color</div>
-                                      {drawerMode === "edit" && coreForm ? (
-                                        <input
-                                          className={inputClass}
-                                          value={coreForm.color ?? drawer.color ?? ""}
-                                          onChange={(e) =>
-                                            setCoreForm((prev) =>
-                                              prev ? { ...prev, color: e.target.value } : prev,
-                                            )
-                                          }
-                                          placeholder="Enter color"
-                                          autoComplete="off"
-                                          data-1p-ignore
-                                          data-lpignore="true"
-                                          data-form-type="other"
-                                        />
-                                      ) : (
-                                        <div className="text-sm text-white/90">{row.color || "—"}</div>
-                                      )}
-                                    </div>
-                                  )}
+                                  {/* Empty spacer to complete row 3 */}
+                                  <div />
+                                  {/* Row 4: Color, Pattern - always side by side */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Color</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <CoatColorPicker
+                                        value={coreForm.color ?? drawer.color}
+                                        onChange={(colorName) => {
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, color: colorName } : prev
+                                          );
+                                        }}
+                                        species={row.species}
+                                        className="w-full"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-white/90">
+                                        {row.color ? (
+                                          <CoatColorSwatch color={row.color} showLabel />
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Pattern - next to Color */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Pattern</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <CoatPatternPicker
+                                        value={coreForm.pattern ?? drawer.pattern}
+                                        onChange={(patternName) => {
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, pattern: patternName } : prev
+                                          );
+                                        }}
+                                        species={row.species}
+                                        className="w-full"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-white/90">
+                                        {row.pattern ? (
+                                          <CoatPatternSwatch pattern={row.pattern} showLabel />
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
 
                                   {/* Deceased Date - Conditional row */}
                                   {lifeState === "DECEASED" && (
@@ -3843,18 +3989,12 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                       )}
                                     </div>
                                   )}
-                                </div>
                               </div>
-                            </div>
+                            </SectionCard>
 
                             {/* Lineage Card */}
-                            <div className="bg-white/[0.02] rounded-xl border border-white/5 overflow-hidden">
-                              <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-2">
-                                <span className="text-base" style={{ opacity: 0.7 }}>🔗</span>
-                                <h3 className="text-sm font-semibold text-white/90">Lineage</h3>
-                              </div>
-                              <div className="p-4">
-                                <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                            <SectionCard title={<SectionTitle icon="🔗">Lineage</SectionTitle>} highlight={drawerMode === "edit"}>
+                              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
                                   {/* Parent Group */}
                                   <div>
                                     <div className="text-xs text-white/50 mb-0.5">Parent Group</div>
@@ -3925,94 +4065,88 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                       <span className="text-sm text-white/40">—</span>
                                     )}
                                   </div>
-                                </div>
                               </div>
-                            </div>
+                            </SectionCard>
 
-                            {/* Availability Card */}
-                            <div className="bg-white/[0.02] rounded-xl border border-white/5 overflow-hidden">
-                              <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-2">
-                                <span className="text-base" style={{ opacity: 0.7 }}>🛒</span>
-                                <h3 className="text-sm font-semibold text-white/90">Availability</h3>
-                              </div>
-                              <div className="p-4">
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                                  {/* Keeper Intent */}
-                                  <div>
-                                    <div className="text-xs text-white/50 mb-0.5">Keeper Intent</div>
-                                    {drawerMode === "edit" && coreForm ? (
-                                      <div className="space-y-1">
-                                        <select
-                                          className={inputClass}
-                                          value={keeperIntentState ?? ""}
-                                          disabled={promotedAnimalId != null}
-                                          onChange={(e) => {
-                                            const next = e.target.value as KeeperIntent | "";
-                                            updateCoreForm({ keeperIntent: next || null });
-                                          }}
-                                        >
-                                          <option value="">Select intent</option>
-                                          {keeperIntentOptions.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                          ))}
-                                        </select>
-                                        {promotedAnimalId != null && (
-                                          <div className="text-[11px] text-white/40">Promoted to breeding animal</div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`w-2 h-2 rounded-full ${
-                                          keeperIntentState === "AVAILABLE" ? "bg-emerald-400"
-                                          : keeperIntentState === "KEEPER" ? "bg-purple-400"
-                                          : keeperIntentState === "RESERVED" ? "bg-amber-400"
-                                          : "bg-gray-400"
-                                        }`} />
-                                        <span className={`text-sm ${
-                                          keeperIntentState === "AVAILABLE" ? "text-emerald-300"
-                                          : keeperIntentState === "KEEPER" ? "text-purple-300"
-                                          : keeperIntentState === "RESERVED" ? "text-amber-300"
-                                          : "text-white/50"
-                                        }`}>
-                                          {keeperIntentState ? titleize(keeperIntentState) : "Not set"}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+{/* Availability moved to Identity card - Keeper Intent now in row 3 */}
 
                             {/* Tags Card */}
-                            <div className="bg-white/[0.02] rounded-xl border border-white/5 overflow-hidden">
-                              <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-2">
-                                <span className="text-base" style={{ opacity: 0.7 }}>🏷️</span>
-                                <h3 className="text-sm font-semibold text-white/90">Tags</h3>
-                              </div>
-                              <div className="p-4">
+                            <SectionCard
+                              title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                              right={
                                 <OffspringTagsSection
                                   offspringId={drawer.id}
                                   api={rootApi}
                                   disabled={drawerMode === "view"}
                                 />
-                              </div>
-                            </div>
+                              }
+                            />
 
                             {/* Buyer Card */}
-                            <div className="bg-white/[0.02] rounded-xl border border-white/5 overflow-hidden">
-                              <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-2">
-                                <span className="text-base" style={{ opacity: 0.7 }}>👥</span>
-                                <h3 className="text-sm font-semibold text-white/90">{buyerHeaderLabel}</h3>
-                              </div>
+                            <SectionCard title={<SectionTitle icon="👥">Buyer</SectionTitle>} highlight={drawerMode === "edit"}>
                               {(() => {
                                 const hasGroup = !!group;
                                 const hasGroupOptions = groupBuyerOptions.length > 0;
                                 const currentBuyerName = hasBuyer ? buyerName : "None";
+                                // Keeper = not for sale, hide buyer section
+                                const isKeeper = keeperIntentState === "KEEP" || keeperIntentState === "KEEPER";
+                                const showBuyerSection = !isKeeper;
 
                                 return (
-                                  <div className="p-4 space-y-4">
-                                    {/* Buyer Info Row */}
-                                    {hasBuyer ? (
+                                  <div className="space-y-4">
+                                    {/* Keeper Toggle - Styled card with clear intent */}
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <button
+                                        type="button"
+                                        disabled={promotedAnimalId != null}
+                                        onClick={() => {
+                                          updateCoreForm({ keeperIntent: isKeeper ? "AVAILABLE" : "KEEP" });
+                                        }}
+                                        className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                                          isKeeper
+                                            ? "bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15"
+                                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                                        } ${promotedAnimalId != null ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                                      >
+                                        {/* Toggle switch */}
+                                        <div
+                                          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                                            isKeeper ? "bg-blue-500" : "bg-white/20"
+                                          }`}
+                                        >
+                                          <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                                              isKeeper ? "translate-x-6" : "translate-x-1"
+                                            }`}
+                                          />
+                                        </div>
+                                        {/* Label and description */}
+                                        <div className="flex-1 text-left">
+                                          <div className={`text-sm font-medium ${isKeeper ? "text-blue-300" : "text-white/70"}`}>
+                                            {isKeeper ? "Marked as Keeper" : "Available for Sale"}
+                                          </div>
+                                          <div className="text-xs text-white/40">
+                                            {isKeeper
+                                              ? "Not listed on marketplace, no buyer can be assigned"
+                                              : "Can be listed and assigned to a buyer"
+                                            }
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ) : isKeeper ? (
+                                      <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                                        <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                                          <Check className="w-4 h-4 text-blue-300" />
+                                        </div>
+                                        <div>
+                                          <div className="text-sm font-medium text-blue-300">Keeper</div>
+                                          <div className="text-xs text-white/40">Not available for sale</div>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {/* Buyer Info Row - Only if available for sale */}
+                                    {showBuyerSection && hasBuyer ? (
                                       <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-white/5 border border-white/10">
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 mb-1">
@@ -4045,17 +4179,17 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           <Trash2 className="h-4 w-4" />
                                         </button>
                                       </div>
-                                    ) : (
+                                    ) : showBuyerSection ? (
                                       <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-dashed border-white/10">
                                         <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/30">
                                           ?
                                         </span>
                                         <span className="text-sm text-white/40">No buyer assigned</span>
                                       </div>
-                                    )}
+                                    ) : null}
 
-                                    {/* Status Pills */}
-                                    <div className="flex flex-wrap gap-2">
+                                    {/* Status Pills - Only if available for sale */}
+                                    {showBuyerSection && <div className="flex flex-wrap gap-2">
                                       <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
                                         placementState === "PLACED"
                                           ? "bg-emerald-500/20 text-emerald-300"
@@ -4086,10 +4220,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         <span className="text-[10px] uppercase tracking-wider text-white/40 mr-1">Contract</span>
                                         {contractLabel}
                                       </div>
-                                    </div>
+                                    </div>}
 
-                                    {/* Edit Controls - Only in Edit Mode */}
-                                    {drawerMode === "edit" && (
+                                    {/* Edit Controls - Only in Edit Mode and if available for sale */}
+                                    {showBuyerSection && drawerMode === "edit" && (
                                       <div className="pt-4 border-t border-white/5 space-y-4">
                                         <div className="text-xs font-medium text-white/50 uppercase tracking-wider">Update Status</div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -4221,8 +4355,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                       </div>
                                     )}
 
-                                    {/* Assignment Section */}
-                                    {(hasGroup || !hasBuyer) && (
+                                    {/* Assignment Section - Only if available for sale */}
+                                    {showBuyerSection && (hasGroup || !hasBuyer) && (
                                       <div className="pt-4 border-t border-white/5">
                                         <div className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">
                                           {hasGroup ? "Assign from Group" : "Find Buyer"}
@@ -4308,7 +4442,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   </div>
                                 );
                               })()}
-                            </div>
+                            </SectionCard>
                           </div>
                         )}
 
@@ -4417,6 +4551,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             </div>
                           </SectionCard>
                         )}
+
+{/* Danger Zone removed - Archive/Delete now only in 3-dot menu during edit mode */}
                       </>
                     );
                   })()}
@@ -4425,6 +4561,35 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               </div>
             </div>
           </div>
+        )}
+
+        {/* Deletion and Archive Modals */}
+        {showDeleteModal && drawer && (
+          <OffspringDeleteModal
+            offspring={drawer}
+            onArchive={handleArchive}
+            onDelete={handleDelete}
+            onCancel={() => setShowDeleteModal(false)}
+          />
+        )}
+
+        {showArchiveModal && drawer && (
+          <OffspringArchiveModal
+            offspring={drawer}
+            onArchive={handleArchive}
+            onCancel={() => setShowArchiveModal(false)}
+          />
+        )}
+
+        {showBlockedModal && deleteBlockers && (
+          <OffspringDeleteBlockedModal
+            blockers={deleteBlockers}
+            onArchive={async () => {
+              setShowBlockedModal(false);
+              setShowArchiveModal(true);
+            }}
+            onClose={() => setShowBlockedModal(false)}
+          />
         )}
       </Overlay>
     </div>

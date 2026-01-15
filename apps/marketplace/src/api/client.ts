@@ -1906,6 +1906,36 @@ export async function checkSavedListing(
 }
 
 // =====================================
+// Marketplace Stats API
+// =====================================
+
+/**
+ * Get marketplace aggregate statistics for trust bar
+ */
+export async function getMarketplaceStats(): Promise<{
+  breederCount: number;
+  animalCount: number;
+  reviewCount: number;
+}> {
+  // TODO: Replace with actual API call when endpoint exists
+  // For now, aggregate from existing endpoints
+  try {
+    const [programs, offspring] = await Promise.all([
+      getPrograms({ limit: 1 }),
+      getPublicOffspringGroups({ limit: 1 }),
+    ]);
+
+    return {
+      breederCount: programs.total || 0,
+      animalCount: offspring.total || 0,
+      reviewCount: 0, // Reviews not yet implemented
+    };
+  } catch {
+    return { breederCount: 0, animalCount: 0, reviewCount: 0 };
+  }
+}
+
+// =====================================
 // Breeder Animal Listings Management API
 // =====================================
 
@@ -3652,4 +3682,476 @@ export async function getTenantAnimals(
 
   const data = await safeReadJson<{ items: TenantAnimalItem[]; total: number }>(response);
   return data || { items: [], total: 0 };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BREEDING PROGRAM RULES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type BreedingRuleLevel = 'PROGRAM' | 'PLAN' | 'GROUP' | 'OFFSPRING';
+export type BreedingRuleCategory = 'LISTING' | 'PRICING' | 'VISIBILITY' | 'BUYER_INTERACTION' | 'STATUS' | 'NOTIFICATIONS';
+
+export interface BreedingProgramRule {
+  id: number;
+  tenantId: number;
+  category: BreedingRuleCategory;
+  ruleType: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  config: Record<string, any>;
+  level: BreedingRuleLevel;
+  levelId: string;
+  inheritsFromId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BreedingProgramRuleExecution {
+  id: number;
+  tenantId: number;
+  ruleId: number;
+  triggeredBy: string;
+  entityType: string;
+  entityId: number;
+  success: boolean;
+  action: string | null;
+  changes: Record<string, any> | null;
+  error: string | null;
+  executedAt: string;
+}
+
+export interface CreateRuleParams {
+  category: BreedingRuleCategory;
+  ruleType: string;
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  config?: Record<string, any>;
+  level: BreedingRuleLevel;
+  levelId: string;
+  inheritsFromId?: number;
+}
+
+/**
+ * Get breeding programs for tenant
+ * GET /api/v1/breeding/programs
+ */
+export async function getBreedingPrograms(
+  tenantId: string,
+  params?: { species?: string; listed?: boolean; q?: string; page?: number; limit?: number }
+): Promise<{ items: any[]; total: number; page: number; limit: number }> {
+  devLogFetch("/api/v1/breeding/programs");
+
+  const qs = new URLSearchParams();
+  if (params?.species) qs.append("species", params.species);
+  if (params?.listed !== undefined) qs.append("listed", String(params.listed));
+  if (params?.q) qs.append("q", params.q);
+  if (params?.page) qs.append("page", String(params.page));
+  if (params?.limit) qs.append("limit", String(params.limit));
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs?${qs}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ items: any[]; total: number; page: number; limit: number }>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Sync breeding programs from marketplace profile to database
+ * POST /api/v1/marketplace/profile/sync-programs
+ */
+export async function syncBreedingProgramsFromProfile(tenantId: string): Promise<void> {
+  devLogFetch("/api/v1/marketplace/profile/sync-programs");
+
+  const response = await fetch(joinApi("/api/v1/marketplace/profile/sync-programs"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "X-Tenant-ID": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+}
+
+/**
+ * Get effective rules for an entity (with inheritance resolved)
+ * GET /api/v1/breeding/programs/rules/effective?level=&id=
+ */
+export async function getEffectiveRules(
+  tenantId: string,
+  level: BreedingRuleLevel,
+  id: string
+): Promise<{ level: string; id: string; rules: BreedingProgramRule[] }> {
+  devLogFetch(`/api/v1/breeding/programs/rules/effective?level=${level}&id=${id}`);
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/effective?level=${level}&id=${id}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ level: string; id: string; rules: BreedingProgramRule[] }>(response);
+  return data || { level, id, rules: [] };
+}
+
+/**
+ * Get all rules for a specific level/entity
+ * GET /api/v1/breeding/programs/rules?level=&levelId=&category=&enabled=
+ */
+export async function getBreedingProgramRules(
+  tenantId: string,
+  params?: {
+    level?: BreedingRuleLevel;
+    levelId?: string;
+    category?: BreedingRuleCategory;
+    enabled?: boolean;
+  }
+): Promise<{ rules: BreedingProgramRule[] }> {
+  devLogFetch("/api/v1/breeding/programs/rules");
+
+  const qs = new URLSearchParams();
+  if (params?.level) qs.append("level", params.level);
+  if (params?.levelId) qs.append("levelId", params.levelId);
+  if (params?.category) qs.append("category", params.category);
+  if (params?.enabled !== undefined) qs.append("enabled", String(params.enabled));
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules?${qs}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ rules: BreedingProgramRule[] }>(response);
+  return data || { rules: [] };
+}
+
+/**
+ * Get a specific rule by ID
+ * GET /api/v1/breeding/programs/rules/:id
+ */
+export async function getBreedingProgramRule(
+  tenantId: string,
+  ruleId: number
+): Promise<{ rule: BreedingProgramRule }> {
+  devLogFetch(`/api/v1/breeding/programs/rules/${ruleId}`);
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/${ruleId}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ rule: BreedingProgramRule }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", 500);
+  }
+  return data;
+}
+
+/**
+ * Create or update a breeding program rule
+ * POST /api/v1/breeding/programs/rules
+ */
+export async function createOrUpdateBreedingProgramRule(
+  tenantId: string,
+  params: CreateRuleParams
+): Promise<{ rule: BreedingProgramRule }> {
+  const response = await fetch(joinApi("/api/v1/breeding/programs/rules"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-ID": tenantId,
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ rule: BreedingProgramRule }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", 500);
+  }
+  return data;
+}
+
+/**
+ * Create an override for a rule at a more specific level
+ * POST /api/v1/breeding/programs/rules/:id/override
+ */
+export async function overrideBreedingProgramRule(
+  tenantId: string,
+  ruleId: number,
+  params: {
+    level: BreedingRuleLevel;
+    levelId: string;
+    enabled?: boolean;
+    config?: Record<string, any>;
+  }
+): Promise<{ override: BreedingProgramRule }> {
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/${ruleId}/override`),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tenant-ID": tenantId,
+        "X-CSRF-Token": getCsrfToken() || "",
+      },
+      body: JSON.stringify(params),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ override: BreedingProgramRule }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", 500);
+  }
+  return data;
+}
+
+/**
+ * Delete a breeding program rule
+ * DELETE /api/v1/breeding/programs/rules/:id
+ */
+export async function deleteBreedingProgramRule(
+  tenantId: string,
+  ruleId: number
+): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/${ruleId}`),
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers: {
+        "X-Tenant-ID": tenantId,
+        "X-CSRF-Token": getCsrfToken() || "",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean; message: string }>(response);
+  return data || { success: true, message: "Rule deleted" };
+}
+
+/**
+ * Toggle a rule enabled/disabled
+ * PATCH /api/v1/breeding/programs/rules/:id/toggle
+ */
+export async function toggleBreedingProgramRule(
+  tenantId: string,
+  ruleId: number
+): Promise<{ rule: BreedingProgramRule }> {
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/${ruleId}/toggle`),
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        "X-Tenant-ID": tenantId,
+        "X-CSRF-Token": getCsrfToken() || "",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ rule: BreedingProgramRule }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", 500);
+  }
+  return data;
+}
+
+/**
+ * Manually execute all rules for an entity (for testing/debugging)
+ * POST /api/v1/breeding/programs/rules/execute
+ */
+export async function executeBreedingProgramRules(
+  tenantId: string,
+  level: BreedingRuleLevel,
+  id: string | number
+): Promise<{ success: boolean; results: any[] }> {
+  const response = await fetch(
+    joinApi("/api/v1/breeding/programs/rules/execute"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tenant-ID": tenantId,
+        "X-CSRF-Token": getCsrfToken() || "",
+      },
+      body: JSON.stringify({ level, id }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean; results: any[] }>(response);
+  return data || { success: false, results: [] };
+}
+
+/**
+ * Get execution history for a rule
+ * GET /api/v1/breeding/programs/rules/:id/executions?limit=&offset=
+ */
+export async function getBreedingProgramRuleExecutions(
+  tenantId: string,
+  ruleId: number,
+  params?: { limit?: number; offset?: number }
+): Promise<{
+  executions: BreedingProgramRuleExecution[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  devLogFetch(`/api/v1/breeding/programs/rules/${ruleId}/executions`);
+
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.append("limit", String(params.limit));
+  if (params?.offset) qs.append("offset", String(params.offset));
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/${ruleId}/executions?${qs}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{
+    executions: BreedingProgramRuleExecution[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>(response);
+  return data || { executions: [], total: 0, limit: params?.limit || 50, offset: params?.offset || 0 };
+}
+
+/**
+ * Get the inheritance chain for an entity (debugging)
+ * GET /api/v1/breeding/programs/rules/chain?level=&id=
+ */
+export async function getBreedingProgramRuleChain(
+  tenantId: string,
+  level: BreedingRuleLevel,
+  id: string
+): Promise<{ chain: Array<{ level: BreedingRuleLevel; id: string | number }> }> {
+  devLogFetch(`/api/v1/breeding/programs/rules/chain?level=${level}&id=${id}`);
+
+  const response = await fetch(
+    joinApi(`/api/v1/breeding/programs/rules/chain?level=${level}&id=${id}`),
+    {
+      credentials: "include",
+      headers: { "X-Tenant-ID": tenantId },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{
+    chain: Array<{ level: BreedingRuleLevel; id: string | number }>;
+  }>(response);
+  return data || { chain: [] };
 }
