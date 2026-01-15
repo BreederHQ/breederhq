@@ -1,18 +1,13 @@
 // apps/marketplace/src/marketplace/components/HowItWorks.tsx
-// Three-step explainer for first-time marketplace visitors
+// 3-step explainer for buyers - How BreederHQ Works
 
 import * as React from "react";
 
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+      <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -21,12 +16,13 @@ function ShieldCheckIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
-        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+        d="M12 2L4 6v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-8-4z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -35,7 +31,7 @@ function MessageCircleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
-        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
@@ -45,50 +41,61 @@ function MessageCircleIcon({ className }: { className?: string }) {
   );
 }
 
-const STEPS = [
+interface Step {
+  number: number;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const STEPS: Step[] = [
   {
+    number: 1,
+    title: "Browse Programs",
+    description: "Search by breed, species, or location. See complete breeding programs, not just individual listings.",
     icon: SearchIcon,
-    title: "Browse full programs",
-    description: "Search by breed, location, or species. See complete breeding operations — animals, health records, pedigrees — not isolated listings.",
   },
   {
+    number: 2,
+    title: "Verify Credentials",
+    description: "Review health testing, breeding history, and program details before you reach out.",
     icon: ShieldCheckIcon,
-    title: "Check their track record",
-    description: "Review health testing results, breeding history, and buyer reviews before you reach out. Know who you're working with.",
   },
   {
+    number: 3,
+    title: "Connect Directly",
+    description: "Message breeders and service providers. Ask questions, request info, schedule visits.",
     icon: MessageCircleIcon,
-    title: "Message breeders directly",
-    description: "Ask questions, request additional info, or schedule a visit. No middlemen, no waiting for callbacks.",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section className="py-8">
-      <h2 className="text-xl font-bold text-white text-center mb-8">How It Works</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <div key={step.title} className="text-center">
-              {/* Step number and icon */}
-              <div className="relative inline-flex items-center justify-center mb-4">
-                <div className="w-14 h-14 rounded-full bg-[hsl(var(--brand-blue))]/10 flex items-center justify-center">
-                  <Icon className="w-7 h-7 text-[hsl(var(--brand-blue))]" />
+    <section className="py-16 md:py-20 bg-gray-100" aria-labelledby="how-it-works-title">
+      <div className="max-w-7xl mx-auto px-4">
+        {/* Section heading */}
+        <h2 id="how-it-works-title" className="text-3xl md:text-4xl font-bold text-gray-900 text-center mb-12">
+          How BreederHQ Works
+        </h2>
+
+        {/* Three steps */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {STEPS.map((step) => {
+            const Icon = step.icon;
+            return (
+              <div key={step.number} className="text-center">
+                {/* Icon */}
+                <div className="w-16 h-16 rounded-xl bg-white border border-gray-300 flex items-center justify-center mx-auto mb-6 shadow-sm">
+                  <Icon className="w-8 h-8 text-gray-700" />
                 </div>
-                <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[hsl(var(--brand-orange))] text-white text-xs font-bold flex items-center justify-center">
-                  {index + 1}
-                </span>
+
+                {/* Content */}
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{step.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{step.description}</p>
               </div>
-              {/* Content */}
-              <h3 className="font-semibold text-white mb-2">{step.title}</h3>
-              <p className="text-sm text-text-tertiary max-w-xs mx-auto">
-                {step.description}
-              </p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </section>
   );

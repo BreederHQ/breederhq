@@ -73,11 +73,11 @@ export function TrustBar({ stats, loading }: TrustBarProps) {
 
   if (loading) {
     return (
-      <div className="flex justify-center gap-8 md:gap-12 py-4 border-y border-border-subtle bg-portal-card/50">
+      <div className="flex justify-center gap-8 md:gap-12 py-4 border-y border-gray-200 bg-gray-50">
         {[1, 2, 3].map((i) => (
           <div key={i} className="flex items-center gap-2 animate-pulse">
-            <div className="w-5 h-5 bg-border-default rounded" />
-            <div className="h-4 w-24 bg-border-default rounded" />
+            <div className="w-5 h-5 bg-gray-200 rounded" />
+            <div className="h-4 w-24 bg-gray-200 rounded" />
           </div>
         ))}
       </div>
@@ -87,8 +87,8 @@ export function TrustBar({ stats, loading }: TrustBarProps) {
   // Cold start variant - no stats yet
   if (!hasStats) {
     return (
-      <div className="flex justify-center py-4 border-y border-border-subtle bg-portal-card/50">
-        <p className="text-sm text-text-secondary">
+      <div className="flex justify-center py-4 border-y border-gray-200 bg-gray-50">
+        <p className="text-sm text-gray-600">
           <span className="text-[hsl(var(--brand-orange))] font-medium">New marketplace</span>
           {" · "}Verified breeders and service providers joining daily
         </p>
@@ -99,15 +99,15 @@ export function TrustBar({ stats, loading }: TrustBarProps) {
   // Normal variant with stats
   return (
     <div
-      className="flex flex-wrap justify-center gap-6 md:gap-12 py-4 border-y border-border-subtle bg-portal-card/50"
+      className="flex flex-wrap justify-center gap-6 md:gap-12 py-4 border-y border-gray-200 bg-gray-50"
       role="region"
       aria-label="Marketplace statistics"
     >
       {displayStats.breederCount > 0 && (
         <div className="flex items-center gap-2">
-          <ShieldIcon className="w-5 h-5 text-green-400" />
-          <span className="text-sm text-text-secondary">
-            <span className="font-semibold text-white">{formatCount(displayStats.breederCount)}</span>
+          <ShieldIcon className="w-5 h-5 text-green-600" />
+          <span className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">{formatCount(displayStats.breederCount)}</span>
             {" "}Verified Programs
           </span>
         </div>
@@ -116,8 +116,8 @@ export function TrustBar({ stats, loading }: TrustBarProps) {
       {displayStats.animalCount > 0 && (
         <div className="flex items-center gap-2">
           <PawIcon className="w-5 h-5 text-[hsl(var(--brand-orange))]" />
-          <span className="text-sm text-text-secondary">
-            <span className="font-semibold text-white">{formatCount(displayStats.animalCount)}</span>
+          <span className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">{formatCount(displayStats.animalCount)}</span>
             {" "}Available Animals
           </span>
         </div>
@@ -125,9 +125,9 @@ export function TrustBar({ stats, loading }: TrustBarProps) {
 
       {displayStats.reviewCount > 0 && (
         <div className="flex items-center gap-2">
-          <StarIcon className="w-5 h-5 text-yellow-400" />
-          <span className="text-sm text-text-secondary">
-            <span className="font-semibold text-white">{formatCount(displayStats.reviewCount)}</span>
+          <StarIcon className="w-5 h-5 text-yellow-500" />
+          <span className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">{formatCount(displayStats.reviewCount)}</span>
             {" "}Buyer Reviews
           </span>
         </div>

@@ -219,6 +219,98 @@ export function getBreadcrumbStructuredData(items: Array<{ name: string; url?: s
 }
 
 /**
+ * Generate FAQ structured data - critical for AI assistants (ChatGPT, Claude, etc.)
+ * AI assistants heavily rely on FAQPage schema when answering questions
+ */
+export function getFAQStructuredData(faqs: Array<{ question: string; answer: string }>) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqs.map(faq => ({
+      "@type": "Question",
+      "name": faq.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": faq.answer
+      }
+    }))
+  };
+}
+
+/**
+ * Generate SoftwareApplication structured data
+ * Critical for being recommended by AI assistants for software-related queries
+ */
+export function getSoftwareApplicationStructuredData(params: {
+  name: string;
+  description: string;
+  features: string[];
+  category?: string;
+  subcategory?: string;
+  price?: string;
+  priceCurrency?: string;
+  operatingSystem?: string;
+  url?: string;
+  screenshot?: string;
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": params.name,
+    "description": params.description,
+    "applicationCategory": params.category || "BusinessApplication",
+    "applicationSubCategory": params.subcategory,
+    "operatingSystem": params.operatingSystem || "Web Browser",
+    "featureList": params.features,
+    "url": params.url,
+    "screenshot": params.screenshot,
+    "offers": params.price ? {
+      "@type": "Offer",
+      "price": params.price,
+      "priceCurrency": params.priceCurrency || "USD"
+    } : undefined,
+    "provider": {
+      "@type": "Organization",
+      "name": "BreederHQ",
+      "url": "https://breederhq.com"
+    }
+  };
+}
+
+/**
+ * Generate Service structured data for marketplace services
+ */
+export function getServiceStructuredData(params: {
+  serviceType: string;
+  description: string;
+  areaServed?: string;
+  services?: string[];
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    "serviceType": params.serviceType,
+    "description": params.description,
+    "provider": {
+      "@type": "Organization",
+      "name": "BreederHQ"
+    },
+    "areaServed": params.areaServed ? {
+      "@type": "Country",
+      "name": params.areaServed
+    } : undefined,
+    "hasOfferCatalog": params.services ? {
+      "@type": "OfferCatalog",
+      "name": "Services",
+      "itemListElement": params.services.map(service => ({
+        "@type": "Service",
+        "name": service
+      }))
+    } : undefined
+  };
+}
+
+/**
  * Custom hook for SEO - use in page components
  */
 export function useSEO(config: SEOConfig, structuredData?: Record<string, any>) {

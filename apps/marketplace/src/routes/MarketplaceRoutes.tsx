@@ -32,7 +32,9 @@ import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePorta
 import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
 import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
 import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgramsPage";
+import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
 import BreedingProgramRulesPage from "../breeder/pages/BreedingProgramRulesPage";
+import { CreateDirectListingWizard } from "../breeder/pages/CreateDirectListingWizard";
 
 /**
  * Route guard for seller-only routes.
@@ -90,7 +92,7 @@ export function MarketplaceRoutes() {
 
       {/* V2 Dedicated Management Pages - Seller only */}
       <Route
-        path="/manage/animals"
+        path="/manage/animals-direct"
         element={
           <SellerOnlyRoute>
             <ManageAnimalsPage />
@@ -98,12 +100,37 @@ export function MarketplaceRoutes() {
         }
       />
       <Route
-        path="/manage/services"
+        path="/manage/animals-direct/new"
+        element={
+          <SellerOnlyRoute>
+            <CreateDirectListingWizard />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/animal-programs"
+        element={
+          <SellerOnlyRoute>
+            <AnimalProgramsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/services-direct"
         element={
           <SellerOnlyRoute>
             <ManageServicesPage />
           </SellerOnlyRoute>
         }
+      />
+      {/* Legacy route redirects */}
+      <Route
+        path="/manage/animal-listings"
+        element={<Navigate to="/manage/animals-direct" replace />}
+      />
+      <Route
+        path="/manage/services"
+        element={<Navigate to="/manage/services-direct" replace />}
       />
       <Route
         path="/manage/breeding-programs"
@@ -143,7 +170,7 @@ export function MarketplaceRoutes() {
         path="/me/services"
         element={
           <SellerOnlyRoute>
-            <Navigate to="/manage/services" replace />
+            <Navigate to="/manage/services-direct" replace />
           </SellerOnlyRoute>
         }
       />
@@ -151,7 +178,7 @@ export function MarketplaceRoutes() {
         path="/me/animals"
         element={
           <SellerOnlyRoute>
-            <Navigate to="/manage/animals" replace />
+            <Navigate to="/manage/breeder" replace />
           </SellerOnlyRoute>
         }
       />
@@ -159,7 +186,7 @@ export function MarketplaceRoutes() {
         path="/me/litters"
         element={
           <SellerOnlyRoute>
-            <Navigate to="/manage/animals" replace />
+            <Navigate to="/manage/breeder" replace />
           </SellerOnlyRoute>
         }
       />

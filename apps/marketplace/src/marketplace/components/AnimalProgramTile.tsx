@@ -9,13 +9,14 @@ import { Users } from "lucide-react";
 
 interface AnimalProgramTileProps {
   program: PublicAnimalProgramSummaryDTO;
+  lightMode?: boolean;
 }
 
 /**
  * Animal Program card for marketplace display.
  * Shows program name, template type badge, participant count, and breeder info.
  */
-export function AnimalProgramTile({ program }: AnimalProgramTileProps) {
+export function AnimalProgramTile({ program, lightMode = false }: AnimalProgramTileProps) {
   const isBoosted = program.boosted || false;
   const sponsorDisclosureText = program.sponsorDisclosureText;
 
@@ -64,7 +65,7 @@ export function AnimalProgramTile({ program }: AnimalProgramTileProps) {
             }}
           />
         ) : (
-          <DefaultCoverImage />
+          <DefaultCoverImage lightMode={lightMode} />
         )}
         {/* Boosted badge */}
         {isBoosted && (

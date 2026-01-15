@@ -1,12 +1,14 @@
 // apps/marketplace/src/shared/DefaultAnimalImage.tsx
 // Default placeholder image for animals without photos
 // Species-specific silhouettes
+// Supports both dark mode (portal) and light mode (marketplace browse)
 
 import * as React from "react";
 import { Dog, Cat, Bird, Rabbit, Fish, Bug, Squirrel, PawPrint } from "lucide-react";
 
 interface DefaultAnimalImageProps {
   species?: string | null;
+  lightMode?: boolean;
 }
 
 // Map common species names to appropriate icons
@@ -71,9 +73,30 @@ function getSpeciesIcon(species?: string | null) {
   return PawPrint;
 }
 
-export function DefaultAnimalImage({ species }: DefaultAnimalImageProps) {
+export function DefaultAnimalImage({ species, lightMode = false }: DefaultAnimalImageProps) {
   const IconComponent = getSpeciesIcon(species);
 
+  if (lightMode) {
+    // Light mode variant - soft gray gradient with subtle brand accents
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 relative overflow-hidden">
+        {/* Subtle warm glow - orange tint for brand consistency */}
+        <div className="absolute inset-0" style={{
+          background: 'radial-gradient(ellipse at center, rgba(249, 115, 22, 0.06) 0%, transparent 65%)'
+        }}></div>
+        {/* Very subtle accent hints - brand blue and teal */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'radial-gradient(circle at 25% 30%, rgba(0, 93, 194, 0.04) 0%, transparent 45%), radial-gradient(circle at 75% 70%, rgba(1, 167, 195, 0.05) 0%, transparent 50%)'
+        }}></div>
+        {/* Species-specific icon - darker for visibility on light bg */}
+        <div className="relative z-10 flex items-center justify-center">
+          <IconComponent className="w-20 h-20 text-gray-400 opacity-60" strokeWidth={1.5} />
+        </div>
+      </div>
+    );
+  }
+
+  // Dark mode variant (default)
   return (
     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#0d0d0d] via-[#1a1a1a] to-[#0a0a0a] relative overflow-hidden">
       {/* Subtle warm glow - purple/magenta to complement orange */}

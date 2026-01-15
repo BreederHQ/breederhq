@@ -11,6 +11,7 @@
 // - Program Listings
 
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { Button, BreedCombo, CustomBreedDialog } from "@bhq/ui";
 import type { BreedHit } from "@bhq/ui";
 import { createPortal } from "react-dom";
@@ -34,6 +35,7 @@ import {
   Pencil,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Upload,
   Clock,
   FileText,
@@ -596,109 +598,239 @@ export function MarketplaceManagePortal() {
           </div>
         )}
 
-        {/* Section Tabs */}
-        <div className="flex flex-wrap gap-1 border-b border-border-subtle mb-6">
-          <button
-            type="button"
-            onClick={() => setActiveSection("business")}
-            className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeSection === "business"
-                ? "text-white border-accent"
-                : "text-text-secondary hover:text-white border-transparent"
-            }`}
-          >
-            <Store size={14} className="inline mr-2" />
-            Business Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("breeds")}
-            className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px relative ${
-              activeSection === "breeds"
-                ? "text-white border-accent"
-                : (form.breeds?.length || 0) === 0
-                  ? "text-amber-400 hover:text-amber-300 border-amber-500/50"
-                  : "text-text-secondary hover:text-white border-transparent"
-            }`}
-          >
-            <Dog size={14} className="inline mr-2" />
-            Your Breeds
-            {(form.breeds?.length || 0) === 0 && activeSection !== "breeds" && (
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("credentials")}
-            className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeSection === "credentials"
-                ? "text-white border-accent"
-                : "text-text-secondary hover:text-white border-transparent"
-            }`}
-          >
-            <Award size={14} className="inline mr-2" />
-            Standards & Credentials
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("policies")}
-            className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeSection === "policies"
-                ? "text-white border-accent"
-                : "text-text-secondary hover:text-white border-transparent"
-            }`}
-          >
-            <Shield size={14} className="inline mr-2" />
-            Placement Policies
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("programs")}
-            className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px relative ${
-              activeSection === "programs"
-                ? "text-white border-accent"
-                : (form.listedPrograms?.length || 0) === 0
-                  ? "text-amber-400 hover:text-amber-300 border-amber-500/50"
-                  : "text-text-secondary hover:text-white border-transparent"
-            }`}
-          >
-            <PawPrint size={14} className="inline mr-2" />
-            Breeding Programs
-            {(form.listedPrograms?.length || 0) === 0 && activeSection !== "programs" && (
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-              </span>
-            )}
-          </button>
+        {/* Manage Storefront Banner */}
+        <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/20 rounded-xl p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-accent/20 rounded-xl">
+              <Store className="w-6 h-6 text-accent" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-white mb-2">Manage Your Storefront</h3>
+              <p className="text-sm text-text-secondary mb-4">
+                Configure your business profile, breeds, credentials, policies, and breeding programs
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setActiveSection("business")}
+              >
+                Edit Storefront Settings
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* Business Profile Section */}
-        {activeSection === "business" && (
-          <BusinessProfileSection form={form} updateForm={updateForm} tenantId={tenantId} />
-        )}
+        {/* 4 Hero Cards - Main Navigation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* Direct Listings Card */}
+          <Link
+            to="/manage/animals-direct"
+            className="bg-gradient-to-br from-purple-500/10 via-portal-card to-portal-surface border-l-4 border-l-purple-500 rounded-xl overflow-hidden hover:border-l-purple-400 transition-all group cursor-pointer shadow-lg hover:shadow-purple-500/20 block"
+          >
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-purple-500/20 rounded-xl group-hover:bg-purple-500/30 transition-colors">
+                  <Sparkles className="w-8 h-8 text-purple-400" />
+                </div>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Direct Listings</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                Individual animal listings for one-time sales or services
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Listings
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          </Link>
 
-        {/* Your Breeds Section */}
-        {activeSection === "breeds" && (
-          <BreedsSection form={form} updateForm={updateForm} tenantId={tenantId} isPublished={isPublished} />
-        )}
+          {/* Animal Programs Card */}
+          <Link
+            to="/manage/animal-programs"
+            className="bg-gradient-to-br from-blue-500/10 via-portal-card to-portal-surface border-l-4 border-l-blue-500 rounded-xl overflow-hidden hover:border-l-blue-400 transition-all group cursor-pointer shadow-lg hover:shadow-blue-500/20 block"
+          >
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-blue-500/20 rounded-xl group-hover:bg-blue-500/30 transition-colors">
+                  <Users className="w-8 h-8 text-blue-400" />
+                </div>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Animal Programs</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                STUD, REHOME, GUARDIAN, and other recurring programs
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Programs
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          </Link>
 
-        {/* Standards & Credentials Section */}
-        {activeSection === "credentials" && (
-          <CredentialsSection form={form} updateForm={updateForm} />
-        )}
+          {/* Breeding Programs Card */}
+          <Link
+            to="/manage/breeding-programs"
+            className="bg-gradient-to-br from-amber-500/10 via-portal-card to-portal-surface border-l-4 border-l-amber-500 rounded-xl overflow-hidden hover:border-l-amber-400 transition-all group cursor-pointer shadow-lg hover:shadow-amber-500/20 block"
+          >
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-amber-500/20 rounded-xl group-hover:bg-amber-500/30 transition-colors">
+                  <PawPrint className="w-8 h-8 text-amber-400" />
+                </div>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Breeding Programs</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                Offspring groups from your breeding plans
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Programs
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          </Link>
 
-        {/* Placement Policies Section */}
-        {activeSection === "policies" && (
-          <PoliciesSection form={form} updateForm={updateForm} />
-        )}
+          {/* Services Listings Card */}
+          <Link
+            to="/manage/services-direct"
+            className="bg-gradient-to-br from-green-500/10 via-portal-card to-portal-surface border-l-4 border-l-green-500 rounded-xl overflow-hidden hover:border-l-green-400 transition-all group cursor-pointer shadow-lg hover:shadow-green-500/20 block"
+          >
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-green-500/20 rounded-xl group-hover:bg-green-500/30 transition-colors">
+                  <Heart className="w-8 h-8 text-green-400" />
+                </div>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Services Listings</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                Offer training, grooming, or other professional services
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Services
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          </Link>
+        </div>
 
-        {/* Breeding Programs Section */}
-        {activeSection === "programs" && (
-          <BreedingProgramsSection form={form} updateForm={updateForm} />
+        {/* Expandable Storefront Settings Sections (Shown when "Edit Storefront Settings" is clicked) */}
+        {activeSection !== "business" && activeSection !== "breeds" && activeSection !== "credentials" && activeSection !== "policies" && activeSection !== "programs" ? null : (
+          <>
+            {/* Section Tabs */}
+            <div className="flex flex-wrap gap-1 border-b border-border-subtle mb-6">
+              <button
+                type="button"
+                onClick={() => setActiveSection("business")}
+                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
+                  activeSection === "business"
+                    ? "text-white border-accent"
+                    : "text-text-secondary hover:text-white border-transparent"
+                }`}
+              >
+                <Store size={14} className="inline mr-2" />
+                Business Profile
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection("breeds")}
+                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px relative ${
+                  activeSection === "breeds"
+                    ? "text-white border-accent"
+                    : (form.breeds?.length || 0) === 0
+                      ? "text-amber-400 hover:text-amber-300 border-amber-500/50"
+                      : "text-text-secondary hover:text-white border-transparent"
+                }`}
+              >
+                <Dog size={14} className="inline mr-2" />
+                Your Breeds
+                {(form.breeds?.length || 0) === 0 && activeSection !== "breeds" && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection("credentials")}
+                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
+                  activeSection === "credentials"
+                    ? "text-white border-accent"
+                    : "text-text-secondary hover:text-white border-transparent"
+                }`}
+              >
+                <Award size={14} className="inline mr-2" />
+                Standards & Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection("policies")}
+                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
+                  activeSection === "policies"
+                    ? "text-white border-accent"
+                    : "text-text-secondary hover:text-white border-transparent"
+                }`}
+              >
+                <Shield size={14} className="inline mr-2" />
+                Placement Policies
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection("programs")}
+                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px relative ${
+                  activeSection === "programs"
+                    ? "text-white border-accent"
+                    : (form.listedPrograms?.length || 0) === 0
+                      ? "text-amber-400 hover:text-amber-300 border-amber-500/50"
+                      : "text-text-secondary hover:text-white border-transparent"
+                }`}
+              >
+                <PawPrint size={14} className="inline mr-2" />
+                Breeding Programs
+                {(form.listedPrograms?.length || 0) === 0 && activeSection !== "programs" && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Business Profile Section */}
+            {activeSection === "business" && (
+              <BusinessProfileSection form={form} updateForm={updateForm} tenantId={tenantId} />
+            )}
+
+            {/* Your Breeds Section */}
+            {activeSection === "breeds" && (
+              <BreedsSection form={form} updateForm={updateForm} tenantId={tenantId} isPublished={isPublished} />
+            )}
+
+            {/* Standards & Credentials Section */}
+            {activeSection === "credentials" && (
+              <CredentialsSection form={form} updateForm={updateForm} />
+            )}
+
+            {/* Placement Policies Section */}
+            {activeSection === "policies" && (
+              <PoliciesSection form={form} updateForm={updateForm} />
+            )}
+
+            {/* Breeding Programs Section */}
+            {activeSection === "programs" && (
+              <BreedingProgramsSection form={form} updateForm={updateForm} />
+            )}
+          </>
         )}
       </div>
     </div>

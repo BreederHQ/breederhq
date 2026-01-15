@@ -13,6 +13,7 @@ import { MarketplaceLayout } from "../layout/MarketplaceLayout";
 import { AccessNotAvailable } from "./AccessNotAvailable";
 import { MarketplaceRoutes } from "../routes/MarketplaceRoutes";
 import { SavedListingsProvider } from "../hooks/useSavedListings";
+import { MarketplaceThemeProvider } from "../context/MarketplaceThemeContext";
 
 type GateStatus = "loading" | "unauthenticated" | "not_entitled" | "entitled" | "error";
 
@@ -309,13 +310,15 @@ export function MarketplaceGate() {
     if (currentPathIsPublic) {
       // Allow anonymous browsing of public pages
       return (
-        <GateContext.Provider value={contextValue}>
-          <SavedListingsProvider>
-            <MarketplaceLayout authenticated={false}>
-              <MarketplaceRoutes />
-            </MarketplaceLayout>
-          </SavedListingsProvider>
-        </GateContext.Provider>
+        <MarketplaceThemeProvider>
+          <GateContext.Provider value={contextValue}>
+            <SavedListingsProvider>
+              <MarketplaceLayout authenticated={false}>
+                <MarketplaceRoutes />
+              </MarketplaceLayout>
+            </SavedListingsProvider>
+          </GateContext.Provider>
+        </MarketplaceThemeProvider>
       );
     }
     // Protected route - show auth page with returnTo path
@@ -327,36 +330,42 @@ export function MarketplaceGate() {
     if (currentPathIsPublic) {
       // Allow browsing even without entitlement
       return (
-        <GateContext.Provider value={contextValue}>
-          <SavedListingsProvider>
-            <MarketplaceLayout authenticated={true}>
-              <MarketplaceRoutes />
-            </MarketplaceLayout>
-          </SavedListingsProvider>
-        </GateContext.Provider>
+        <MarketplaceThemeProvider>
+          <GateContext.Provider value={contextValue}>
+            <SavedListingsProvider>
+              <MarketplaceLayout authenticated={true}>
+                <MarketplaceRoutes />
+              </MarketplaceLayout>
+            </SavedListingsProvider>
+          </GateContext.Provider>
+        </MarketplaceThemeProvider>
       );
     }
     // Protected route without entitlement - show access denied
     return (
-      <GateContext.Provider value={contextValue}>
-        <SavedListingsProvider>
-          <MarketplaceLayout authenticated={true}>
-            <AccessNotAvailable />
-          </MarketplaceLayout>
-        </SavedListingsProvider>
-      </GateContext.Provider>
+      <MarketplaceThemeProvider>
+        <GateContext.Provider value={contextValue}>
+          <SavedListingsProvider>
+            <MarketplaceLayout authenticated={true}>
+              <AccessNotAvailable />
+            </MarketplaceLayout>
+          </SavedListingsProvider>
+        </GateContext.Provider>
+      </MarketplaceThemeProvider>
     );
   }
 
   // Entitled - show all routes inside shell with context
   return (
-    <GateContext.Provider value={contextValue}>
-      <SavedListingsProvider>
-        <MarketplaceLayout authenticated={true}>
-          <MarketplaceRoutes />
-        </MarketplaceLayout>
-      </SavedListingsProvider>
-    </GateContext.Provider>
+    <MarketplaceThemeProvider>
+      <GateContext.Provider value={contextValue}>
+        <SavedListingsProvider>
+          <MarketplaceLayout authenticated={true}>
+            <MarketplaceRoutes />
+          </MarketplaceLayout>
+        </SavedListingsProvider>
+      </GateContext.Provider>
+    </MarketplaceThemeProvider>
   );
 }
 

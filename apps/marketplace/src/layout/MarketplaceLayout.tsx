@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { joinApi } from "../api/client";
 import { useUnreadCounts, useWaitlistRequests } from "../messages/hooks";
 import { useUserProfile, type MarketplaceUserProfile } from "../gate/MarketplaceGate";
+import { useMarketplaceTheme } from "../context/MarketplaceThemeContext";
 import { TopNav } from "./TopNav";
 import { BottomTabBar } from "./BottomTabBar";
 
@@ -216,6 +217,7 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
   const { totalUnread, refresh: refreshUnread } = useUnreadCounts(authenticated);
   const { requests: waitlistRequests, refresh: refreshWaitlist } = useWaitlistRequests(authenticated);
   const userProfile = useUserProfile();
+  const { isLightMode } = useMarketplaceTheme();
 
   // Calculate notification counts
   const pendingWaitlistCount = waitlistRequests.filter(r => r.status === "pending").length;
@@ -295,7 +297,11 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-portal-bg text-white relative font-sans antialiased">
+    <div className={`min-h-screen flex flex-col relative font-sans antialiased ${
+      isLightMode
+        ? "bg-gray-50 text-gray-900"
+        : "bg-portal-bg text-white"
+    }`}>
       {/* Skip to main content link (WCAG 2.4.1) */}
       <a
         href="#main-content"

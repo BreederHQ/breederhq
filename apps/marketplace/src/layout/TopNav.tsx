@@ -5,6 +5,7 @@ import * as React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { MarketplaceUserProfile } from "../gate/MarketplaceGate";
 import { useIsSeller } from "../gate/MarketplaceGate";
+import { useMarketplaceTheme } from "../context/MarketplaceThemeContext";
 import logo from "@bhq/ui/assets/logo.png";
 
 /**
@@ -109,6 +110,34 @@ function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+function SunIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 interface TopNavProps {
   user: MarketplaceUserProfile | null;
   authenticated: boolean;
@@ -123,16 +152,21 @@ interface NavLinkProps {
   to: string;
   active: boolean;
   children: React.ReactNode;
+  isLightMode?: boolean;
 }
 
-function NavLink({ to, active, children }: NavLinkProps) {
+function NavLink({ to, active, children, isLightMode = false }: NavLinkProps) {
   return (
     <Link
       to={to}
       className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
         active
-          ? "text-white bg-white/10"
-          : "text-text-secondary hover:text-white hover:bg-white/5"
+          ? isLightMode
+            ? "text-gray-900 bg-gray-100"
+            : "text-white bg-white/10"
+          : isLightMode
+            ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+            : "text-text-secondary hover:text-white hover:bg-white/5"
       }`}
     >
       {children}
@@ -236,6 +270,7 @@ export function TopNav({
   const location = useLocation();
   const navigate = useNavigate();
   const isSeller = useIsSeller();
+  const { theme, toggleTheme, isLightMode } = useMarketplaceTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -282,14 +317,22 @@ export function TopNav({
       ];
 
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-border-subtle bg-portal-elevated">
+    <header className={`sticky top-0 z-40 h-16 border-b transition-colors ${
+      isLightMode
+        ? "bg-white border-gray-200"
+        : "bg-portal-elevated border-border-subtle"
+    }`}>
       <div className="h-full w-full px-4 md:px-8 lg:px-12 xl:px-16 flex items-center justify-between">
         {/* Left side: Logo + Desktop Navigation */}
         <div className="flex items-center gap-6">
           {/* Logo */}
           <Link
             to="/"
-            className="flex items-center gap-2 text-base font-semibold tracking-tight text-white hover:text-white/90 transition-colors"
+            className={`flex items-center gap-2 text-base font-semibold tracking-tight transition-colors ${
+              isLightMode
+                ? "text-gray-900 hover:text-gray-700"
+                : "text-white hover:text-white/90"
+            }`}
           >
             <img
               src={logo}
@@ -303,16 +346,16 @@ export function TopNav({
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1" role="navigation" aria-label="Main navigation">
-            <NavLink to="/" active={isActive("/") && location.pathname === "/"}>
+            <NavLink to="/" active={isActive("/") && location.pathname === "/"} isLightMode={isLightMode}>
               Home
             </NavLink>
-            <NavLink to="/animals" active={isActive("/animals")}>
+            <NavLink to="/animals" active={isActive("/animals")} isLightMode={isLightMode}>
               Animals
             </NavLink>
-            <NavLink to="/breeders" active={isActive("/breeders")}>
+            <NavLink to="/breeders" active={isActive("/breeders")} isLightMode={isLightMode}>
               Breeders
             </NavLink>
-            <NavLink to="/services" active={isActive("/services")}>
+            <NavLink to="/services" active={isActive("/services")} isLightMode={isLightMode}>
               Services
             </NavLink>
           </nav>
@@ -330,12 +373,20 @@ export function TopNav({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
-                  className="w-64 px-3 py-1.5 text-sm rounded-md border border-border-subtle bg-portal-card text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className={`w-64 px-3 py-1.5 text-sm rounded-md border focus:outline-none focus:ring-1 focus:ring-accent ${
+                    isLightMode
+                      ? "border-gray-300 bg-white text-gray-900 placeholder-gray-400"
+                      : "border-border-subtle bg-portal-card text-white placeholder-text-tertiary"
+                  }`}
                 />
                 <button
                   type="button"
                   onClick={() => setSearchOpen(false)}
-                  className="p-2 rounded-md text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
+                  className={`p-2 rounded-md transition-colors ${
+                    isLightMode
+                      ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   <CloseIcon className="h-4 w-4" />
                 </button>
@@ -344,7 +395,11 @@ export function TopNav({
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="p-2 rounded-md text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
+                className={`p-2 rounded-md transition-colors ${
+                  isLightMode
+                    ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    : "text-text-secondary hover:text-white hover:bg-white/5"
+                }`}
                 aria-label="Open search"
               >
                 <SearchIcon className="h-5 w-5" />
@@ -352,13 +407,32 @@ export function TopNav({
             )}
           </div>
 
+          {/* Theme Toggle (Desktop) */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={`hidden md:flex p-2 rounded-md transition-colors ${
+              isLightMode
+                ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                : "text-text-secondary hover:text-white hover:bg-white/5"
+            }`}
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={theme === "light" ? "Dark mode" : "Light mode"}
+          >
+            {theme === "light" ? <MoonIcon className="h-5 w-5" /> : <SunIcon className="h-5 w-5" />}
+          </button>
+
           {/* Authenticated user actions */}
           {authenticated && (
             <>
               {/* Saved Items */}
               <Link
                 to="/saved"
-                className="relative p-2 rounded-md text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
+                className={`relative p-2 rounded-md transition-colors ${
+                  isLightMode
+                    ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    : "text-text-secondary hover:text-white hover:bg-white/5"
+                }`}
                 aria-label={savedCount > 0 ? `Saved items, ${savedCount} saved` : "Saved items"}
               >
                 <HeartIcon className="h-5 w-5" />
@@ -372,7 +446,11 @@ export function TopNav({
               {/* Notifications */}
               <Link
                 to="/inquiries"
-                className="relative p-2 rounded-md text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
+                className={`relative p-2 rounded-md transition-colors ${
+                  isLightMode
+                    ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    : "text-text-secondary hover:text-white hover:bg-white/5"
+                }`}
                 aria-label={totalNotifications > 0 ? `Notifications, ${totalNotifications} unread` : "Notifications"}
               >
                 <BellIcon className="h-5 w-5" />
@@ -409,7 +487,11 @@ export function TopNav({
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-md text-text-secondary hover:text-white hover:bg-white/5 transition-colors"
+            className={`md:hidden p-2 rounded-md transition-colors ${
+              isLightMode
+                ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                : "text-text-secondary hover:text-white hover:bg-white/5"
+            }`}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
           >
@@ -420,18 +502,26 @@ export function TopNav({
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 bg-portal-elevated border-b border-border-subtle shadow-xl">
+        <div className={`md:hidden absolute top-full left-0 right-0 shadow-xl ${
+          isLightMode
+            ? "bg-white border-b border-gray-200"
+            : "bg-portal-elevated border-b border-border-subtle"
+        }`}>
           {/* Mobile Search */}
-          <div className="px-4 py-3 border-b border-border-subtle">
+          <div className={`px-4 py-3 border-b ${isLightMode ? "border-gray-200" : "border-border-subtle"}`}>
             <form onSubmit={handleSearch}>
               <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+                <SearchIcon className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isLightMode ? "text-gray-400" : "text-text-tertiary"}`} />
                 <input
                   type="text"
                   placeholder="Search animals, breeders..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border-subtle bg-portal-card text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                  className={`w-full pl-9 pr-3 py-2 text-sm rounded-md border focus:outline-none focus:ring-1 focus:ring-accent ${
+                    isLightMode
+                      ? "border-gray-300 bg-white text-gray-900 placeholder-gray-400"
+                      : "border-border-subtle bg-portal-card text-white placeholder-text-tertiary"
+                  }`}
                 />
               </div>
             </form>
@@ -442,39 +532,59 @@ export function TopNav({
             <Link
               to="/"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+              className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                isLightMode
+                  ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-text-secondary hover:text-white hover:bg-white/5"
+              }`}
             >
               Home
             </Link>
             <Link
               to="/animals"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+              className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                isLightMode
+                  ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-text-secondary hover:text-white hover:bg-white/5"
+              }`}
             >
               Animals
             </Link>
             <Link
               to="/breeders"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+              className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                isLightMode
+                  ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-text-secondary hover:text-white hover:bg-white/5"
+              }`}
             >
               Breeders
             </Link>
             <Link
               to="/services"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+              className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                isLightMode
+                  ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-text-secondary hover:text-white hover:bg-white/5"
+              }`}
             >
               Services
             </Link>
 
             {authenticated && (
               <>
-                <div className="my-2 border-t border-border-subtle" />
+                <div className={`my-2 border-t ${isLightMode ? "border-gray-200" : "border-border-subtle"}`} />
                 <Link
                   to="/inquiries"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  className={`flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md ${
+                    isLightMode
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   My Inquiries
                   {totalNotifications > 0 && (
@@ -486,7 +596,11 @@ export function TopNav({
                 <Link
                   to="/saved"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  className={`flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md ${
+                    isLightMode
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   Saved Items
                   {savedCount > 0 && (
@@ -500,7 +614,11 @@ export function TopNav({
                   <Link
                     to="/manage"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                    className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                      isLightMode
+                        ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        : "text-text-secondary hover:text-white hover:bg-white/5"
+                    }`}
                   >
                     Manage Listings
                   </Link>
@@ -508,7 +626,21 @@ export function TopNav({
               </>
             )}
 
-            <div className="my-2 border-t border-border-subtle" />
+            <div className={`my-2 border-t ${isLightMode ? "border-gray-200" : "border-border-subtle"}`} />
+
+            {/* Theme Toggle (Mobile) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={`flex items-center gap-2 w-full px-3 py-2 text-sm font-medium rounded-md ${
+                isLightMode
+                  ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-text-secondary hover:text-white hover:bg-white/5"
+              }`}
+            >
+              {theme === "light" ? <MoonIcon className="h-4 w-4" /> : <SunIcon className="h-4 w-4" />}
+              {theme === "light" ? "Dark Mode" : "Light Mode"}
+            </button>
 
             {authenticated ? (
               <>
@@ -518,7 +650,11 @@ export function TopNav({
                     setMobileMenuOpen(false);
                     onOpenSettings?.();
                   }}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  className={`block w-full text-left px-3 py-2 text-sm font-medium rounded-md ${
+                    isLightMode
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   Settings
                 </button>
@@ -528,7 +664,11 @@ export function TopNav({
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  className={`block w-full text-left px-3 py-2 text-sm font-medium rounded-md ${
+                    isLightMode
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   Sign Out
                 </button>
@@ -538,7 +678,11 @@ export function TopNav({
                 <Link
                   to="/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-sm font-medium rounded-md text-text-secondary hover:text-white hover:bg-white/5"
+                  className={`block px-3 py-2 text-sm font-medium rounded-md ${
+                    isLightMode
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-text-secondary hover:text-white hover:bg-white/5"
+                  }`}
                 >
                   Sign In
                 </Link>

@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/components/HeroPathwayCard.tsx
-// Pathway card component for hero section - represents one of three audience pathways
+// Pathway card component for hero section - bold, clickable cards that command attention
 
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -34,24 +34,31 @@ function ArrowRightIcon({ className }: { className?: string }) {
   );
 }
 
+// Bold cards - each card IS a clickable action, not just a container
 const variantStyles = {
   neutral: {
-    card: "border-border-default bg-portal-elevated hover:border-[#FF6B35]/30 hover:shadow-xl",
-    iconBg: "bg-[#FF6B35]/10",
-    iconColor: "text-[#FF6B35]",
-    primaryButton: "bg-[#FF6B35] text-white hover:bg-[#FF8555] shadow-md",
+    card: "bg-white border-2 border-gray-200 hover:border-[hsl(var(--brand-orange))] hover:shadow-2xl hover:shadow-orange-500/20 shadow-xl hover:-translate-y-1",
+    iconBg: "bg-gradient-to-br from-[hsl(var(--brand-orange))] to-orange-600",
+    iconColor: "text-white",
+    titleColor: "text-gray-900",
+    button: "bg-[hsl(var(--brand-orange))] text-white hover:bg-orange-600 shadow-lg shadow-orange-500/30",
+    secondaryLink: "text-gray-600 hover:text-[hsl(var(--brand-orange))]",
   },
   breeder: {
-    card: "border-border-default bg-portal-elevated hover:border-[#FF6B35]/30 hover:shadow-xl",
-    iconBg: "bg-[#FF6B35]/10",
-    iconColor: "text-[#FF6B35]",
-    primaryButton: "bg-[#FF6B35] text-white hover:bg-[#FF8555] shadow-md",
+    card: "bg-white border-2 border-gray-200 hover:border-[hsl(var(--brand-blue))] hover:shadow-2xl hover:shadow-blue-500/20 shadow-xl hover:-translate-y-1",
+    iconBg: "bg-gradient-to-br from-[hsl(var(--brand-blue))] to-blue-700",
+    iconColor: "text-white",
+    titleColor: "text-gray-900",
+    button: "bg-[hsl(var(--brand-blue))] text-white hover:bg-blue-700 shadow-lg shadow-blue-500/30",
+    secondaryLink: "text-gray-600 hover:text-[hsl(var(--brand-blue))]",
   },
   provider: {
-    card: "border-border-default bg-portal-elevated hover:border-[#FF6B35]/30 hover:shadow-xl",
-    iconBg: "bg-[#FF6B35]/10",
-    iconColor: "text-[#FF6B35]",
-    primaryButton: "bg-[#FF6B35] text-white hover:bg-[#FF8555] shadow-md",
+    card: "bg-white border-2 border-gray-200 hover:border-[hsl(var(--brand-teal))] hover:shadow-2xl hover:shadow-teal-500/20 shadow-xl hover:-translate-y-1",
+    iconBg: "bg-gradient-to-br from-[hsl(var(--brand-teal))] to-teal-600",
+    iconColor: "text-white",
+    titleColor: "text-gray-900",
+    button: "bg-[hsl(var(--brand-teal))] text-white hover:bg-teal-600 shadow-lg shadow-teal-500/30",
+    secondaryLink: "text-gray-600 hover:text-[hsl(var(--brand-teal))]",
   },
 };
 
@@ -67,31 +74,30 @@ export function HeroPathwayCard({
 
   return (
     <section
-      className={`rounded-2xl border p-12 h-full flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-lg ${styles.card}`}
+      className={`rounded-2xl p-8 md:p-10 h-full flex flex-col transition-all duration-200 ${styles.card}`}
       aria-labelledby={`pathway-${variant}-title`}
     >
-      {/* Icon */}
-      <div className={`w-24 h-24 rounded-2xl ${styles.iconBg} flex items-center justify-center mb-8 mx-auto`}>
-        <div className={`${styles.iconColor} scale-150`}>{icon}</div>
+      {/* Large Icon - 20x20 with big icon inside */}
+      <div className={`w-20 h-20 rounded-2xl ${styles.iconBg} flex items-center justify-center mb-6 mx-auto shadow-xl`}>
+        <div className={`${styles.iconColor} [&>svg]:w-10 [&>svg]:h-10`}>{icon}</div>
       </div>
 
       {/* Content */}
-      <h3 id={`pathway-${variant}-title`} className="text-3xl font-bold text-white mb-4 text-center">
+      <h3 id={`pathway-${variant}-title`} className={`text-2xl md:text-3xl font-bold ${styles.titleColor} mb-3 text-center`}>
         {title}
       </h3>
-      <p className="text-lg text-text-secondary mb-8 text-center flex-grow leading-relaxed">
+      <p className="text-base md:text-lg text-gray-600 mb-8 text-center flex-grow leading-relaxed">
         {description}
       </p>
 
-      {/* CTAs */}
+      {/* Primary CTA - Bold Button */}
       <div className="space-y-3">
         <Link
           to={primaryCTA.href}
-          className={`inline-flex items-center justify-center gap-3 w-full px-8 py-4 rounded-lg text-lg font-semibold transition-colors ${styles.primaryButton}`}
-          style={{ minHeight: "60px" }}
+          className={`inline-flex items-center justify-center gap-2 w-full py-4 px-6 text-lg font-bold rounded-xl transition-all hover:scale-[1.02] ${styles.button}`}
         >
           {primaryCTA.label}
-          <ArrowRightIcon className="h-6 w-6" />
+          <ArrowRightIcon className="h-5 w-5" />
         </Link>
 
         {secondaryCTA && (
@@ -100,20 +106,18 @@ export function HeroPathwayCard({
               href={secondaryCTA.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-3 w-full px-8 py-3 rounded-lg border border-border-subtle text-text-secondary text-lg font-medium hover:text-white hover:border-border-default transition-colors"
-              style={{ minHeight: "56px" }}
+              className={`inline-flex items-center justify-center gap-1.5 w-full py-2.5 text-sm font-semibold transition-colors ${styles.secondaryLink}`}
             >
               {secondaryCTA.label}
-              <ArrowRightIcon className="h-5 w-5" />
+              <ArrowRightIcon className="h-4 w-4" />
             </a>
           ) : (
             <Link
               to={secondaryCTA.href}
-              className="inline-flex items-center justify-center gap-3 w-full px-8 py-3 rounded-lg border border-border-subtle text-text-secondary text-lg font-medium hover:text-white hover:border-border-default transition-colors"
-              style={{ minHeight: "56px" }}
+              className={`inline-flex items-center justify-center gap-1.5 w-full py-2.5 text-sm font-semibold transition-colors ${styles.secondaryLink}`}
             >
               {secondaryCTA.label}
-              <ArrowRightIcon className="h-5 w-5" />
+              <ArrowRightIcon className="h-4 w-4" />
             </Link>
           )
         )}

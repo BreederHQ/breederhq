@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/components/ServiceProviderCTA.tsx
-// Recruitment section for service providers - shows categories and value prop
+// Recruitment section for service providers with fee comparison
 
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -60,6 +60,14 @@ function HomeIcon({ className }: { className?: string }) {
   );
 }
 
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ArrowRightIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
@@ -72,89 +80,124 @@ const SERVICE_CATEGORIES = [
   { icon: GraduationCapIcon, label: "Training" },
   { icon: ScissorsIcon, label: "Grooming" },
   { icon: TruckIcon, label: "Transport" },
-  { icon: HomeIcon, label: "Boarding" },
   { icon: CameraIcon, label: "Photography" },
+  { icon: HomeIcon, label: "Boarding" },
   { icon: HeartPulseIcon, label: "Veterinary" },
 ];
 
 export function ServiceProviderCTA() {
   return (
-    <section className="rounded-2xl border border-[hsl(var(--brand-orange))]/30 bg-gradient-to-br from-[hsl(var(--brand-orange))]/5 to-transparent p-8 md:p-10">
-      <div className="grid md:grid-cols-2 gap-8 items-center">
-        {/* Left: Value proposition */}
-        <div>
-          <h2 className="text-2xl font-bold text-white mb-4">
-            Offer your services to the breeding community
+    <section className="py-16 md:py-20 bg-[hsl(var(--brand-orange))]" aria-labelledby="service-provider-title">
+      <div className="max-w-7xl mx-auto px-4">
+        {/* Section header */}
+        <div className="text-center mb-12">
+          <h2 id="service-provider-title" className="text-3xl md:text-4xl font-bold text-white mb-4">
+            Grow your business with the breeding community
           </h2>
-          <p className="text-text-secondary mb-6 leading-relaxed">
-            Trainers, groomers, transporters, photographers, vets — breeders and buyers need your expertise. List your services and connect with clients who understand the value of professional animal care.
+          <p className="text-lg text-white/90 max-w-3xl mx-auto leading-relaxed">
+            Trainers, groomers, transporters, photographers, vets - list your services and connect with clients who value professional animal care.
           </p>
-
-          {/* Service category pills */}
-          <div className="flex flex-wrap gap-2 mb-6">
-            {SERVICE_CATEGORIES.map((cat) => {
-              const Icon = cat.icon;
-              return (
-                <span
-                  key={cat.label}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-text-secondary"
-                >
-                  <Icon className="w-4 h-4" />
-                  {cat.label}
-                </span>
-              );
-            })}
-            <span className="inline-flex items-center px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-text-tertiary">
-              +10 more
-            </span>
-          </div>
-
-          <Link
-            to="/provider"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[hsl(var(--brand-orange))] text-white font-medium hover:bg-[hsl(var(--brand-orange))]/90 transition-colors"
-          >
-            List Your Services
-            <ArrowRightIcon className="h-4 w-4" />
-          </Link>
         </div>
 
-        {/* Right: Why list here */}
-        <div className="space-y-4">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
-              <span className="text-[hsl(var(--brand-orange))] font-bold">1</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-white mb-1">Reach the right clients</h3>
-              <p className="text-sm text-text-tertiary">
-                Connect with serious breeders and pet owners who value quality over price.
-              </p>
-            </div>
+        {/* Service category pills */}
+        <div className="flex flex-wrap gap-2 justify-center mb-12">
+          {SERVICE_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            return (
+              <span
+                key={cat.label}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 border border-white/30 text-sm text-white"
+              >
+                <Icon className="w-4 h-4" />
+                {cat.label}
+              </span>
+            );
+          })}
+          <span className="inline-flex items-center px-4 py-2 rounded-full bg-white/20 border border-white/30 text-sm text-white/80">
+            +8 more
+          </span>
+        </div>
+
+        {/* Two column layout: Why list + Fee comparison */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+          {/* Left: Why list on BreederHQ */}
+          <div className="p-8 rounded-xl bg-white shadow-lg">
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Why list on BreederHQ?</h3>
+            <ul className="space-y-4">
+              <li className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center mt-0.5">
+                  <CheckIcon className="w-3 h-3 text-[hsl(var(--brand-orange))]" />
+                </div>
+                <span className="text-gray-600">Reach clients who value quality over price</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center mt-0.5">
+                  <CheckIcon className="w-3 h-3 text-[hsl(var(--brand-orange))]" />
+                </div>
+                <span className="text-gray-600">Build your professional profile and reputation</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center mt-0.5">
+                  <CheckIcon className="w-3 h-3 text-[hsl(var(--brand-orange))]" />
+                </div>
+                <span className="text-gray-600">Connect directly with clients - no middleman</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center mt-0.5">
+                  <CheckIcon className="w-3 h-3 text-[hsl(var(--brand-orange))]" />
+                </div>
+                <span className="text-gray-600">Collect verified reviews from real clients</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center mt-0.5">
+                  <CheckIcon className="w-3 h-3 text-[hsl(var(--brand-orange))]" />
+                </div>
+                <span className="text-gray-600">Showcase credentials, certifications, and experience</span>
+              </li>
+            </ul>
           </div>
 
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
-              <span className="text-[hsl(var(--brand-orange))] font-bold">2</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-white mb-1">No platform fees</h3>
-              <p className="text-sm text-text-tertiary">
-                Direct contact with clients. No commissions, no middleman fees on bookings.
-              </p>
-            </div>
-          </div>
+          {/* Right: Keep 100% of your fees */}
+          <div className="p-8 rounded-xl bg-white shadow-lg">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Keep 100% of your fees</h3>
+            <p className="text-gray-600 mb-6 leading-relaxed">
+              Unlike Rover or Wag, we don't take a percentage of your bookings. You keep everything you earn.
+            </p>
 
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
-              <span className="text-[hsl(var(--brand-orange))] font-bold">3</span>
+            {/* Fee comparison table */}
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                <span className="text-gray-600">Rover</span>
+                <span className="text-gray-400 line-through">20% per booking</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                <span className="text-gray-600">Wag</span>
+                <span className="text-gray-400 line-through">40% per booking</span>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <span className="text-gray-900 font-semibold">BreederHQ</span>
+                <span className="text-[hsl(var(--brand-orange))] font-bold text-lg">$0</span>
+              </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-white mb-1">Build your reputation</h3>
-              <p className="text-sm text-text-tertiary">
-                Collect reviews, showcase your credentials, and stand out in your specialty.
-              </p>
-            </div>
+
+            <p className="text-sm text-gray-500">
+              Direct contact with clients. Set your own rates. No commissions.
+            </p>
           </div>
+        </div>
+
+        {/* CTA button - white on orange background */}
+        <div className="text-center">
+          <Link
+            to="/provider"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-lg bg-white text-[hsl(var(--brand-orange))] font-semibold text-lg hover:bg-gray-100 transition-colors shadow-lg"
+          >
+            List Your Services - It's Free
+            <ArrowRightIcon className="h-5 w-5" />
+          </Link>
+          <p className="text-sm text-white/80 mt-3">
+            Takes about 5 minutes. No credit card required.
+          </p>
         </div>
       </div>
     </section>

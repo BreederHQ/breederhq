@@ -17,6 +17,7 @@ import { useSaveButton } from "../../hooks/useSavedListings";
 import { AnimalProgramTile } from "../components/AnimalProgramTile";
 import { updateSEO } from "../../utils/seo";
 import { useSpeciesTerminology } from "@bhq/ui";
+import { useMarketplaceTheme } from "../../context/MarketplaceThemeContext";
 
 // =============================================================================
 // Icons
@@ -1138,6 +1139,7 @@ function MobileFilterSheet({
 export function AnimalsIndexPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isLightMode } = useMarketplaceTheme();
 
   // Parse URL params into filters state
   const [filters, setFilters] = React.useState<Filters>(() => ({
@@ -1376,7 +1378,7 @@ export function AnimalsIndexPage() {
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
-    <div className="pb-20 md:pb-8">
+    <div className={`pb-20 md:pb-8 ${isLightMode ? "marketplace-browse" : ""}`}>
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -1657,6 +1659,7 @@ export function AnimalsIndexPage() {
                   <AnimalProgramTile
                     key={`program-${program.id}`}
                     program={program}
+                    lightMode={isLightMode}
                   />
                 ))}
               </div>

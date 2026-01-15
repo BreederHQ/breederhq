@@ -6,7 +6,7 @@
 // 2. Animal Programs - Grouped offerings (ongoing breeding programs)
 
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button, Badge } from "@bhq/ui";
 import {
   Dog,
@@ -18,13 +18,10 @@ import {
   Filter,
   ArrowLeft,
   AlertCircle,
-  DollarSign,
-  MapPin,
   X,
   ChevronRight,
   Sparkles,
   Users,
-  Search,
   PawPrint,
 } from "lucide-react";
 
@@ -33,13 +30,11 @@ import {
   saveDirectListing,
   updateDirectListingStatus,
   deleteDirectListing,
-  getTenantAnimals,
   type DirectAnimalListing,
   type DirectAnimalListingCreate,
   type TemplateType,
   type DirectListingStatus,
   type DataDrawerConfig,
-  type TenantAnimalItem,
 } from "../../api/client";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,13 +76,13 @@ const STATUS_CONFIG: Record<DirectListingStatus, { label: string; variant: "succ
 
 export function ManageAnimalsPage() {
   const tenantId = getTenantId();
+  const navigate = useNavigate();
   const [listings, setListings] = React.useState<DirectAnimalListing[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [templateFilter, setTemplateFilter] = React.useState<string>("ALL");
-  const [showForkDialog, setShowForkDialog] = React.useState(false);
-  const [editing, setEditing] = React.useState<DirectAnimalListing | "new" | null>(null);
+  const [editing, setEditing] = React.useState<DirectAnimalListing | null>(null);
 
   const fetchListings = React.useCallback(async () => {
     if (!tenantId) return;
@@ -167,7 +162,7 @@ export function ManageAnimalsPage() {
                 Manage individual listings and breeding programs
               </p>
             </div>
-            <Button variant="primary" onClick={() => setShowForkDialog(true)}>
+            <Button variant="primary" onClick={() => navigate("/manage/animals-direct/new")}>
               <Plus size={16} className="mr-1.5" />
               New Listing
             </Button>
@@ -322,7 +317,7 @@ export function ManageAnimalsPage() {
             <p className="text-sm text-text-tertiary mb-4">
               Create your first animal listing to showcase studs, rehomes, or other animals.
             </p>
-            <Button variant="primary" onClick={() => setShowForkDialog(true)}>
+            <Button variant="primary" onClick={() => navigate("/manage/animals-direct/new")}>
               <Plus size={16} className="mr-1.5" />
               Create First Listing
             </Button>
@@ -343,26 +338,11 @@ export function ManageAnimalsPage() {
           </div>
         )}
 
-        {/* Fork Dialog */}
-        {showForkDialog && (
-          <ForkDialog
-            onSelectDirect={() => {
-              setShowForkDialog(false);
-              setEditing("new");
-            }}
-            onSelectProgram={() => {
-              setShowForkDialog(false);
-              window.location.href = "/marketplace/manage/animal-programs/new";
-            }}
-            onClose={() => setShowForkDialog(false)}
-          />
-        )}
-
         {/* Edit Drawer */}
         {editing && (
           <ListingEditDrawer
             tenantId={tenantId}
-            listing={editing === "new" ? null : editing}
+            listing={editing}
             onClose={() => setEditing(null)}
             onSaved={() => {
               setEditing(null);
@@ -488,68 +468,6 @@ function ListingCard({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FORK DIALOG
-// ═══════════════════════════════════════════════════════════════════════════
-
-function ForkDialog({
-  onSelectDirect,
-  onSelectProgram,
-  onClose,
-}: {
-  onSelectDirect: () => void;
-  onSelectProgram: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-portal-card border border-border-subtle rounded-lg shadow-2xl max-w-2xl w-full mx-4">
-        <div className="flex items-center justify-between p-6 border-b border-border-subtle">
-          <h2 className="text-xl font-bold text-white">Choose Listing Type</h2>
-          <button
-            onClick={onClose}
-            className="p-1 text-text-secondary hover:text-white transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 grid grid-cols-2 gap-4">
-          {/* Direct Listing Option */}
-          <button
-            onClick={onSelectDirect}
-            className="bg-portal-surface border-2 border-border-subtle hover:border-purple-500/50 rounded-lg p-6 text-left transition-all group"
-          >
-            <Sparkles className="w-10 h-10 text-purple-400 mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-lg font-semibold text-white mb-2">Direct Listing</h3>
-            <p className="text-sm text-text-secondary mb-4">
-              Create a one-time listing for a specific animal. Perfect for studs, rehomes, trained dogs, or guardian placements.
-            </p>
-            <div className="text-sm text-purple-400 font-medium">
-              Choose this for individual animals →
-            </div>
-          </button>
-
-          {/* Animal Program Option */}
-          <button
-            onClick={onSelectProgram}
-            className="bg-portal-surface border-2 border-border-subtle hover:border-blue-500/50 rounded-lg p-6 text-left transition-all group"
-          >
-            <Users className="w-10 h-10 text-blue-400 mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-lg font-semibold text-white mb-2">Animal Program</h3>
-            <p className="text-sm text-text-secondary mb-4">
-              Create a grouped program with multiple participants. Perfect for guardian programs, stud services, co-ownership, or rehoming programs.
-            </p>
-            <div className="text-sm text-blue-400 font-medium">
-              Choose this for programs →
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // LISTING EDIT DRAWER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -560,82 +478,35 @@ function ListingEditDrawer({
   onSaved,
 }: {
   tenantId: string;
-  listing: DirectAnimalListing | null;
+  listing: DirectAnimalListing;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const isNew = listing === null;
   const [saving, setSaving] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<"basic" | "content" | "pricing">("basic");
 
   const [form, setForm] = React.useState({
-    animalId: listing?.animalId ?? 0,
-    slug: listing?.slug || "",
-    templateType: listing?.templateType || ("REHOME" as TemplateType),
-    status: listing?.status || ("DRAFT" as DirectListingStatus),
-    headline: listing?.headline || "",
-    title: listing?.title || "",
-    summary: listing?.summary || "",
-    description: listing?.description || "",
-    priceModel: listing?.priceModel || "inquire",
-    priceCents: listing?.priceCents ?? null,
-    priceMinCents: listing?.priceMinCents ?? null,
-    priceMaxCents: listing?.priceMaxCents ?? null,
-    locationCity: listing?.locationCity || "",
-    locationRegion: listing?.locationRegion || "",
-    locationCountry: listing?.locationCountry || "USA",
-    listed: listing?.listed ?? true,
+    animalId: listing.animalId,
+    slug: listing.slug,
+    templateType: listing.templateType,
+    status: listing.status,
+    headline: listing.headline || "",
+    title: listing.title || "",
+    summary: listing.summary || "",
+    description: listing.description || "",
+    priceModel: listing.priceModel || "inquire",
+    priceCents: listing.priceCents ?? null,
+    priceMinCents: listing.priceMinCents ?? null,
+    priceMaxCents: listing.priceMaxCents ?? null,
+    locationCity: listing.locationCity || "",
+    locationRegion: listing.locationRegion || "",
+    locationCountry: listing.locationCountry || "USA",
+    listed: listing.listed ?? true,
   });
 
-  // Animal selector state
-  const [animals, setAnimals] = React.useState<TenantAnimalItem[]>([]);
-  const [animalSearch, setAnimalSearch] = React.useState("");
-  const [showAnimalDropdown, setShowAnimalDropdown] = React.useState(false);
-  const [loadingAnimals, setLoadingAnimals] = React.useState(false);
-
-  const selectedAnimal = React.useMemo(() => {
-    if (listing?.animal) return listing.animal;
-    return animals.find((a) => a.id === form.animalId) || null;
-  }, [animals, form.animalId, listing?.animal]);
-
-  // Fetch animals on mount or when search changes
-  React.useEffect(() => {
-    const fetchAnimals = async () => {
-      setLoadingAnimals(true);
-      try {
-        const response = await getTenantAnimals(tenantId, {
-          search: animalSearch,
-          limit: 50,
-        });
-        setAnimals(response.items || []);
-      } catch (err) {
-        console.error("Failed to load animals:", err);
-      } finally {
-        setLoadingAnimals(false);
-      }
-    };
-    fetchAnimals();
-  }, [tenantId, animalSearch]);
-
-  // Close dropdown when clicking outside
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showAnimalDropdown) {
-        const target = e.target as HTMLElement;
-        if (!target.closest(".animal-selector-wrapper")) {
-          setShowAnimalDropdown(false);
-        }
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showAnimalDropdown]);
+  const selectedAnimal = listing.animal;
 
   const handleSave = async () => {
-    if (!form.animalId) {
-      alert("Please select an animal");
-      return;
-    }
     if (!form.slug.trim()) {
       alert("Please enter a slug");
       return;
@@ -644,7 +515,7 @@ function ListingEditDrawer({
     setSaving(true);
     try {
       const input: DirectAnimalListingCreate = {
-        id: listing?.id,
+        id: listing.id,
         animalId: form.animalId,
         slug: form.slug.trim(),
         templateType: form.templateType,
@@ -673,16 +544,14 @@ function ListingEditDrawer({
     }
   };
 
-  const canSave = form.animalId > 0 && form.slug.trim().length > 0;
+  const canSave = form.slug.trim().length > 0;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-end z-50">
       <div className="bg-portal-card border-l border-border-subtle w-full max-w-2xl h-full flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border-subtle">
-          <h2 className="text-xl font-bold text-white">
-            {isNew ? "New Direct Listing" : "Edit Listing"}
-          </h2>
+          <h2 className="text-xl font-bold text-white">Edit Listing</h2>
           <button
             onClick={onClose}
             className="p-1 text-text-secondary hover:text-white transition-colors"
@@ -729,99 +598,28 @@ function ListingEditDrawer({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === "basic" && (
             <>
-              <div className="relative animal-selector-wrapper">
-                <label className="block text-sm font-medium text-white mb-2">
-                  Animal <span className="text-red-400">*</span>
-                </label>
-
-                {/* Selected Animal Display */}
-                {selectedAnimal && !showAnimalDropdown ? (
-                  <div className="flex items-center gap-3 p-3 bg-portal-surface border border-border-subtle rounded-lg">
-                    {selectedAnimal.photoUrl ? (
-                      <img
-                        src={selectedAnimal.photoUrl}
-                        alt={selectedAnimal.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-portal-card flex items-center justify-center">
-                        <Dog className="w-6 h-6 text-text-tertiary" />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className="text-white font-medium">{selectedAnimal.name}</p>
-                      <p className="text-sm text-text-tertiary">
-                        {[selectedAnimal.breed, selectedAnimal.sex].filter(Boolean).join(" • ")}
-                      </p>
+              {/* Animal Display (read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">Animal</label>
+                <div className="flex items-center gap-3 p-3 bg-portal-surface border border-border-subtle rounded-lg">
+                  {selectedAnimal?.photoUrl ? (
+                    <img
+                      src={selectedAnimal.photoUrl}
+                      alt={selectedAnimal.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-portal-card flex items-center justify-center">
+                      <Dog className="w-6 h-6 text-text-tertiary" />
                     </div>
-                    <button
-                      onClick={() => setShowAnimalDropdown(true)}
-                      className="px-3 py-1.5 text-sm text-text-secondary hover:text-white transition-colors"
-                    >
-                      Change
-                    </button>
+                  )}
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{selectedAnimal?.name || "Unknown"}</p>
+                    <p className="text-sm text-text-tertiary">
+                      {[selectedAnimal?.breed, selectedAnimal?.sex].filter(Boolean).join(" • ")}
+                    </p>
                   </div>
-                ) : (
-                  <>
-                    {/* Search Input */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-                      <input
-                        type="text"
-                        value={animalSearch}
-                        onChange={(e) => setAnimalSearch(e.target.value)}
-                        onFocus={() => setShowAnimalDropdown(true)}
-                        className="w-full pl-10 pr-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                        placeholder="Search for an animal..."
-                      />
-                    </div>
-
-                    {/* Dropdown */}
-                    {showAnimalDropdown && (
-                      <div className="absolute z-10 mt-1 w-full bg-portal-card border border-border-subtle rounded-lg shadow-2xl max-h-64 overflow-y-auto">
-                        {loadingAnimals ? (
-                          <div className="p-4 text-center text-text-secondary">
-                            Loading animals...
-                          </div>
-                        ) : animals.length === 0 ? (
-                          <div className="p-4 text-center text-text-secondary">
-                            {animalSearch ? "No animals found" : "No animals available"}
-                          </div>
-                        ) : (
-                          animals.map((animal) => (
-                            <button
-                              key={animal.id}
-                              onClick={() => {
-                                setForm({ ...form, animalId: animal.id });
-                                setShowAnimalDropdown(false);
-                                setAnimalSearch("");
-                              }}
-                              className="w-full flex items-center gap-3 p-3 hover:bg-portal-surface transition-colors text-left border-b border-border-subtle last:border-b-0"
-                            >
-                              {animal.photoUrl ? (
-                                <img
-                                  src={animal.photoUrl}
-                                  alt={animal.name}
-                                  className="w-10 h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-portal-surface flex items-center justify-center">
-                                  <Dog className="w-5 h-5 text-text-tertiary" />
-                                </div>
-                              )}
-                              <div className="flex-1">
-                                <p className="text-white font-medium">{animal.name}</p>
-                                <p className="text-sm text-text-tertiary">
-                                  {[animal.breed, animal.sex].filter(Boolean).join(" • ")}
-                                </p>
-                              </div>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                </div>
               </div>
 
               <div>
@@ -1091,7 +889,7 @@ function ListingEditDrawer({
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} disabled={!canSave || saving}>
-            {saving ? "Saving..." : isNew ? "Create Listing" : "Save Changes"}
+            {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </div>

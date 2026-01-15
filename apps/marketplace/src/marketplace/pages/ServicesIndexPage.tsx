@@ -16,6 +16,7 @@ import { Breadcrumb } from "../components/Breadcrumb";
 import { useGateStatus } from "../../gate/MarketplaceGate";
 import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 import { updateSEO } from "../../utils/seo";
+import { useMarketplaceTheme } from "../../context/MarketplaceThemeContext";
 
 // =============================================================================
 // Types
@@ -481,7 +482,7 @@ function FilterPanel({
 // Service Card Component
 // =============================================================================
 
-function ServiceCard({ service }: { service: PublicServiceListing }) {
+function ServiceCard({ service, lightMode = false }: { service: PublicServiceListing; lightMode?: boolean }) {
   // Format price display
   let priceText = "Contact for pricing";
   if (service.priceCents != null) {
@@ -505,8 +506,8 @@ function ServiceCard({ service }: { service: PublicServiceListing }) {
 
   return (
     <div className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
-      {/* Image area */}
-      <div className="relative h-[140px] overflow-hidden flex-shrink-0">
+      {/* Image area - 4:3 aspect ratio to match other cards */}
+      <div className="relative aspect-[4/3] overflow-hidden flex-shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -514,7 +515,7 @@ function ServiceCard({ service }: { service: PublicServiceListing }) {
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />
         ) : (
-          <DefaultCoverImage />
+          <DefaultCoverImage lightMode={lightMode} />
         )}
         {/* Category badge overlay */}
         <div className="absolute top-3 left-3">
@@ -1011,6 +1012,7 @@ function AuthRequiredState() {
 
 export function ServicesIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isLightMode } = useMarketplaceTheme();
 
   // Parse URL params into filters state
   const [filters, setFilters] = React.useState<Filters>(() => ({
@@ -1235,7 +1237,7 @@ export function ServicesIndexPage() {
   );
 
   return (
-    <div className="pb-20 md:pb-8">
+    <div className={`pb-20 md:pb-8 ${isLightMode ? "marketplace-browse" : ""}`}>
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -1421,7 +1423,7 @@ export function ServicesIndexPage() {
                 }>
                   {paginatedServices.map((service) => (
                     displayMode === "grid"
-                      ? <ServiceCard key={service.id} service={service} />
+                      ? <ServiceCard key={service.id} service={service} lightMode={isLightMode} />
                       : <ServiceListRow key={service.id} service={service} />
                   ))}
                 </div>

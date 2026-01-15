@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Button } from "@bhq/ui";
+import { Button, getGroupName } from "@bhq/ui";
 import {
   PawPrint,
   Plus,
@@ -26,11 +26,20 @@ import {
   Baby,
   Users,
   ArrowLeft,
+  ArrowRight,
   DollarSign,
   Settings,
   Heart,
   Activity,
   TrendingUp,
+  Save,
+  CalendarCheck,
+  CalendarClock,
+  CheckCircle2,
+  Circle,
+  Milestone,
+  StickyNote,
+  UserPlus,
 } from "lucide-react";
 
 // API imports
@@ -210,6 +219,83 @@ function formatDate(dateStr: string | null | undefined): string {
   });
 }
 
+// Timeline item component for breeding plan overview
+// Shows actual dates (completed), expected dates (pending), and recalculated dates (with arrow showing change)
+function TimelineItem({
+  label,
+  expected,
+  actual,
+  originalExpected,
+  formatDate,
+  highlight = false,
+}: {
+  label: string;
+  expected?: string | null;
+  actual?: string | null;
+  originalExpected?: string | null; // Original expected date before recalculation
+  formatDate: (d: string | null | undefined) => string;
+  highlight?: boolean;
+}) {
+  const hasExpected = !!expected;
+  const hasActual = !!actual;
+  const hasOriginalExpected = !!originalExpected;
+  const isCompleted = hasActual;
+  const isPending = hasExpected && !hasActual;
+  const isEmpty = !hasExpected && !hasActual;
+
+  // Check if dates were recalculated (original expected differs from current expected)
+  const wasRecalculated = hasOriginalExpected && hasExpected && originalExpected !== expected && !hasActual;
+
+  if (isEmpty) return null;
+
+  return (
+    <div className={`flex items-center gap-3 ${highlight ? 'bg-accent/5 -mx-2 px-2 py-1.5 rounded' : ''}`}>
+      {/* Status indicator */}
+      <div className="flex-shrink-0">
+        {isCompleted ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        ) : isPending ? (
+          <Circle className="w-4 h-4 text-amber-400" />
+        ) : (
+          <Circle className="w-4 h-4 text-text-tertiary" />
+        )}
+      </div>
+
+      {/* Label */}
+      <div className={`w-32 text-sm ${highlight ? 'font-medium text-white' : 'text-text-muted'}`}>
+        {label}
+      </div>
+
+      {/* Dates column - shows actual (completed) or expected (pending) */}
+      <div className="flex-1 flex items-center gap-2">
+        {hasActual ? (
+          // Completed: show actual date in green
+          <>
+            <CalendarCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-sm text-emerald-400 font-medium">{formatDate(actual)}</span>
+          </>
+        ) : hasExpected ? (
+          // Pending: show expected date in amber
+          <>
+            <CalendarClock className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-sm text-amber-400">{formatDate(expected)}</span>
+            <span className="text-xs text-text-tertiary">(expected)</span>
+          </>
+        ) : null}
+      </div>
+
+      {/* Recalculated indicator - shows when original expected → new expected */}
+      {wasRecalculated && (
+        <div className="flex items-center gap-1.5 text-xs border-l border-border-subtle pl-3 ml-2">
+          <span className="text-text-tertiary line-through opacity-70">{formatDate(originalExpected)}</span>
+          <ArrowRight className="w-3 h-3 text-amber-400 flex-shrink-0" />
+          <span className="text-amber-400 font-medium">{formatDate(expected)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function createEmptyProgram(): ListedProgramItem {
   return {
     name: "",
@@ -289,6 +375,7 @@ function ProgramDashboardCard({
   onEdit,
   onRemove,
   onOffspringGroupClick,
+  onBreedingPlanClick,
 }: {
   program: ListedProgramItem;
   index: number;
@@ -300,6 +387,7 @@ function ProgramDashboardCard({
   onEdit: () => void;
   onRemove: () => void;
   onOffspringGroupClick: (group: BreederOffspringGroupItem) => void;
+  onBreedingPlanClick: (plan: BreederBreedingPlanItem) => void;
 }) {
   const isMissingRequired = !program.name?.trim() || !program.breedText?.trim();
 
@@ -316,11 +404,15 @@ function ProgramDashboardCard({
   return (
     <div className="mb-8">
       {/* ═══ PROGRAM HEADER SECTION ═══ */}
-      <div className={`bg-gradient-to-br from-portal-card to-portal-surface border-l-4 ${
-        isMissingRequired ? 'border-l-red-500' : 'border-l-accent'
-      } rounded-lg overflow-hidden`}>
-        {/* Header Title Row */}
-        <div className="px-6 py-4 border-b border-border-subtle">
+      <div className={`bg-gradient-to-br from-portal-card to-portal-surface border-l-4 border ${
+        isMissingRequired ? 'border-l-red-500 border-red-500/30' : 'border-l-accent border-border-subtle'
+      } rounded-lg overflow-hidden hover:border-amber-500/50 transition-colors cursor-pointer`}
+        onClick={onEdit}
+      >
+        {/* Header Title Row - Clickable */}
+        <div
+          className="px-6 py-4 border-b border-border-subtle"
+        >
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -346,7 +438,7 @@ function ProgramDashboardCard({
                 {program.breedText && ` · ${program.breedText}`}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={onEdit}
                 className="p-2 text-text-secondary hover:text-white hover:bg-portal-surface rounded transition-colors"
@@ -478,7 +570,10 @@ function ProgramDashboardCard({
                   <div className="absolute left-0 top-6 w-2 h-2 bg-accent rounded-full -translate-x-[3px]" />
 
                   {/* BREEDING PLAN ROW */}
-                  <div className={`border border-l-4 ${statusStyle.borderColor} ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card`}>
+                  <div
+                    className={`border border-l-4 ${statusStyle.borderColor} ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card hover:border-amber-500/50 hover:bg-portal-card/80 transition-colors cursor-pointer`}
+                    onClick={() => onBreedingPlanClick(plan)}
+                  >
                   <div className="p-4">
                     {/* Plan Header */}
                     <div className="flex items-start justify-between gap-4 mb-3">
@@ -559,7 +654,7 @@ function ProgramDashboardCard({
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <button
                           className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-surface rounded transition-colors"
                           title="Manage plan visibility"
@@ -588,15 +683,15 @@ function ProgramDashboardCard({
                           return (
                             <div
                               className="bg-portal-surface border border-border-subtle rounded-lg p-4 hover:border-amber-500/50 transition-colors cursor-pointer"
-                              onClick={() => onOffspringGroupClick(group)}
+                              onClick={(e) => { e.stopPropagation(); onOffspringGroupClick(group); }}
                             >
                               {/* Group Header */}
                               <div className="flex items-start justify-between gap-4 mb-3">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <Baby className="w-5 h-5 text-amber-400" />
+                                    <PawPrint className="w-5 h-5 text-amber-400" />
                                     <h4 className="text-sm font-semibold text-white">
-                                      {group.listingTitle || "Offspring Group"}
+                                      {group.listingTitle || getGroupName(group.species, false, true)}
                                     </h4>
                                     {hasOffspring && (
                                       <button
@@ -719,7 +814,7 @@ function ProgramDashboardCard({
                                                 />
                                               ) : (
                                                 <div className="w-16 h-16 rounded-lg bg-portal-surface border border-border-subtle flex items-center justify-center">
-                                                  <Baby className="w-6 h-6 text-text-tertiary" />
+                                                  <PawPrint className="w-6 h-6 text-text-tertiary" />
                                                 </div>
                                               )}
 
@@ -843,6 +938,8 @@ function ProgramEditorDrawer({
   onRemove,
   breederBreeds,
   programSlug,
+  breedingPlans,
+  offspringGroups,
 }: {
   program: ListedProgramItem;
   index: number;
@@ -851,9 +948,59 @@ function ProgramEditorDrawer({
   onRemove: () => void;
   breederBreeds: SelectedBreed[];
   programSlug: string | null;
+  breedingPlans: BreederBreedingPlanItem[];
+  offspringGroups: BreederOffspringGroupItem[];
 }) {
   const isMissingRequired = !program.name?.trim() || !program.breedText?.trim();
   const [activeTab, setActiveTab] = React.useState<'details' | 'listing'>('details');
+
+  // Calculate rollup statistics for this program
+  const programStats = React.useMemo(() => {
+    // Match plans by species and breed
+    const matchingPlans = breedingPlans.filter((plan) => {
+      if (!program.species || !plan.species) return false;
+      if (plan.species.toUpperCase() !== program.species.toUpperCase()) return false;
+      if (program.breedText && plan.breedText) {
+        return plan.breedText.toLowerCase().includes(program.breedText.toLowerCase()) ||
+               program.breedText.toLowerCase().includes(plan.breedText.toLowerCase());
+      }
+      return true;
+    });
+
+    // Match offspring groups by species and breed
+    const matchingGroups = offspringGroups.filter((group) => {
+      if (!program.species || !group.species) return false;
+      if (group.species.toUpperCase() !== program.species.toUpperCase()) return false;
+      if (program.breedText && group.breedText) {
+        return group.breedText.toLowerCase().includes(program.breedText.toLowerCase()) ||
+               program.breedText.toLowerCase().includes(group.breedText.toLowerCase());
+      }
+      return true;
+    });
+
+    // Calculate totals
+    const totalOffspring = matchingGroups.reduce((sum, g) => sum + (g.totalCount || 0), 0);
+    const availableOffspring = matchingGroups.reduce((sum, g) => sum + (g.availableCount || 0), 0);
+    const totalWaitlist = matchingPlans.reduce((sum, p) => sum + (p._count?.Waitlist || p.Waitlist?.length || 0), 0);
+    const depositsPaid = matchingPlans.reduce((sum, p) => sum + (p.depositsPaidCents || 0), 0);
+    const depositsCommitted = matchingPlans.reduce((sum, p) => sum + (p.depositsCommittedCents || 0), 0);
+
+    // Count plans by status
+    const activePlans = matchingPlans.filter(p =>
+      !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(p.status)
+    ).length;
+
+    return {
+      totalPlans: matchingPlans.length,
+      activePlans,
+      totalGroups: matchingGroups.length,
+      totalOffspring,
+      availableOffspring,
+      totalWaitlist,
+      depositsPaid,
+      depositsCommitted,
+    };
+  }, [breedingPlans, offspringGroups, program.species, program.breedText]);
 
   // Filter breeds by selected species
   const currentSpecies = (program.species || "DOG").toUpperCase();
@@ -884,67 +1031,99 @@ function ProgramEditorDrawer({
     >
       {/* Modal */}
       <div
-        className="w-full max-w-3xl max-h-[90vh] bg-portal-bg border border-border-subtle rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-4xl max-h-[90vh] bg-[#1a1a1a] border border-border-subtle rounded-xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-portal-surface border-b border-border-subtle flex-shrink-0">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-3">
-              <PawPrint className="w-5 h-5 text-accent" />
-              <div>
-                <h2 className="text-lg font-bold text-white">
-                  {program.name || 'New Program'}
-                </h2>
-                <p className="text-sm text-text-muted">
-                  {program.species && program.breedText ? `${program.species} · ${program.breedText}` : 'Configure your breeding program'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onRemove}
-                className="p-2 hover:bg-red-500/10 text-text-muted hover:text-red-400 rounded-lg transition-colors"
-                title="Delete program"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-white/10 text-text-muted hover:text-white rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="bg-[#0a0a0a] px-6 py-5 flex items-start justify-between border-b border-border-subtle flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-white mb-1">
+              {program.name || 'Edit Program'}
+            </h2>
+            <p className="text-sm text-text-muted">
+              {program.species && program.breedText ? `${program.species} · ${program.breedText}` : 'Configure your breeding program'}
+            </p>
           </div>
-
-          {/* Tabs */}
-          <div className="flex px-6 gap-1">
-            <button
-              onClick={() => setActiveTab('details')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'details'
-                  ? 'border-accent text-white'
-                  : 'border-transparent text-text-muted hover:text-white'
-              }`}
-            >
-              Program Details
-            </button>
-            <button
-              onClick={() => setActiveTab('listing')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'listing'
-                  ? 'border-accent text-white'
-                  : 'border-transparent text-text-muted hover:text-white'
-              }`}
-            >
-              Listing & Rules
-            </button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={onClose}>
+              <Save className="w-4 h-4 mr-1.5" />
+              Save Changes
+            </Button>
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="bg-[#0a0a0a] px-6 border-b border-border-subtle flex gap-6">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'details'
+                ? 'border-accent text-white'
+                : 'border-transparent text-text-secondary hover:text-white'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('listing')}
+            className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'listing'
+                ? 'border-accent text-white'
+                : 'border-transparent text-text-secondary hover:text-white'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Listing & Rules
+          </button>
+        </div>
+
         {/* Content */}
-        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+        <div className="overflow-y-auto flex-1 p-6">
+        {/* Tab: Details */}
+        {activeTab === 'details' && (
+          <div className="space-y-6">
+
+        {/* Rollup Stats Bar */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="bg-portal-surface border border-border-subtle rounded-lg p-3">
+            <div className="text-xs text-text-muted mb-1">Total</div>
+            <div className="text-xl font-bold text-white">{programStats.totalOffspring}</div>
+            {programStats.totalGroups > 0 && (
+              <div className="text-xs text-text-tertiary">{programStats.totalGroups} litters</div>
+            )}
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3">
+            <div className="text-xs text-emerald-400 mb-1">Available</div>
+            <div className="text-xl font-bold text-emerald-400">{programStats.availableOffspring}</div>
+          </div>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+            <div className="text-xs text-blue-400 mb-1">Waitlist</div>
+            <div className="text-xl font-bold text-blue-400">
+              {programStats.totalWaitlist > 0 ? programStats.totalWaitlist : "—"}
+            </div>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+            <div className="text-xs text-amber-400 mb-1">Deposits</div>
+            <div className="text-xl font-bold text-amber-400">
+              {programStats.depositsCommitted > 0
+                ? `$${(programStats.depositsCommitted / 100).toLocaleString()}`
+                : "—"}
+            </div>
+          </div>
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+            <div className="text-xs text-green-400 mb-1">Paid</div>
+            <div className="text-xl font-bold text-green-400">
+              {programStats.depositsPaid > 0
+                ? `$${(programStats.depositsPaid / 100).toLocaleString()}`
+                : "—"}
+            </div>
+          </div>
+        </div>
+
         {/* Program Identity */}
         <div className="space-y-4">
           <h5 className="text-sm font-semibold text-white border-b border-border-subtle pb-2">
@@ -1116,97 +1295,99 @@ function ProgramEditorDrawer({
             </div>
           )}
         </div>
-
-        {/* Program Settings */}
-        <div className="space-y-4">
-          <h5 className="text-sm font-semibold text-white border-b border-border-subtle pb-2">
-            Program Settings
-          </h5>
-
-          <label className="flex items-center gap-3 cursor-pointer p-3 bg-portal-surface rounded-lg">
-            <input
-              type="checkbox"
-              checked={program.comingSoon ?? false}
-              onChange={(e) => onChange({ comingSoon: e.target.checked })}
-              className="w-4 h-4 rounded border-border-subtle bg-portal-card"
-            />
-            <div className="flex-1">
-              <div className="text-sm text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                Coming Soon
-              </div>
-              <div className="text-xs text-text-secondary mt-0.5">Show a badge for programs without current availability</div>
-            </div>
-          </label>
-
-          <div className="border-t border-border-subtle pt-4">
-            <div className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-3">
-              Buyer Interaction Options
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={program.acceptInquiries ?? true}
-                  onChange={(e) => onChange({ acceptInquiries: e.target.checked })}
-                  className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
-                />
-                <div>
-                  <div className="text-sm text-white">Accept Inquiries</div>
-                  <div className="text-xs text-text-secondary mt-0.5">Show "Contact Breeder" button</div>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={program.openWaitlist ?? false}
-                  onChange={(e) => onChange({ openWaitlist: e.target.checked })}
-                  className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
-                />
-                <div>
-                  <div className="text-sm text-white">Open Waitlist</div>
-                  <div className="text-xs text-text-secondary mt-0.5">Show "Join Waitlist" button</div>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={program.acceptReservations ?? false}
-                  onChange={(e) => onChange({ acceptReservations: e.target.checked })}
-                  className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
-                />
-                <div>
-                  <div className="text-sm text-white">Accept Reservations</div>
-                  <div className="text-xs text-text-secondary mt-0.5">Paid deposits (Stripe)</div>
-                </div>
-              </label>
-            </div>
           </div>
-        </div>
-
-          {/* Tab: Details */}
-          {activeTab === 'details' && (
-            <>
-              {/* All existing form fields stay here - they're already rendered above */}
-            </>
-          )}
+        )}
 
           {/* Tab: Listing & Rules */}
-          {activeTab === 'listing' && programSlug && (
+          {activeTab === 'listing' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-base font-semibold text-white mb-2">Listing Rules</h3>
-                <p className="text-sm text-text-muted mb-4">
-                  Automate how offspring from this program are listed and managed in your marketplace.
-                </p>
-                <InlineRulesWidget
-                  level="PROGRAM"
-                  levelId={programSlug}
-                />
+              {/* Listing Parameters */}
+              <div className="space-y-4">
+                <h5 className="text-sm font-semibold text-white border-b border-border-subtle pb-2">
+                  Listing Parameters
+                </h5>
+
+                <label className="flex items-center gap-3 cursor-pointer p-3 bg-portal-surface rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={program.comingSoon ?? false}
+                    onChange={(e) => onChange({ comingSoon: e.target.checked })}
+                    className="w-4 h-4 rounded border-border-subtle bg-portal-card"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-white flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      Coming Soon
+                    </div>
+                    <div className="text-xs text-text-secondary mt-0.5">Show a badge for programs without current availability</div>
+                  </div>
+                </label>
+
+                <div className="border-t border-border-subtle pt-4">
+                  <div className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-3">
+                    Buyer Interaction Options
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={program.acceptInquiries ?? true}
+                        onChange={(e) => onChange({ acceptInquiries: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
+                      />
+                      <div>
+                        <div className="text-sm text-white">Accept Inquiries</div>
+                        <div className="text-xs text-text-secondary mt-0.5">Show "Contact Breeder" button</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={program.openWaitlist ?? false}
+                        onChange={(e) => onChange({ openWaitlist: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
+                      />
+                      <div>
+                        <div className="text-sm text-white">Open Waitlist</div>
+                        <div className="text-xs text-text-secondary mt-0.5">Show "Join Waitlist" button</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-2 cursor-pointer p-3 bg-portal-surface rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={program.acceptReservations ?? false}
+                        onChange={(e) => onChange({ acceptReservations: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 rounded border-border-subtle bg-portal-card"
+                      />
+                      <div>
+                        <div className="text-sm text-white">Accept Reservations</div>
+                        <div className="text-xs text-text-secondary mt-0.5">Paid deposits (Stripe)</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
               </div>
+
+              {/* Automation Rules */}
+              {programSlug && (
+                <div className="space-y-4">
+                  <div className="border-t border-border-subtle pt-4">
+                    <div className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-3">
+                      Automation Rules
+                    </div>
+                    <p className="text-sm text-text-muted mb-4">
+                      Automate how offspring from this program are listed and managed in your marketplace.
+                    </p>
+                  </div>
+                  <InlineRulesWidget
+                    level="PROGRAM"
+                    levelId={programSlug}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1241,6 +1422,11 @@ export function ManageBreedingProgramsPage() {
 
   // Offspring modal state
   const [selectedOffspringGroup, setSelectedOffspringGroup] = React.useState<BreederOffspringGroupItem | null>(null);
+  const [groupTab, setGroupTab] = React.useState<'details' | 'rules'>('details');
+
+  // Breeding plan modal state
+  const [selectedBreedingPlan, setSelectedBreedingPlan] = React.useState<BreederBreedingPlanItem | null>(null);
+  const [planTab, setPlanTab] = React.useState<'details' | 'rules'>('details');
 
   // Load profile on mount
   React.useEffect(() => {
@@ -1510,8 +1696,8 @@ export function ManageBreedingProgramsPage() {
       <div className="min-h-screen bg-portal-bg flex items-center justify-center">
         <div className="text-center">
           <p className="text-text-secondary mb-4">Failed to load profile</p>
-          <Link to="/marketplace/manage/animals">
-            <Button variant="secondary">Back to Animals Management</Button>
+          <Link to="/marketplace">
+            <Button variant="secondary">Back to Marketplace</Button>
           </Link>
         </div>
       </div>
@@ -1524,11 +1710,11 @@ export function ManageBreedingProgramsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/marketplace/manage/animals"
+            to="/marketplace"
             className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
-            Back to Animals Management
+            Back to Marketplace
           </Link>
 
           <div className="flex items-center justify-between">
@@ -1538,11 +1724,44 @@ export function ManageBreedingProgramsPage() {
                 Your complete view of breeding programs, plans, and available offspring
               </p>
             </div>
-            {saving && (
-              <div className="text-sm text-text-tertiary">
-                Saving...
+            <div className="flex items-center gap-3">
+              {saving && (
+                <div className="text-sm text-text-tertiary">
+                  Saving...
+                </div>
+              )}
+              <Button variant="primary" onClick={addProgram}>
+                <Plus size={16} className="mr-1.5" />
+                Add Breeding Program
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Public Visibility Info Banner */}
+        <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Eye className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-blue-300 mb-1">
+                What Anonymous Marketplace Visitors See
+              </h3>
+              <p className="text-xs text-text-secondary mb-2">
+                Published programs are publicly visible to help buyers discover your animals. Here's what anonymous users can see:
+              </p>
+              <ul className="text-xs text-text-secondary ml-4 list-disc grid grid-cols-2 gap-x-4 gap-y-1">
+                <li>Program name, description, and headline</li>
+                <li>Pricing information and location (city/state)</li>
+                <li>Cover image and template type (Stud Services, Guardian, etc.)</li>
+                <li>Participating animals: photos, names, breed, and sex</li>
+                <li>Your breeder profile and website link (if public)</li>
+              </ul>
+              <div className="mt-2 pt-2 border-t border-blue-500/20">
+                <p className="text-xs text-blue-300 font-medium">
+                  ✓ Anonymous users CANNOT view detailed animal profiles (pedigrees, health records, lineage) or send marketplace messages without creating an account
+                </p>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -1593,13 +1812,9 @@ export function ManageBreedingProgramsPage() {
                   onEdit={() => setExpandedIndex(originalIndex)}
                   onRemove={() => removeProgram(originalIndex)}
                   onOffspringGroupClick={setSelectedOffspringGroup}
+                  onBreedingPlanClick={setSelectedBreedingPlan}
                 />
               ))}
-
-            <Button variant="secondary" onClick={addProgram} className="w-full">
-              <Plus size={16} className="mr-1.5" />
-              Add Another Program
-            </Button>
           </div>
         )}
       </div>
@@ -1614,52 +1829,79 @@ export function ManageBreedingProgramsPage() {
           onRemove={() => removeProgram(expandedIndex)}
           breederBreeds={(profile?.breeds || []) as SelectedBreed[]}
           programSlug={findProgramSlug(programs[expandedIndex])}
+          breedingPlans={breedingPlans}
+          offspringGroups={offspringGroups}
         />
       )}
 
       {/* Offspring Group Modal */}
       {selectedOffspringGroup && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedOffspringGroup(null)}
-        >
           <div
-            className="bg-portal-card border border-border-subtle rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedOffspringGroup(null)}
           >
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border-b border-amber-500/20 px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Baby className="w-5 h-5 text-amber-400" />
-                    <h3 className="text-lg font-semibold text-white">
-                      {selectedOffspringGroup.listingTitle || "Offspring Group"}
-                    </h3>
-                  </div>
+            <div
+              className="bg-[#1a1a1a] border border-border-subtle rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="bg-[#0a0a0a] px-6 py-5 flex items-start justify-between border-b border-border-subtle flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-1">
+                    {selectedOffspringGroup.listingTitle || `Edit ${getGroupName(selectedOffspringGroup.species, false, true)}`}
+                  </h2>
                   {selectedOffspringGroup.actualBirthOn && (
-                    <p className="text-sm text-text-tertiary flex items-center gap-1.5">
+                    <p className="text-sm text-text-muted flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5" />
                       Born {formatDate(selectedOffspringGroup.actualBirthOn)}
                     </p>
                   )}
                   {!selectedOffspringGroup.actualBirthOn && selectedOffspringGroup.expectedBirthOn && (
-                    <p className="text-sm text-text-tertiary flex items-center gap-1.5">
+                    <p className="text-sm text-text-muted flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       Expected {formatDate(selectedOffspringGroup.expectedBirthOn)}
                     </p>
                   )}
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setSelectedOffspringGroup(null)}>
+                    Cancel
+                  </Button>
+                  <Button variant="primary" onClick={() => setSelectedOffspringGroup(null)}>
+                    <Save className="w-4 h-4 mr-1.5" />
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="bg-[#0a0a0a] px-6 border-b border-border-subtle flex gap-6">
                 <button
-                  onClick={() => setSelectedOffspringGroup(null)}
-                  className="p-2 hover:bg-portal-surface rounded-lg transition-colors text-text-secondary hover:text-white"
+                  onClick={() => setGroupTab('details')}
+                  className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    groupTab === 'details'
+                      ? 'border-accent text-white'
+                      : 'border-transparent text-text-secondary hover:text-white'
+                  }`}
                 >
-                  <X size={20} />
+                  <FileText className="w-4 h-4" />
+                  Overview
+                </button>
+                <button
+                  onClick={() => setGroupTab('rules')}
+                  className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    groupTab === 'rules'
+                      ? 'border-accent text-white'
+                      : 'border-transparent text-text-secondary hover:text-white'
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  Listing & Rules
                 </button>
               </div>
 
               {/* Summary Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+              <div className="bg-[#0a0a0a] px-6 py-4 border-b border-border-subtle grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="bg-portal-bg/50 rounded-lg p-2.5 border border-border-subtle">
                   <div className="text-xs text-text-tertiary mb-0.5">Total</div>
                   <div className="text-lg font-bold text-white">{selectedOffspringGroup.totalCount || 0}</div>
@@ -1681,93 +1923,405 @@ export function ManageBreedingProgramsPage() {
                   <div className="text-lg font-bold text-green-400">—</div>
                 </div>
               </div>
-            </div>
 
-            {/* Modal Content - Individual Offspring List */}
-            <div className="overflow-y-auto max-h-[calc(90vh-220px)] p-6">
-              {selectedOffspringGroup.offspring && selectedOffspringGroup.offspring.length > 0 ? (
-                <div className="space-y-3">
-                  {selectedOffspringGroup.offspring.map((offspring, idx) => {
-                    const isAvailable = offspring.keeperIntent === 'AVAILABLE' && offspring.marketplaceListed;
-                    const statusColor = isAvailable ? 'text-emerald-400' : 'text-text-tertiary';
+              {/* Modal Content */}
+              <div className="overflow-y-auto flex-1 p-6">
+                {/* Tab: Details */}
+                {groupTab === 'details' && (
+                  <>
+                    {selectedOffspringGroup.offspring && selectedOffspringGroup.offspring.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedOffspringGroup.offspring.map((offspring, idx) => {
+                          const isAvailable = offspring.keeperIntent === 'AVAILABLE' && offspring.marketplaceListed;
+                          const statusColor = isAvailable ? 'text-emerald-400' : 'text-text-tertiary';
 
-                    return (
-                      <div
-                        key={offspring.id}
-                        className="bg-portal-surface border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors"
-                      >
-                        <div className="flex items-start gap-4">
-                          {/* Offspring Photo */}
-                          {offspring.photos && offspring.photos.length > 0 ? (
-                            <img
-                              src={offspring.photos[0]}
-                              alt={offspring.name || `Offspring ${idx + 1}`}
-                              className="w-20 h-20 rounded-lg object-cover border border-border-subtle flex-shrink-0"
-                            />
-                          ) : (
-                            <div className="w-20 h-20 rounded-lg bg-portal-bg border border-border-subtle flex items-center justify-center flex-shrink-0">
-                              <Baby className="w-8 h-8 text-text-tertiary" />
-                            </div>
-                          )}
+                          return (
+                            <div
+                              key={offspring.id}
+                              className="bg-portal-surface border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors"
+                            >
+                              <div className="flex items-start gap-4">
+                                {/* Offspring Photo */}
+                                {offspring.photos && offspring.photos.length > 0 ? (
+                                  <img
+                                    src={offspring.photos[0]}
+                                    alt={offspring.name || `Offspring ${idx + 1}`}
+                                    className="w-20 h-20 rounded-lg object-cover border border-border-subtle flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-20 h-20 rounded-lg bg-portal-bg border border-border-subtle flex items-center justify-center flex-shrink-0">
+                                    <PawPrint className="w-8 h-8 text-text-tertiary" />
+                                  </div>
+                                )}
 
-                          {/* Offspring Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-3 mb-2">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h5 className="text-base font-semibold text-white">
-                                    {offspring.name || `Offspring #${idx + 1}`}
-                                  </h5>
-                                  {offspring.collarColorName && (
-                                    <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-portal-bg border border-border-subtle text-text-tertiary">
-                                      <div
-                                        className="w-3 h-3 rounded-full border border-border-subtle"
-                                        style={{ backgroundColor: offspring.collarColorHex || '#888' }}
-                                      />
-                                      {offspring.collarColorName}
+                                {/* Offspring Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-3 mb-2">
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h5 className="text-base font-semibold text-white">
+                                          {offspring.name || `Offspring #${idx + 1}`}
+                                        </h5>
+                                        {offspring.collarColorName && (
+                                          <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-portal-bg border border-border-subtle text-text-tertiary">
+                                            <div
+                                              className="w-3 h-3 rounded-full border border-border-subtle"
+                                              style={{ backgroundColor: offspring.collarColorHex || '#888' }}
+                                            />
+                                            {offspring.collarColorName}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3 text-sm">
+                                        {offspring.sex && (
+                                          <span className={offspring.sex === 'FEMALE' ? 'text-pink-400' : 'text-blue-400'}>
+                                            {offspring.sex === 'FEMALE' ? '♀ Female' : '♂ Male'}
+                                          </span>
+                                        )}
+                                        {offspring.priceCents && (
+                                          <span className="text-text-secondary">
+                                            ${(offspring.priceCents / 100).toLocaleString()}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                                      isAvailable
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-zinc-500/15 text-zinc-400 border border-zinc-500/30'
+                                    }`}>
+                                      {isAvailable ? '✓ Listed' : 'Unlisted'}
                                     </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 text-sm">
-                                  {offspring.sex && (
-                                    <span className={offspring.sex === 'FEMALE' ? 'text-pink-400' : 'text-blue-400'}>
-                                      {offspring.sex === 'FEMALE' ? '♀ Female' : '♂ Male'}
-                                    </span>
-                                  )}
-                                  {offspring.priceCents && (
-                                    <span className="text-text-secondary">
-                                      ${(offspring.priceCents / 100).toLocaleString()}
-                                    </span>
+                                  </div>
+                                  {offspring.headlineOverride && (
+                                    <p className="text-sm text-text-secondary mt-1">{offspring.headlineOverride}</p>
                                   )}
                                 </div>
                               </div>
-                              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                                isAvailable
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-zinc-500/15 text-zinc-400 border border-zinc-500/30'
-                              }`}>
-                                {isAvailable ? '✓ Listed' : 'Unlisted'}
-                              </span>
                             </div>
-                            {offspring.headlineOverride && (
-                              <p className="text-sm text-text-secondary mt-1">{offspring.headlineOverride}</p>
-                            )}
-                          </div>
-                        </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Baby className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
-                  <p className="text-text-secondary">No individual offspring recorded yet.</p>
-                  <p className="text-sm text-text-tertiary mt-1">Add offspring to track availability and pricing.</p>
-                </div>
-              )}
+                    ) : (
+                      <div className="text-center py-12">
+                        <PawPrint className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+                        <p className="text-text-secondary">No individual offspring recorded yet.</p>
+                        <p className="text-sm text-text-tertiary mt-1">Add offspring to track availability and pricing.</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Tab: Listing & Rules */}
+                {groupTab === 'rules' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-base font-semibold text-white mb-2">Listing Rules</h3>
+                      <p className="text-sm text-text-muted mb-4">
+                        Automate how individual offspring from this group are listed and managed in your marketplace.
+                      </p>
+                      <InlineRulesWidget
+                        level="GROUP"
+                        levelId={String(selectedOffspringGroup.id)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+      )}
+
+      {/* Breeding Plan Modal */}
+      {selectedBreedingPlan && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedBreedingPlan(null)}
+          >
+            <div
+              className="bg-[#1a1a1a] border border-border-subtle rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="bg-[#0a0a0a] px-6 py-5 flex items-start justify-between border-b border-border-subtle flex-shrink-0">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-xl font-bold text-white">
+                      {selectedBreedingPlan.name || "Edit Breeding Plan"}
+                    </h2>
+                    <span className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                      STATUS_COLORS[selectedBreedingPlan.status]?.badge || STATUS_COLORS.PLANNING.badge
+                    }`}>
+                      {STATUS_LABELS[selectedBreedingPlan.status] || selectedBreedingPlan.status}
+                    </span>
+                  </div>
+                  {selectedBreedingPlan.expectedBirthDate && (
+                    <p className="text-sm text-text-muted flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Expected {formatDate(selectedBreedingPlan.expectedBirthDate)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setSelectedBreedingPlan(null)}>
+                    Cancel
+                  </Button>
+                  <Button variant="primary" onClick={() => setSelectedBreedingPlan(null)}>
+                    <Save className="w-4 h-4 mr-1.5" />
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="bg-[#0a0a0a] px-6 border-b border-border-subtle flex gap-6">
+                <button
+                  onClick={() => setPlanTab('details')}
+                  className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    planTab === 'details'
+                      ? 'border-accent text-white'
+                      : 'border-transparent text-text-secondary hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Overview
+                </button>
+                <button
+                  onClick={() => setPlanTab('rules')}
+                  className={`flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    planTab === 'rules'
+                      ? 'border-accent text-white'
+                      : 'border-transparent text-text-secondary hover:text-white'
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  Listing & Rules
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="overflow-y-auto flex-1 p-6">
+                {/* Tab: Details */}
+                {planTab === 'details' && (
+                  <div className="space-y-6">
+                    {/* Quick Stats Row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
+                        <div className="text-xs text-purple-400 mb-1">Offspring</div>
+                        <div className="text-xl font-bold text-purple-400">
+                          {(selectedBreedingPlan.offspringGroup?.totalCount || 0) > 0
+                            ? selectedBreedingPlan.offspringGroup?.totalCount
+                            : "—"}
+                        </div>
+                        {(selectedBreedingPlan.offspringGroup?.availableCount ?? 0) > 0 && (
+                          <div className="text-xs text-emerald-400">
+                            {selectedBreedingPlan.offspringGroup?.availableCount} available
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                        <div className="text-xs text-blue-400 mb-1">Waitlist</div>
+                        <div className="text-xl font-bold text-blue-400">
+                          {(selectedBreedingPlan._count?.Waitlist || selectedBreedingPlan.Waitlist?.length || 0) > 0
+                            ? selectedBreedingPlan._count?.Waitlist || selectedBreedingPlan.Waitlist?.length
+                            : "—"}
+                        </div>
+                      </div>
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                        <div className="text-xs text-amber-400 mb-1">Deposits</div>
+                        <div className="text-xl font-bold text-amber-400">
+                          {(selectedBreedingPlan.depositsCommittedCents ?? 0) > 0
+                            ? `$${((selectedBreedingPlan.depositsCommittedCents || 0) / 100).toLocaleString()}`
+                            : "—"}
+                        </div>
+                        {(selectedBreedingPlan.depositsPaidCents ?? 0) > 0 && (
+                          <div className="text-xs text-green-400">
+                            ${(selectedBreedingPlan.depositsPaidCents / 100).toLocaleString()} paid
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                        <div className="text-xs text-green-400 mb-1">Committed</div>
+                        <div className="text-lg font-bold text-green-400">
+                          {selectedBreedingPlan.committedAt
+                            ? formatDate(selectedBreedingPlan.committedAt)
+                            : "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parents Section */}
+                    <div className="bg-portal-surface border border-border-subtle rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                        <Heart className="w-4 h-4 text-pink-400" />
+                        Parents
+                      </h4>
+                      <div className="flex items-center justify-center gap-8">
+                        {/* Dam */}
+                        <div className="flex flex-col items-center">
+                          {selectedBreedingPlan.dam ? (
+                            <>
+                              {selectedBreedingPlan.dam.photoUrl ? (
+                                <img
+                                  src={selectedBreedingPlan.dam.photoUrl}
+                                  alt={selectedBreedingPlan.dam.name}
+                                  className="w-20 h-20 rounded-full object-cover border-3 border-pink-400 mb-2"
+                                />
+                              ) : (
+                                <div className="w-20 h-20 rounded-full bg-pink-500/20 border-3 border-pink-400 flex items-center justify-center mb-2">
+                                  <span className="text-pink-400 text-3xl">♀</span>
+                                </div>
+                              )}
+                              <div className="text-sm text-white font-medium text-center">{selectedBreedingPlan.dam.name}</div>
+                              <div className="text-xs text-pink-400">Dam</div>
+                            </>
+                          ) : (
+                            <div className="text-center">
+                              <div className="w-20 h-20 rounded-full bg-portal-bg border-2 border-dashed border-border-subtle flex items-center justify-center mb-2">
+                                <span className="text-text-tertiary text-3xl">♀</span>
+                              </div>
+                              <div className="text-xs text-text-tertiary">No dam selected</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Breeding Symbol */}
+                        <div className="text-text-tertiary text-3xl font-light">×</div>
+
+                        {/* Sire */}
+                        <div className="flex flex-col items-center">
+                          {selectedBreedingPlan.sire ? (
+                            <>
+                              {selectedBreedingPlan.sire.photoUrl ? (
+                                <img
+                                  src={selectedBreedingPlan.sire.photoUrl}
+                                  alt={selectedBreedingPlan.sire.name}
+                                  className="w-20 h-20 rounded-full object-cover border-3 border-blue-400 mb-2"
+                                />
+                              ) : (
+                                <div className="w-20 h-20 rounded-full bg-blue-500/20 border-3 border-blue-400 flex items-center justify-center mb-2">
+                                  <span className="text-blue-400 text-3xl">♂</span>
+                                </div>
+                              )}
+                              <div className="text-sm text-white font-medium text-center">{selectedBreedingPlan.sire.name}</div>
+                              <div className="text-xs text-blue-400">Sire</div>
+                            </>
+                          ) : (
+                            <div className="text-center">
+                              <div className="w-20 h-20 rounded-full bg-portal-bg border-2 border-dashed border-border-subtle flex items-center justify-center mb-2">
+                                <span className="text-text-tertiary text-3xl">♂</span>
+                              </div>
+                              <div className="text-xs text-text-tertiary">No sire selected</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timeline Section */}
+                    <div className="bg-portal-surface border border-border-subtle rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                        <Milestone className="w-4 h-4 text-accent" />
+                        Timeline
+                      </h4>
+                      <div className="space-y-3">
+                        {/* Cycle Start */}
+                        <TimelineItem
+                          label="Cycle Start"
+                          expected={selectedBreedingPlan.expectedCycleStart}
+                          actual={selectedBreedingPlan.cycleStartDateActual}
+                          originalExpected={selectedBreedingPlan.lockedCycleStart}
+                          formatDate={formatDate}
+                        />
+                        {/* Breed Date */}
+                        <TimelineItem
+                          label="Breed Date"
+                          expected={selectedBreedingPlan.expectedBreedDate}
+                          actual={selectedBreedingPlan.breedDateActual}
+                          originalExpected={selectedBreedingPlan.lockedOvulationDate}
+                          formatDate={formatDate}
+                        />
+                        {/* Birth Date */}
+                        <TimelineItem
+                          label="Birth Date"
+                          expected={selectedBreedingPlan.expectedBirthDate}
+                          actual={selectedBreedingPlan.birthDateActual}
+                          originalExpected={selectedBreedingPlan.lockedDueDate}
+                          formatDate={formatDate}
+                          highlight
+                        />
+                        {/* Weaning */}
+                        <TimelineItem
+                          label="Weaning"
+                          expected={selectedBreedingPlan.expectedWeaned}
+                          actual={selectedBreedingPlan.weanedDateActual}
+                          formatDate={formatDate}
+                        />
+                        {/* Placement */}
+                        <TimelineItem
+                          label="Placement Start"
+                          expected={selectedBreedingPlan.expectedPlacementStart}
+                          actual={selectedBreedingPlan.placementStartDateActual}
+                          originalExpected={selectedBreedingPlan.lockedPlacementStartDate}
+                          formatDate={formatDate}
+                        />
+                        {/* Completion */}
+                        <TimelineItem
+                          label="Completed"
+                          expected={selectedBreedingPlan.expectedPlacementCompleted}
+                          actual={selectedBreedingPlan.completedDateActual}
+                          formatDate={formatDate}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Notes Section */}
+                    {selectedBreedingPlan.notes && (
+                      <div className="bg-portal-surface border border-border-subtle rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                          <StickyNote className="w-4 h-4 text-amber-400" />
+                          Notes
+                        </h4>
+                        <p className="text-sm text-text-muted whitespace-pre-wrap">
+                          {selectedBreedingPlan.notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Breed Info */}
+                    <div className="flex items-center gap-4 text-xs text-text-muted">
+                      <span className="flex items-center gap-1.5">
+                        <PawPrint className="w-3.5 h-3.5" />
+                        {selectedBreedingPlan.species}
+                      </span>
+                      {selectedBreedingPlan.breedText && (
+                        <span>{selectedBreedingPlan.breedText}</span>
+                      )}
+                      <span className="ml-auto">
+                        Created {formatDate(selectedBreedingPlan.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab: Listing & Rules */}
+                {planTab === 'rules' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-base font-semibold text-white mb-2">Listing Rules</h3>
+                      <p className="text-sm text-text-muted mb-4">
+                        Automate how offspring from this breeding plan are listed and managed in your marketplace.
+                      </p>
+                      <InlineRulesWidget
+                        level="PLAN"
+                        levelId={String(selectedBreedingPlan.id)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
       )}
     </div>
   );

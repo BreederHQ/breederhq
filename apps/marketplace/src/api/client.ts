@@ -2605,17 +2605,63 @@ export interface BreederBreedingPlanItem {
   tenantId: number;
   programId: number | null;
   name: string;
+  nickname?: string | null;
   status: BreedingPlanStatus;
   species: string;
   breedText: string | null;
+  notes?: string | null;
   // Parents
   damId: number | null;
   sireId: number | null;
   dam?: { id: number; name: string; photoUrl?: string | null } | null;
   sire?: { id: number; name: string; photoUrl?: string | null } | null;
-  // Dates
+  // Locked/Original Timeline (captured when plan was committed)
+  lockedCycleStart?: string | null;
+  lockedOvulationDate?: string | null;
+  lockedDueDate?: string | null;
+  lockedPlacementStartDate?: string | null;
+  // Expected Timeline (may be recalculated based on actuals)
+  expectedCycleStart?: string | null;
+  expectedBreedDate?: string | null;
   expectedBirthDate: string | null;
+  expectedWeaned?: string | null;
+  expectedPlacementStart?: string | null;
+  expectedPlacementCompleted?: string | null;
+  // Actual Timeline
+  cycleStartDateActual?: string | null;
+  breedDateActual?: string | null;
   birthDateActual: string | null;
+  weanedDateActual?: string | null;
+  placementStartDateActual?: string | null;
+  placementCompletedDateActual?: string | null;
+  completedDateActual?: string | null;
+  // Commitment
+  committedAt?: string | null;
+  // Financial
+  depositsCommittedCents?: number | null;
+  depositsPaidCents?: number | null;
+  // Related data (when included)
+  offspringGroup?: {
+    id: number;
+    totalCount: number;
+    availableCount: number;
+    offspring?: Array<{
+      id: number;
+      name?: string | null;
+      sex?: string | null;
+      keeperIntent?: string | null;
+      marketplaceListed?: boolean;
+    }>;
+  } | null;
+  Waitlist?: Array<{
+    id: number;
+    buyerName: string;
+    status: string;
+    createdAt: string;
+  }>;
+  _count?: {
+    Waitlist?: number;
+  };
   // Timestamps
   createdAt: string;
   updatedAt: string;
@@ -2634,13 +2680,14 @@ export interface BreederBreedingPlansResponse {
  */
 export async function getBreederBreedingPlans(
   tenantId: string,
-  params: { status?: string; programId?: string; limit?: number } = {}
+  params: { status?: string; programId?: string; limit?: number; include?: string } = {}
 ): Promise<BreederBreedingPlansResponse> {
   const query = new URLSearchParams();
   if (params.status) query.set("status", params.status);
   if (params.programId) query.set("programId", params.programId);
   if (params.limit) query.set("limit", params.limit.toString());
-  query.set("include", "dam,sire");
+  // Include parents, offspring group, and waitlist count by default
+  query.set("include", params.include || "parents,offspringgroup,waitlist");
 
   const queryStr = query.toString();
   const path = `/api/v1/breeding/plans${queryStr ? `?${queryStr}` : ""}`;
@@ -3777,12 +3824,20 @@ export async function getBreedingPrograms(
 export async function syncBreedingProgramsFromProfile(tenantId: string): Promise<void> {
   devLogFetch("/api/v1/marketplace/profile/sync-programs");
 
+  // Get CSRF token from cookie (XSRF-TOKEN)
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+
+  const headers: Record<string, string> = {
+    "X-Tenant-ID": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
   const response = await fetch(joinApi("/api/v1/marketplace/profile/sync-programs"), {
     method: "POST",
     credentials: "include",
-    headers: {
-      "X-Tenant-ID": tenantId,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -4041,6 +4096,42 @@ export async function toggleBreedingProgramRule(
     throw new ApiError("Failed to parse response", 500);
   }
   return data;
+}
+
+/**
+ * Disable inheritance from a specific level by creating disabled overrides
+ * POST /api/v1/breeding/programs/rules/disable-inheritance
+ */
+export async function disableRuleInheritance(
+  tenantId: string,
+  currentLevel: BreedingRuleLevel,
+  currentLevelId: string,
+  fromLevel: BreedingRuleLevel
+): Promise<{ success: boolean; overridesCreated: number; overrides: BreedingProgramRule[] }> {
+  const response = await fetch(
+    joinApi("/api/v1/breeding/programs/rules/disable-inheritance"),
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tenant-ID": tenantId,
+        "X-CSRF-Token": getCsrfToken() || "",
+      },
+      body: JSON.stringify({ currentLevel, currentLevelId, fromLevel }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ success: boolean; overridesCreated: number; overrides: BreedingProgramRule[] }>(response);
+  return data || { success: true, overridesCreated: 0, overrides: [] };
 }
 
 /**

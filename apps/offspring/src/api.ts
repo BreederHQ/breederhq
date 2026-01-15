@@ -34,6 +34,14 @@ export type OffspringPlanLite = {
   expectedPlacementCompleted: string | null;
   placementStartDateActual?: string | null;
   placementCompletedDateActual?: string | null;
+  // Birth date fields for offspring group UI
+  status?: BreedingPlanStatus | null;
+  birthDateActual?: string | null;
+  breedDateActual?: string | null;
+  // Dates for computing expected timeline
+  lockedCycleStart?: string | null;
+  expectedBirthDate?: string | null;
+  expectedWeaned?: string | null;
   [key: string]: any;
 };
 
@@ -851,6 +859,14 @@ export type OffspringApi = {
 
   /* Tags from unified @bhq/api */
   tags: TagsResource;
+
+  /* Breeding namespace for recording birth date from offspring group */
+  breeding: {
+    recordFoaling(
+      planId: number,
+      body: { actualBirthDate: string; foals?: Array<{ sex: "MALE" | "FEMALE"; color?: string }> }
+    ): Promise<{ plan: any; offspringGroup: any; offspring: any[] }>;
+  };
 };
 
 export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
@@ -1064,5 +1080,17 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
 
     // Wire up unified tags from @bhq/api
     tags: makeTags(createHttp(normBase(typeof opts === "string" ? opts : opts?.baseUrl))),
+
+    // Breeding namespace for recording birth date from offspring group
+    breeding: {
+      recordFoaling: (
+        planId: number,
+        body: { actualBirthDate: string; foals?: Array<{ sex: "MALE" | "FEMALE"; color?: string }> }
+      ) => core.raw.post<{ plan: any; offspringGroup: any; offspring: any[] }>(
+        `/breeding/plans/${planId}/record-foaling`,
+        body,
+        {}
+      ),
+    },
   };
 }

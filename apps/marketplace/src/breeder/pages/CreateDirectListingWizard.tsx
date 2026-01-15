@@ -1,5 +1,5 @@
-// apps/marketplace/src/breeder/pages/CreateProgramWizard.tsx
-// Create Animal Program Wizard - 7-step guided experience
+// apps/marketplace/src/breeder/pages/CreateDirectListingWizard.tsx
+// Create Direct Animal Listing Wizard - 6-step guided experience for individual animals
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,7 +7,7 @@ import { Button } from "@bhq/ui";
 import {
   ArrowLeft,
   ArrowRight,
-  Users,
+  Dog,
   Check,
   FileText,
   DollarSign,
@@ -15,12 +15,13 @@ import {
   Sparkles,
   Search,
   X,
+  MapPin,
 } from "lucide-react";
 
 import {
-  saveAnimalProgram,
+  saveDirectListing,
   getTenantAnimals,
-  type AnimalProgramCreate,
+  type DirectAnimalListingCreate,
   type TemplateType,
   type DataDrawerConfig,
   type TenantAnimalItem,
@@ -30,14 +31,13 @@ import {
 // TYPES & CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-type WizardStep = "template" | "basic" | "content" | "pricing" | "animals" | "settings" | "review";
+type WizardStep = "template" | "animal" | "content" | "pricing" | "settings" | "review";
 
 const STEPS: { id: WizardStep; label: string; icon: React.ReactNode }[] = [
   { id: "template", label: "Choose Template", icon: <Sparkles size={16} /> },
-  { id: "basic", label: "Basic Info", icon: <FileText size={16} /> },
+  { id: "animal", label: "Select Animal", icon: <Dog size={16} /> },
   { id: "content", label: "Content", icon: <FileText size={16} /> },
   { id: "pricing", label: "Pricing", icon: <DollarSign size={16} /> },
-  { id: "animals", label: "Add Animals", icon: <Users size={16} /> },
   { id: "settings", label: "Settings", icon: <Settings size={16} /> },
   { id: "review", label: "Review", icon: <Check size={16} /> },
 ];
@@ -61,44 +61,44 @@ const TEMPLATES: {
   {
     type: "STUD_SERVICES",
     label: "Stud Services",
-    description: "Offer multiple studs for breeding services",
+    description: "Offer this male for breeding services",
     color: "bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30",
-    examples: "Multi-stud programs, champion bloodlines, proven producers",
+    examples: "Champion studs, proven producers, available for breeding",
   },
   {
     type: "GUARDIAN",
-    label: "Guardian Program",
-    description: "Place breeding animals in guardian homes",
+    label: "Guardian Placement",
+    description: "Place this animal in a guardian home",
     color: "bg-blue-500/20 text-blue-300 border-blue-500/30 hover:bg-blue-500/30",
-    examples: "Guardian home programs, co-ownership arrangements",
+    examples: "Guardian home placement, co-ownership arrangement",
   },
   {
     type: "TRAINED",
-    label: "Trained Animals",
-    description: "Showcase trained animals for sale or adoption",
+    label: "Trained Animal",
+    description: "Showcase this trained animal for sale",
     color: "bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30",
-    examples: "Service dog programs, working dog sales, trained companions",
+    examples: "Service dogs, working dogs, trained companions",
   },
   {
     type: "REHOME",
-    label: "Rehoming Program",
-    description: "Find new homes for retired or young animals",
+    label: "Rehoming",
+    description: "Find a new home for this animal",
     color: "bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30",
-    examples: "Retired breeder programs, young puppy placements",
+    examples: "Retired breeders, young puppies, pets needing new homes",
   },
   {
     type: "CO_OWNERSHIP",
     label: "Co-Ownership",
-    description: "Offer shared ownership arrangements",
+    description: "Offer shared ownership of this animal",
     color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/30",
-    examples: "Co-owned show prospects, breeding partnerships",
+    examples: "Show prospects, breeding partnerships",
   },
   {
     type: "CUSTOM",
-    label: "Custom Program",
-    description: "Create a unique program with custom terms",
+    label: "Custom Listing",
+    description: "Create a custom listing with your own terms",
     color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30 hover:bg-zinc-500/30",
-    examples: "Specialty programs, unique offerings",
+    examples: "Specialty offerings, unique arrangements",
   },
 ];
 
@@ -106,7 +106,7 @@ const TEMPLATES: {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function CreateProgramWizard() {
+export function CreateDirectListingWizard() {
   const tenantId = getTenantId();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = React.useState<WizardStep>("template");
@@ -114,18 +114,19 @@ export function CreateProgramWizard() {
 
   const [form, setForm] = React.useState({
     templateType: null as TemplateType | null,
-    name: "",
+    animalId: null as number | null,
+    selectedAnimal: null as TenantAnimalItem | null,
     slug: "",
     headline: "",
     description: "",
-    defaultPriceModel: "inquire",
-    defaultPriceCents: null as number | null,
-    defaultPriceMinCents: null as number | null,
-    defaultPriceMaxCents: null as number | null,
-    selectedAnimalIds: [] as number[],
+    priceModel: "inquire",
+    priceCents: null as number | null,
+    priceMinCents: null as number | null,
+    priceMaxCents: null as number | null,
+    locationCity: "",
+    locationRegion: "",
     published: false,
-    acceptInquiries: true,
-    openWaitlist: false,
+    listed: true,
   });
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
@@ -136,7 +137,7 @@ export function CreateProgramWizard() {
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        navigate("/manage/animal-programs");
+        navigate("/manage/animals-direct");
       }
     };
     window.addEventListener("keydown", handleEscape);
@@ -147,14 +148,12 @@ export function CreateProgramWizard() {
     switch (step) {
       case "template":
         return data.templateType !== null;
-      case "basic":
-        return data.name.trim().length > 0; // Slug auto-generates from name
+      case "animal":
+        return data.animalId !== null && data.slug.trim().length > 0;
       case "content":
         return true; // Optional fields
       case "pricing":
         return true; // Optional fields
-      case "animals":
-        return true; // Can create empty program
       case "settings":
         return true; // All optional
       case "review":
@@ -179,64 +178,66 @@ export function CreateProgramWizard() {
   };
 
   const handleCreate = async () => {
-    if (!form.templateType || !form.name.trim()) {
+    if (!form.templateType || !form.animalId || !form.slug.trim()) {
       alert("Please complete required fields");
       return;
     }
 
-    // Ensure slug exists (should be auto-generated, but fallback just in case)
-    let slug = form.slug.trim();
-    if (!slug) {
-      slug = form.name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-    }
-
     setSaving(true);
     try {
-      const input: AnimalProgramCreate = {
-        name: form.name.trim(),
-        slug: slug,
+      const input: DirectAnimalListingCreate = {
+        animalId: form.animalId,
+        slug: form.slug.trim(),
         templateType: form.templateType,
+        status: form.published ? "ACTIVE" : "DRAFT",
+        listed: form.listed,
         headline: form.headline.trim() || undefined,
         description: form.description.trim() || undefined,
+        priceModel: form.priceModel,
+        priceCents: form.priceModel === "fixed" ? form.priceCents : undefined,
+        priceMinCents: form.priceModel === "range" ? form.priceMinCents : undefined,
+        priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
+        locationCity: form.locationCity.trim() || undefined,
+        locationRegion: form.locationRegion.trim() || undefined,
         dataDrawerConfig: {} as DataDrawerConfig,
-        programContent: {},
-        defaultPriceModel: form.defaultPriceModel,
-        defaultPriceCents: form.defaultPriceModel === "fixed" ? form.defaultPriceCents : undefined,
-        defaultPriceMinCents: form.defaultPriceModel === "range" ? form.defaultPriceMinCents : undefined,
-        defaultPriceMaxCents: form.defaultPriceModel === "range" ? form.defaultPriceMaxCents : undefined,
-        published: form.published,
-        listed: form.published,
-        acceptInquiries: form.acceptInquiries,
-        openWaitlist: form.openWaitlist,
-        selectedAnimalIds: form.selectedAnimalIds.length > 0 ? form.selectedAnimalIds : undefined,
+        listingContent: {},
       };
 
-      console.log("Sending program data:", input);
-      const result = await saveAnimalProgram(tenantId, input);
-      navigate(`/manage/animal-programs`);
+      console.log("Sending listing data:", input);
+      await saveDirectListing(tenantId, input);
+      navigate(`/manage/animals-direct`);
     } catch (err: any) {
-      console.error("Create program error:", err);
-      console.error("Error message:", err.message);
-      console.error("Error status:", err.status);
-      const errorMsg = err.message || "Failed to create program";
+      console.error("Create listing error:", err);
+      const errorMsg = err.message || "Failed to create listing";
 
       // Handle slug conflict - add timestamp and retry
       if (errorMsg.includes("already exists")) {
         const timestamp = Date.now().toString().slice(-6);
-        const newSlug = `${slug}-${timestamp}`;
+        const newSlug = `${form.slug.trim()}-${timestamp}`;
 
         try {
-          const retryInput: AnimalProgramCreate = { ...input, slug: newSlug };
-          await saveAnimalProgram(tenantId, retryInput);
-          navigate(`/manage/animal-programs`);
+          const retryInput: DirectAnimalListingCreate = {
+            animalId: form.animalId,
+            slug: newSlug,
+            templateType: form.templateType,
+            status: form.published ? "ACTIVE" : "DRAFT",
+            listed: form.listed,
+            headline: form.headline.trim() || undefined,
+            description: form.description.trim() || undefined,
+            priceModel: form.priceModel,
+            priceCents: form.priceModel === "fixed" ? form.priceCents : undefined,
+            priceMinCents: form.priceModel === "range" ? form.priceMinCents : undefined,
+            priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
+            locationCity: form.locationCity.trim() || undefined,
+            locationRegion: form.locationRegion.trim() || undefined,
+            dataDrawerConfig: {} as DataDrawerConfig,
+            listingContent: {},
+          };
+          await saveDirectListing(tenantId, retryInput);
+          navigate(`/manage/animals-direct`);
           return;
         } catch (retryErr: any) {
-          alert(retryErr.message || "Failed to create program");
+          alert(retryErr.message || "Failed to create listing");
         }
       } else {
         alert(errorMsg);
@@ -246,24 +247,23 @@ export function CreateProgramWizard() {
     }
   };
 
+  // Handle background click to close wizard
+  const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      navigate("/manage/animals-direct");
+    }
+  };
+
   if (!tenantId) {
     return (
       <div className="min-h-screen bg-portal-surface flex items-center justify-center">
         <div className="text-center">
-          <Users className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
+          <Dog className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
           <p className="text-text-secondary">No business selected.</p>
         </div>
       </div>
     );
   }
-
-  // Handle background click to close wizard
-  const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only close if clicking directly on the background, not on child elements
-    if (e.target === e.currentTarget) {
-      navigate("/manage/animal-programs");
-    }
-  };
 
   return (
     <div
@@ -279,19 +279,19 @@ export function CreateProgramWizard() {
           <div className="flex items-start justify-between">
             <div>
               <button
-                onClick={() => navigate("/manage/animal-programs")}
+                onClick={() => navigate("/manage/animals-direct")}
                 className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-white mb-4"
               >
                 <ArrowLeft size={16} />
                 Cancel & Return
               </button>
-              <h1 className="text-2xl font-bold text-white">Create Animal Program</h1>
+              <h1 className="text-2xl font-bold text-white">Create Direct Listing</h1>
               <p className="text-sm text-text-secondary mt-1">
                 Step {currentStepIndex + 1} of {STEPS.length}: {STEPS[currentStepIndex].label}
               </p>
             </div>
             <button
-              onClick={() => navigate("/manage/animal-programs")}
+              onClick={() => navigate("/manage/animals-direct")}
               className="p-2 text-text-secondary hover:text-white hover:bg-portal-card rounded-lg transition-colors"
               title="Close (Esc)"
             >
@@ -354,17 +354,14 @@ export function CreateProgramWizard() {
           {currentStep === "template" && (
             <TemplateStep form={form} setForm={setForm} />
           )}
-          {currentStep === "basic" && (
-            <BasicInfoStep form={form} setForm={setForm} />
+          {currentStep === "animal" && (
+            <AnimalStep form={form} setForm={setForm} tenantId={tenantId} />
           )}
           {currentStep === "content" && (
             <ContentStep form={form} setForm={setForm} />
           )}
           {currentStep === "pricing" && (
             <PricingStep form={form} setForm={setForm} />
-          )}
-          {currentStep === "animals" && (
-            <AnimalsStep form={form} setForm={setForm} />
           )}
           {currentStep === "settings" && (
             <SettingsStep form={form} setForm={setForm} />
@@ -379,7 +376,7 @@ export function CreateProgramWizard() {
           {currentStepIndex === 0 ? (
             <Button
               variant="secondary"
-              onClick={() => navigate("/manage/animal-programs")}
+              onClick={() => navigate("/manage/animals-direct")}
             >
               <X size={16} className="mr-1.5" />
               Cancel
@@ -409,7 +406,7 @@ export function CreateProgramWizard() {
               onClick={handleCreate}
               disabled={saving || !canGoNext}
             >
-              {saving ? "Creating..." : "Create Program"}
+              {saving ? "Creating..." : "Create Listing"}
               <Check size={16} className="ml-1.5" />
             </Button>
           )}
@@ -426,9 +423,9 @@ export function CreateProgramWizard() {
 function TemplateStep({ form, setForm }: { form: any; setForm: any }) {
   return (
     <div>
-      <h2 className="text-xl font-bold text-white mb-2">Choose Your Program Template</h2>
+      <h2 className="text-xl font-bold text-white mb-2">Choose Your Listing Type</h2>
       <p className="text-text-secondary mb-6">
-        Select the template that best matches your program type. This helps us customize the fields and features.
+        Select the type that best describes what you're offering. This helps buyers understand your listing.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -454,43 +451,156 @@ function TemplateStep({ form, setForm }: { form: any; setForm: any }) {
   );
 }
 
-function BasicInfoStep({ form, setForm }: { form: any; setForm: any }) {
-  // Auto-generate slug from name
-  const handleNameChange = (name: string) => {
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single
-      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+function AnimalStep({ form, setForm, tenantId }: { form: any; setForm: any; tenantId: string }) {
+  const [animals, setAnimals] = React.useState<TenantAnimalItem[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [search, setSearch] = React.useState("");
 
-    setForm({ ...form, name, slug });
+  // Fetch animals on mount and search change
+  React.useEffect(() => {
+    const fetchAnimals = async () => {
+      setLoading(true);
+      try {
+        const response = await getTenantAnimals(tenantId, {
+          search,
+          limit: 100,
+        });
+        setAnimals(response.items || []);
+      } catch (err) {
+        console.error("Failed to load animals:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAnimals();
+  }, [tenantId, search]);
+
+  // Filter animals based on template type
+  const filteredAnimals = React.useMemo(() => {
+    let filtered = animals;
+
+    // Filter by sex based on template type
+    if (form.templateType === "STUD_SERVICES") {
+      filtered = filtered.filter((a) => a.sex?.toUpperCase() === "MALE" || a.sex?.toUpperCase() === "M");
+    }
+
+    return filtered;
+  }, [animals, form.templateType]);
+
+  const handleSelectAnimal = (animal: TenantAnimalItem) => {
+    // Auto-generate slug from animal name
+    const slug = animal.name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    setForm({
+      ...form,
+      animalId: animal.id,
+      selectedAnimal: animal,
+      slug: slug,
+    });
   };
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-white mb-2">Name Your Program</h2>
+      <h2 className="text-xl font-bold text-white mb-2">Select an Animal</h2>
       <p className="text-text-secondary mb-6">
-        Give your program a clear, descriptive name. Your customers will see this on your marketplace.
+        Choose which animal you want to create a listing for.
       </p>
 
-      <div className="space-y-6 max-w-2xl">
-        <div>
-          <label className="block text-sm font-medium text-white mb-2">
-            Program Name <span className="text-red-400">*</span>
-          </label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white text-lg"
-            placeholder="e.g. Guardian Home Program 2024"
-            autoFocus
-          />
-          <p className="text-xs text-text-tertiary mt-2">
-            Choose a name that clearly represents what this program offers
+      {form.templateType === "STUD_SERVICES" && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6 max-w-2xl">
+          <p className="text-sm text-blue-300">
+            <strong>Note:</strong> Only male animals are shown for Stud Services listings.
           </p>
         </div>
+      )}
+
+      <div className="max-w-2xl space-y-6">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-3 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
+            placeholder="Search for an animal..."
+          />
+        </div>
+
+        {/* Animal Grid */}
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-24 bg-portal-surface rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : filteredAnimals.length === 0 ? (
+          <div className="bg-portal-surface border border-border-subtle rounded-lg p-6 text-center">
+            <Dog className="w-10 h-10 mx-auto text-text-tertiary mb-3" />
+            <p className="text-sm text-text-secondary">
+              {search ? "No animals found matching your search" : "No animals available"}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto">
+            {filteredAnimals.map((animal) => (
+              <button
+                key={animal.id}
+                onClick={() => handleSelectAnimal(animal)}
+                className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                  form.animalId === animal.id
+                    ? "bg-accent/10 border-accent"
+                    : "bg-portal-surface border-border-subtle hover:border-border-default"
+                }`}
+              >
+                {animal.photoUrl ? (
+                  <img
+                    src={animal.photoUrl}
+                    alt={animal.name}
+                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-portal-card flex items-center justify-center flex-shrink-0">
+                    <Dog className="w-6 h-6 text-text-tertiary" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium truncate">{animal.name}</p>
+                  <p className="text-sm text-text-tertiary truncate">
+                    {[animal.breed, animal.sex].filter(Boolean).join(" • ")}
+                  </p>
+                </div>
+                {form.animalId === animal.id && (
+                  <Check className="w-5 h-5 text-accent flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Slug field (shown after animal selection) */}
+        {form.animalId && (
+          <div className="pt-6 border-t border-border-subtle">
+            <label className="block text-sm font-medium text-white mb-2">
+              Listing URL Slug <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.slug}
+              onChange={(e) => setForm({ ...form, slug: e.target.value })}
+              className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
+              placeholder="unique-listing-slug"
+            />
+            <p className="text-xs text-text-tertiary mt-2">
+              This will be used in the URL for this listing (auto-generated from animal name)
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -499,9 +609,9 @@ function BasicInfoStep({ form, setForm }: { form: any; setForm: any }) {
 function ContentStep({ form, setForm }: { form: any; setForm: any }) {
   return (
     <div>
-      <h2 className="text-xl font-bold text-white mb-2">Program Content</h2>
+      <h2 className="text-xl font-bold text-white mb-2">Listing Content</h2>
       <p className="text-text-secondary mb-6">
-        Add a headline and description to help people understand your program.
+        Add a headline and description to help buyers understand what you're offering.
       </p>
 
       <div className="space-y-6 max-w-3xl">
@@ -515,11 +625,11 @@ function ContentStep({ form, setForm }: { form: any; setForm: any }) {
             onChange={(e) => setForm({ ...form, headline: e.target.value })}
             maxLength={120}
             className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
-            placeholder="A catchy one-line summary of your program"
+            placeholder="A catchy one-line summary of your listing"
           />
           <div className="flex items-center justify-between mt-1">
             <p className="text-xs text-text-tertiary">
-              This appears as the main tagline on your program page
+              This appears as the main tagline on your listing
             </p>
             <p className="text-xs text-text-tertiary">
               {form.headline.length}/120
@@ -537,7 +647,7 @@ function ContentStep({ form, setForm }: { form: any; setForm: any }) {
             maxLength={5000}
             rows={12}
             className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white resize-none font-mono text-sm"
-            placeholder="Describe your program in detail. What makes it special? What are the benefits? What should people know?
+            placeholder="Describe your listing in detail. What makes this animal special? What are the terms?
 
 You can use markdown formatting:
 - **bold text**
@@ -563,9 +673,9 @@ You can use markdown formatting:
 function PricingStep({ form, setForm }: { form: any; setForm: any }) {
   return (
     <div>
-      <h2 className="text-xl font-bold text-white mb-2">Default Pricing</h2>
+      <h2 className="text-xl font-bold text-white mb-2">Pricing & Location</h2>
       <p className="text-text-secondary mb-6">
-        Set a default price model for animals in this program. Individual animals can override this later.
+        Set your price and optionally add a location for this listing.
       </p>
 
       <div className="space-y-6 max-w-2xl">
@@ -573,9 +683,9 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
           <label className="block text-sm font-medium text-white mb-3">Price Model</label>
           <div className="grid grid-cols-3 gap-3">
             <button
-              onClick={() => setForm({ ...form, defaultPriceModel: "inquire" })}
+              onClick={() => setForm({ ...form, priceModel: "inquire" })}
               className={`px-4 py-6 text-center rounded-lg border-2 transition-all ${
-                form.defaultPriceModel === "inquire"
+                form.priceModel === "inquire"
                   ? "bg-blue-500/20 border-blue-500 text-blue-300"
                   : "bg-portal-surface border-border-subtle hover:border-border-default text-text-secondary"
               }`}
@@ -584,9 +694,9 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
               <div className="text-xs">Contact for pricing</div>
             </button>
             <button
-              onClick={() => setForm({ ...form, defaultPriceModel: "fixed" })}
+              onClick={() => setForm({ ...form, priceModel: "fixed" })}
               className={`px-4 py-6 text-center rounded-lg border-2 transition-all ${
-                form.defaultPriceModel === "fixed"
+                form.priceModel === "fixed"
                   ? "bg-blue-500/20 border-blue-500 text-blue-300"
                   : "bg-portal-surface border-border-subtle hover:border-border-default text-text-secondary"
               }`}
@@ -595,9 +705,9 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
               <div className="text-xs">Set specific price</div>
             </button>
             <button
-              onClick={() => setForm({ ...form, defaultPriceModel: "range" })}
+              onClick={() => setForm({ ...form, priceModel: "range" })}
               className={`px-4 py-6 text-center rounded-lg border-2 transition-all ${
-                form.defaultPriceModel === "range"
+                form.priceModel === "range"
                   ? "bg-blue-500/20 border-blue-500 text-blue-300"
                   : "bg-portal-surface border-border-subtle hover:border-border-default text-text-secondary"
               }`}
@@ -608,16 +718,16 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
           </div>
         </div>
 
-        {form.defaultPriceModel === "fixed" && (
+        {form.priceModel === "fixed" && (
           <div>
             <label className="block text-sm font-medium text-white mb-2">Price</label>
             <div className="flex items-center gap-2">
               <span className="text-2xl text-text-secondary">$</span>
               <input
                 type="number"
-                value={form.defaultPriceCents ? form.defaultPriceCents / 100 : ""}
+                value={form.priceCents ? form.priceCents / 100 : ""}
                 onChange={(e) =>
-                  setForm({ ...form, defaultPriceCents: Math.round(parseFloat(e.target.value || "0") * 100) })
+                  setForm({ ...form, priceCents: Math.round(parseFloat(e.target.value || "0") * 100) })
                 }
                 className="flex-1 px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white text-xl"
                 placeholder="0.00"
@@ -627,7 +737,7 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
           </div>
         )}
 
-        {form.defaultPriceModel === "range" && (
+        {form.priceModel === "range" && (
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-white mb-2">Minimum Price</label>
@@ -635,9 +745,9 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
                 <span className="text-xl text-text-secondary">$</span>
                 <input
                   type="number"
-                  value={form.defaultPriceMinCents ? form.defaultPriceMinCents / 100 : ""}
+                  value={form.priceMinCents ? form.priceMinCents / 100 : ""}
                   onChange={(e) =>
-                    setForm({ ...form, defaultPriceMinCents: Math.round(parseFloat(e.target.value || "0") * 100) })
+                    setForm({ ...form, priceMinCents: Math.round(parseFloat(e.target.value || "0") * 100) })
                   }
                   className="flex-1 px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
                   placeholder="0.00"
@@ -651,9 +761,9 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
                 <span className="text-xl text-text-secondary">$</span>
                 <input
                   type="number"
-                  value={form.defaultPriceMaxCents ? form.defaultPriceMaxCents / 100 : ""}
+                  value={form.priceMaxCents ? form.priceMaxCents / 100 : ""}
                   onChange={(e) =>
-                    setForm({ ...form, defaultPriceMaxCents: Math.round(parseFloat(e.target.value || "0") * 100) })
+                    setForm({ ...form, priceMaxCents: Math.round(parseFloat(e.target.value || "0") * 100) })
                   }
                   className="flex-1 px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
                   placeholder="0.00"
@@ -663,197 +773,36 @@ function PricingStep({ form, setForm }: { form: any; setForm: any }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
 
-function AnimalsStep({ form, setForm }: { form: any; setForm: any }) {
-  const tenantId = getTenantId();
-  const [animals, setAnimals] = React.useState<TenantAnimalItem[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [search, setSearch] = React.useState("");
-  const [showDropdown, setShowDropdown] = React.useState(false);
-
-  // Fetch animals on mount and search change
-  React.useEffect(() => {
-    const fetchAnimals = async () => {
-      setLoading(true);
-      try {
-        const response = await getTenantAnimals(tenantId, {
-          search,
-          limit: 100,
-        });
-        setAnimals(response.items || []);
-      } catch (err) {
-        console.error("Failed to load animals:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAnimals();
-  }, [tenantId, search]);
-
-  const selectedAnimals = React.useMemo(() => {
-    return animals.filter((a) => form.selectedAnimalIds.includes(a.id));
-  }, [animals, form.selectedAnimalIds]);
-
-  const availableAnimals = React.useMemo(() => {
-    let filtered = animals.filter((a) => !form.selectedAnimalIds.includes(a.id));
-
-    // Filter by sex based on template type
-    if (form.templateType === "STUD_SERVICES") {
-      // Only show males for stud services
-      filtered = filtered.filter((a) => a.sex?.toUpperCase() === "MALE" || a.sex?.toUpperCase() === "M");
-    }
-
-    return filtered;
-  }, [animals, form.selectedAnimalIds, form.templateType]);
-
-  const handleAddAnimal = (animalId: number) => {
-    setForm({
-      ...form,
-      selectedAnimalIds: [...form.selectedAnimalIds, animalId],
-    });
-    setShowDropdown(false);
-    setSearch("");
-  };
-
-  const handleRemoveAnimal = (animalId: number) => {
-    setForm({
-      ...form,
-      selectedAnimalIds: form.selectedAnimalIds.filter((id: number) => id !== animalId),
-    });
-  };
-
-  return (
-    <div>
-      <h2 className="text-xl font-bold text-white mb-2">Add Animals to Program</h2>
-      <p className="text-text-secondary mb-6">
-        Select which animals are part of this program. You can add more animals later from the program details page.
-      </p>
-
-      {form.templateType === "STUD_SERVICES" && (
-        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6 max-w-2xl">
-          <p className="text-sm text-blue-300">
-            <strong>Note:</strong> Only male animals are shown for Stud Services programs.
-          </p>
-        </div>
-      )}
-
-      <div className="max-w-2xl space-y-6">
-        {/* Add Animal Selector */}
-        <div className="relative">
-          <label className="block text-sm font-medium text-white mb-2">
-            Search and Add Animals
-          </label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onFocus={() => setShowDropdown(true)}
-              className="w-full pl-10 pr-3 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
-              placeholder="Search for animals to add..."
-            />
+        {/* Location */}
+        <div className="pt-6 border-t border-border-subtle">
+          <div className="flex items-center gap-2 mb-4">
+            <MapPin className="w-5 h-5 text-text-tertiary" />
+            <label className="text-sm font-medium text-white">Location (Optional)</label>
           </div>
-
-          {/* Dropdown */}
-          {showDropdown && (
-            <div className="absolute z-10 mt-1 w-full bg-portal-card border border-border-subtle rounded-lg shadow-2xl max-h-64 overflow-y-auto">
-              {loading ? (
-                <div className="p-4 text-center text-text-secondary">
-                  Loading animals...
-                </div>
-              ) : availableAnimals.length === 0 ? (
-                <div className="p-4 text-center text-text-secondary">
-                  {search ? "No animals found" : form.selectedAnimalIds.length > 0 ? "All animals added" : "No animals available"}
-                </div>
-              ) : (
-                availableAnimals.map((animal) => (
-                  <button
-                    key={animal.id}
-                    onClick={() => handleAddAnimal(animal.id)}
-                    className="w-full flex items-center gap-3 p-3 hover:bg-portal-surface transition-colors text-left border-b border-border-subtle last:border-b-0"
-                  >
-                    {animal.photoUrl ? (
-                      <img
-                        src={animal.photoUrl}
-                        alt={animal.name}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-portal-surface flex items-center justify-center">
-                        <Users className="w-5 h-5 text-text-tertiary" />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className="text-white font-medium">{animal.name}</p>
-                      <p className="text-sm text-text-tertiary">
-                        {[animal.breed, animal.sex].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  </button>
-                ))
-              )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-2">City</label>
+              <input
+                type="text"
+                value={form.locationCity}
+                onChange={(e) => setForm({ ...form, locationCity: e.target.value })}
+                className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
+                placeholder="e.g. Austin"
+              />
             </div>
-          )}
-        </div>
-
-        {/* Selected Animals List */}
-        {selectedAnimals.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-white mb-3">
-              Selected Animals ({selectedAnimals.length})
-            </h3>
-            <div className="space-y-2">
-              {selectedAnimals.map((animal) => (
-                <div
-                  key={animal.id}
-                  className="flex items-center gap-3 p-3 bg-portal-surface border border-border-subtle rounded-lg"
-                >
-                  {animal.photoUrl ? (
-                    <img
-                      src={animal.photoUrl}
-                      alt={animal.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-portal-card flex items-center justify-center">
-                      <Users className="w-5 h-5 text-text-tertiary" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{animal.name}</p>
-                    <p className="text-sm text-text-tertiary">
-                      {[animal.breed, animal.sex].filter(Boolean).join(" • ")}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveAnimal(animal.id)}
-                    className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+            <div>
+              <label className="block text-sm text-text-secondary mb-2">State/Region</label>
+              <input
+                type="text"
+                value={form.locationRegion}
+                onChange={(e) => setForm({ ...form, locationRegion: e.target.value })}
+                className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
+                placeholder="e.g. Texas"
+              />
             </div>
           </div>
-        )}
-
-        {/* Empty State */}
-        {selectedAnimals.length === 0 && (
-          <div className="bg-portal-surface border border-border-subtle rounded-lg p-6 text-center">
-            <Users className="w-10 h-10 mx-auto text-text-tertiary mb-3" />
-            <p className="text-sm text-text-secondary">
-              No animals added yet. Search above to add animals to this program.
-            </p>
-            <p className="text-xs text-text-tertiary mt-2">
-              This step is optional - you can add animals later.
-            </p>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -862,9 +811,9 @@ function AnimalsStep({ form, setForm }: { form: any; setForm: any }) {
 function SettingsStep({ form, setForm }: { form: any; setForm: any }) {
   return (
     <div>
-      <h2 className="text-xl font-bold text-white mb-2">Program Settings</h2>
+      <h2 className="text-xl font-bold text-white mb-2">Listing Settings</h2>
       <p className="text-text-secondary mb-6">
-        Configure how your program appears and behaves on your marketplace.
+        Configure how your listing appears on the marketplace.
       </p>
 
       <div className="space-y-6 max-w-2xl">
@@ -879,7 +828,7 @@ function SettingsStep({ form, setForm }: { form: any; setForm: any }) {
             <div className="flex-1">
               <div className="text-sm font-semibold text-white mb-1">Publish immediately</div>
               <p className="text-xs text-text-secondary">
-                Make this program visible to the public right away. If unchecked, it will be saved as a draft.
+                Make this listing visible to the public right away. If unchecked, it will be saved as a draft.
               </p>
             </div>
           </label>
@@ -888,31 +837,14 @@ function SettingsStep({ form, setForm }: { form: any; setForm: any }) {
             <label className="flex items-start gap-4 cursor-pointer">
               <input
                 type="checkbox"
-                checked={form.acceptInquiries}
-                onChange={(e) => setForm({ ...form, acceptInquiries: e.target.checked })}
+                checked={form.listed}
+                onChange={(e) => setForm({ ...form, listed: e.target.checked })}
                 className="mt-1 rounded"
               />
               <div className="flex-1">
-                <div className="text-sm font-semibold text-white mb-1">Accept inquiries</div>
+                <div className="text-sm font-semibold text-white mb-1">Show in marketplace search</div>
                 <p className="text-xs text-text-secondary">
-                  Allow visitors to send inquiries about this program through the contact form.
-                </p>
-              </div>
-            </label>
-          </div>
-
-          <div className="border-t border-border-subtle pt-4">
-            <label className="flex items-start gap-4 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.openWaitlist}
-                onChange={(e) => setForm({ ...form, openWaitlist: e.target.checked })}
-                className="mt-1 rounded"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-white mb-1">Enable waitlist</div>
-                <p className="text-xs text-text-secondary">
-                  Allow visitors to join a waitlist for this program when no animals are currently available.
+                  Allow this listing to appear in marketplace search results and browse pages.
                 </p>
               </div>
             </label>
@@ -930,38 +862,45 @@ function ReviewStep({ form }: { form: any }) {
     <div>
       <h2 className="text-xl font-bold text-white mb-2">Review & Create</h2>
       <p className="text-text-secondary mb-6">
-        Review your program details before creating. You can edit everything later.
+        Review your listing details before creating. You can edit everything later.
       </p>
 
       <div className="space-y-6 max-w-3xl">
+        {/* Template & Animal */}
         <div className="bg-portal-surface border border-border-subtle rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="text-3xl">🎯</div>
+          <div className="flex items-center gap-4 mb-4">
+            {form.selectedAnimal?.photoUrl ? (
+              <img
+                src={form.selectedAnimal.photoUrl}
+                alt={form.selectedAnimal.name}
+                className="w-16 h-16 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-portal-card flex items-center justify-center">
+                <Dog className="w-8 h-8 text-text-tertiary" />
+              </div>
+            )}
             <div>
-              <h3 className="text-sm font-medium text-text-tertiary">Template</h3>
-              <p className="text-lg font-semibold text-white">{selectedTemplate?.label}</p>
+              <h3 className="text-lg font-semibold text-white">{form.selectedAnimal?.name || "No animal selected"}</h3>
+              <p className="text-sm text-text-tertiary">
+                {[form.selectedAnimal?.breed, form.selectedAnimal?.sex].filter(Boolean).join(" • ")}
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <h3 className="text-sm font-medium text-text-tertiary mb-1">Program Name</h3>
-              <p className="text-white">{form.name || <span className="text-text-tertiary italic">Not set</span>}</p>
+              <h3 className="text-sm font-medium text-text-tertiary mb-1">Listing Type</h3>
+              <p className="text-white">{selectedTemplate?.label || "Not selected"}</p>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-text-tertiary mb-1">
-                Program URL
-              </h3>
-              <p className="text-white text-sm font-mono break-all">
-                {form.slug || <span className="text-text-tertiary italic">Not set</span>}
-              </p>
-              <p className="text-xs text-text-tertiary mt-1">
-                Auto-generated from your program name for web addresses
-              </p>
+              <h3 className="text-sm font-medium text-text-tertiary mb-1">URL Slug</h3>
+              <p className="text-white text-sm font-mono">{form.slug || <span className="text-text-tertiary italic">Not set</span>}</p>
             </div>
           </div>
         </div>
 
+        {/* Content */}
         {(form.headline || form.description) && (
           <div className="bg-portal-surface border border-border-subtle rounded-lg p-6">
             <h3 className="text-sm font-medium text-text-tertiary mb-3">Content</h3>
@@ -980,17 +919,27 @@ function ReviewStep({ form }: { form: any }) {
           </div>
         )}
 
+        {/* Pricing */}
         <div className="bg-portal-surface border border-border-subtle rounded-lg p-6">
           <h3 className="text-sm font-medium text-text-tertiary mb-3">Pricing</h3>
           <p className="text-white">
-            {form.defaultPriceModel === "inquire" && "Contact for pricing"}
-            {form.defaultPriceModel === "fixed" &&
-              `$${(form.defaultPriceCents / 100).toFixed(2)} (fixed)`}
-            {form.defaultPriceModel === "range" &&
-              `$${(form.defaultPriceMinCents / 100).toFixed(2)} - $${(form.defaultPriceMaxCents / 100).toFixed(2)} (range)`}
+            {form.priceModel === "inquire" && "Contact for pricing"}
+            {form.priceModel === "fixed" && form.priceCents &&
+              `$${(form.priceCents / 100).toFixed(2)} (fixed)`}
+            {form.priceModel === "range" && form.priceMinCents && form.priceMaxCents &&
+              `$${(form.priceMinCents / 100).toFixed(2)} - $${(form.priceMaxCents / 100).toFixed(2)} (range)`}
+            {form.priceModel === "fixed" && !form.priceCents && "Fixed price (not set)"}
+            {form.priceModel === "range" && (!form.priceMinCents || !form.priceMaxCents) && "Price range (not set)"}
           </p>
+          {(form.locationCity || form.locationRegion) && (
+            <div className="mt-3 pt-3 border-t border-border-subtle">
+              <p className="text-sm text-text-tertiary">Location:</p>
+              <p className="text-white">{[form.locationCity, form.locationRegion].filter(Boolean).join(", ")}</p>
+            </div>
+          )}
         </div>
 
+        {/* Settings */}
         <div className="bg-portal-surface border border-border-subtle rounded-lg p-6">
           <h3 className="text-sm font-medium text-text-tertiary mb-3">Settings</h3>
           <div className="space-y-2 text-sm">
@@ -1001,15 +950,9 @@ function ReviewStep({ form }: { form: any }) {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Check size={16} className={form.acceptInquiries ? "text-green-400" : "text-text-tertiary"} />
-              <span className={form.acceptInquiries ? "text-white" : "text-text-tertiary"}>
-                {form.acceptInquiries ? "Accepting inquiries" : "Not accepting inquiries"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Check size={16} className={form.openWaitlist ? "text-green-400" : "text-text-tertiary"} />
-              <span className={form.openWaitlist ? "text-white" : "text-text-tertiary"}>
-                {form.openWaitlist ? "Waitlist enabled" : "Waitlist disabled"}
+              <Check size={16} className={form.listed ? "text-green-400" : "text-text-tertiary"} />
+              <span className={form.listed ? "text-white" : "text-text-tertiary"}>
+                {form.listed ? "Will appear in marketplace search" : "Hidden from marketplace search"}
               </span>
             </div>
           </div>
@@ -1019,4 +962,4 @@ function ReviewStep({ form }: { form: any }) {
   );
 }
 
-export default CreateProgramWizard;
+export default CreateDirectListingWizard;

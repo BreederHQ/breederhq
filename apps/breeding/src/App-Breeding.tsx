@@ -5018,12 +5018,12 @@ export default function AppBreeding() {
     };
   }, [api, tenantId, speciesSelected, speciesWire, sireFocused, sireQuery, filterAnimals]);
 
-  const canCreate = Boolean(newName.trim() && newSpeciesUi && newBreed && programId && damId);
+  const canCreate = Boolean(newName.trim() && newSpeciesUi && newBreed && damId);
 
   const doCreatePlan = async () => {
     if (!api) return;
     if (!canCreate) {
-      setCreateErr("Enter name, species, breed, breeding program, and select a Dam.");
+      setCreateErr("Enter name, species, breed, and select a Dam.");
       return;
     }
     try {
@@ -5034,8 +5034,8 @@ export default function AppBreeding() {
         name: newName.trim(),
         species: toWireSpecies(newSpeciesUi),
         damId: damId!,
-        programId: programId!,
       };
+      if (programId != null) payload.programId = programId;
       if (sireId != null) payload.sireId = sireId;
       if (newBreed?.name) payload.breedText = newBreed.name;
 
@@ -5997,10 +5997,10 @@ export default function AppBreeding() {
                         </div>
                       </div>
 
-                      {/* Breeding Program (required - links to marketplace) */}
+                      {/* Breeding Program (optional - links to marketplace) */}
                       <div>
                         <div className="text-xs text-secondary mb-1">
-                          Breeding Program <span className="text-[hsl(var(--brand-orange))]">*</span>
+                          Breeding Program <span className="text-secondary">(optional)</span>
                         </div>
                         {!showNewProgram ? (
                           <div className="flex items-center gap-2">
@@ -6015,11 +6015,9 @@ export default function AppBreeding() {
                             >
                               {!newBreed ? (
                                 <option value="">Select breed first</option>
-                              ) : programs.length === 0 ? (
-                                <option value="">No programs for this breed</option>
                               ) : (
                                 <>
-                                  <option value="">— Select program —</option>
+                                  <option value="">— No program —</option>
                                   {programs.map((p) => (
                                     <option key={p.id} value={p.id}>
                                       {p.name}
@@ -6068,7 +6066,7 @@ export default function AppBreeding() {
                           </div>
                         )}
                         <div className="text-xs text-secondary mt-1">
-                          Only programs matching the selected breed are shown.
+                          Link to a breeding program to enable marketplace features. Can be added later.
                         </div>
                       </div>
 

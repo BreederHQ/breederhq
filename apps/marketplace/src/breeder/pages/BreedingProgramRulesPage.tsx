@@ -478,13 +478,16 @@ function RuleCard({
 
         <div className="flex-1">
           <div className="flex items-start justify-between mb-2">
-            <div>
+            <div className="flex-1">
               <h3 className="font-semibold">{rule.name}</h3>
               {rule.description && (
                 <p className="text-sm text-text-muted mt-1">{rule.description}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
+              <span className={`text-xs px-2 py-0.5 rounded border whitespace-nowrap ${CATEGORY_COLORS[rule.category]}`}>
+                {rule.category}
+              </span>
               <button
                 onClick={onExecute}
                 className="p-1.5 rounded hover:bg-white/5 transition-colors text-text-muted hover:text-white"

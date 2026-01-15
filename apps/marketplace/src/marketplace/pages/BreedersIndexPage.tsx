@@ -10,6 +10,7 @@ import { VerificationBadge } from "../components/VerificationBadge";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 import { updateSEO } from "../../utils/seo";
+import { useMarketplaceTheme } from "../../context/MarketplaceThemeContext";
 
 // =============================================================================
 // Types
@@ -629,7 +630,7 @@ function FilterPanel({
 // Breeder Card Component
 // =============================================================================
 
-function BreederCard({ breeder }: { breeder: BreederSummary }) {
+function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; lightMode?: boolean }) {
   const visibleBreeds = (breeder.breeds ?? []).slice(0, MAX_VISIBLE_BREEDS);
   const extraCount = (breeder.breeds?.length ?? 0) - MAX_VISIBLE_BREEDS;
   const showLocation = breeder.publicLocationMode !== "hidden" && breeder.location;
@@ -665,7 +666,7 @@ function BreederCard({ breeder }: { breeder: BreederSummary }) {
               className="w-full h-full object-cover transition-transform group-hover:scale-105"
             />
           ) : (
-            <DefaultCoverImage />
+            <DefaultCoverImage lightMode={lightMode} />
           )}
 
           {/* Verification badge overlay - top right */}
@@ -1264,6 +1265,7 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
 
 export function BreedersIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isLightMode } = useMarketplaceTheme();
 
   // Parse URL params into filters state
   const [filters, setFilters] = React.useState<Filters>(() => ({
@@ -1598,7 +1600,7 @@ export function BreedersIndexPage() {
   }, [searchInput]);
 
   return (
-    <div className="pb-20 md:pb-8">
+    <div className={`pb-20 md:pb-8 ${isLightMode ? "marketplace-browse" : ""}`}>
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -1780,7 +1782,7 @@ export function BreedersIndexPage() {
               }>
                 {breeders.map((breeder) => (
                   displayMode === "grid"
-                    ? <BreederCard key={breeder.tenantSlug} breeder={breeder} />
+                    ? <BreederCard key={breeder.tenantSlug} breeder={breeder} lightMode={isLightMode} />
                     : <BreederListRow key={breeder.tenantSlug} breeder={breeder} />
                 ))}
               </div>
