@@ -138,6 +138,33 @@ export function AnimalProgramsPage() {
           </div>
         </div>
 
+        {/* Public Visibility Info Banner */}
+        <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Eye className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-blue-300 mb-1">
+                What Anonymous Marketplace Visitors See
+              </h3>
+              <p className="text-xs text-text-secondary mb-2">
+                Published programs are publicly visible to help buyers discover your animals. Here's what anonymous users can see:
+              </p>
+              <ul className="text-xs text-text-secondary ml-4 list-disc grid grid-cols-2 gap-x-4 gap-y-1">
+                <li>Program name, description, and headline</li>
+                <li>Pricing information and location (city/state)</li>
+                <li>Cover image and template type (Stud Services, Guardian, etc.)</li>
+                <li>Participating animals: photos, names, breed, and sex</li>
+                <li>Your breeder profile and website link (if public)</li>
+              </ul>
+              <div className="mt-2 pt-2 border-t border-blue-500/20">
+                <p className="text-xs text-blue-300 font-medium">
+                  ✓ Anonymous users CANNOT view detailed animal profiles (pedigrees, health records, lineage) or send marketplace messages without creating an account
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-portal-card border border-border-subtle rounded-lg p-4">

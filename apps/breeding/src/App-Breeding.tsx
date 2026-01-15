@@ -7002,12 +7002,23 @@ function PlanDetailsView(props: {
             const fresh = await api.getPlan(Number(row.id), "parents,org");
             onPlanUpdated(row.id, fresh);
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("[Breeding] Failed to save after clearing dates:", error);
+          // Show user-friendly error for business rule violations
+          const errorDetail = error?.response?.data?.detail ?? error?.message ?? "Failed to clear dates. Please try again.";
+          void confirmModal({
+            title: "Cannot Clear Dates",
+            message: errorDetail,
+            confirmText: "OK",
+          });
+          // Revert the draft changes since the save failed
+          draftRef.current = {};
+          setDraftTick((t) => t + 1);
+          setDraft({});
         }
       }, 100);
     },
-    [setDraftLive, effective, confirmModal, requestSave, api, onPlanUpdated, row.id]
+    [setDraftLive, effective, confirmModal, requestSave, api, onPlanUpdated, row.id, setDraft]
   );
 
   // Allow editing cycle start actual when in edit mode and committed
@@ -9418,8 +9429,16 @@ function PlanDetailsView(props: {
                             setDraftTick((t) => t + 1);
                             setDraft({});
                             setMode("view");
-                          } catch (err) {
+                          } catch (err: any) {
                             console.error("[Breeding] Reset dates failed", err);
+                            // Show user-friendly error for business rule violations
+                            const errorDetail = err?.response?.data?.detail ?? err?.message ?? "Failed to reset dates. Please try again.";
+                            await utils.confirmDialog({
+                              title: "Cannot Reset Dates",
+                              message: errorDetail,
+                              confirmText: "OK",
+                              cancelText: "",
+                            });
                           }
                         }}
                       >

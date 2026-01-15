@@ -47,6 +47,7 @@ import { reproEngine } from "@bhq/ui/utils";
 import { GroupCardView } from "./components/GroupCardView";
 import { GroupListView } from "./components/GroupListView";
 import { CollarPicker, CollarSwatch } from "./components/CollarPicker";
+import { AddOffspringForm, type AddOffspringFormData } from "./components/AddOffspringForm";
 
 
 /* ───────────────────────── shared types ───────────────────────── */
@@ -1677,386 +1678,6 @@ function CreateGroupForm({
     </div>
   );
 }
-
-type AddOffspringForGroupOverlayProps = {
-  api: OffspringApi | null;
-  tenantId: number | null;
-  group: OffspringRow | null;
-  open: boolean;
-  onClose: () => void;
-  onCreated?: () => void;
-};
-
-function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
-  const { api, tenantId, group, open, onClose, onCreated } = props;
-
-  const [name, setName] = React.useState("");
-  const [sex, setSex] = React.useState<"MALE" | "FEMALE" | "UNKNOWN">("UNKNOWN");
-  const [status, setStatus] = React.useState<"NEWBORN" | "WEANED" | "PLACED" | "DECEASED">("NEWBORN");
-  const [birthWeightOz, setBirthWeightOz] = React.useState<string>("");
-  const [price, setPrice] = React.useState<string>("");
-  const [notes, setNotes] = React.useState("");
-
-  // new: whelping collar color
-  const [whelpingCollarColor, setWhelpingCollarColor] = React.useState<string | null>(null);
-  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
-
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const labelClass = "block text-xs font-medium text-muted-foreground mb-1";
-  const inputClass =
-    "h-8 w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 text-xs text-foreground";
-
-  const paletteRef = React.useRef<HTMLDivElement | null>(null);
-
-  const reset = React.useCallback(() => {
-    setName("");
-    setSex("UNKNOWN");
-    setStatus("NEWBORN");
-    setBirthWeightOz("");
-    setPrice("");
-    setNotes("");
-    setWhelpingCollarColor(null);
-    setShowWhelpPalette(false);
-    setSubmitting(false);
-    setError(null);
-  }, []);
-
-  // Reset fields whenever the overlay closes
-  React.useEffect(() => {
-    if (!open) {
-      reset();
-    }
-  }, [open, reset]);
-
-  // Escape key closes overlay, body scroll lock while open
-  React.useEffect(() => {
-    if (!open) return;
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (evt: KeyboardEvent) => {
-      if (evt.key === "Escape") {
-        evt.preventDefault();
-        if (!submitting) {
-          onClose();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open, onClose, submitting]);
-
-  // Click outside the palette closes it
-  React.useEffect(() => {
-    if (!showWhelpPalette) return;
-
-    const handler = (evt: MouseEvent) => {
-      const node = paletteRef.current;
-      if (!node) return;
-      if (!node.contains(evt.target as Node)) {
-        setShowWhelpPalette(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showWhelpPalette]);
-
-  const whelpingCollarLabel =
-    whelpingCollarColor && String(whelpingCollarColor).trim().length
-      ? String(whelpingCollarColor)
-      : "Not set";
-
-  const handleSubmit = async (evt: React.FormEvent) => {
-    evt.preventDefault();
-    if (!api || !group) return;
-
-    const effectiveTenantId = tenantId ?? readTenantIdFast();
-    if (!effectiveTenantId) {
-      setError("Missing tenant id.");
-      return;
-    }
-
-    const anyApi: any = api;
-    const individuals = anyApi?.individuals;
-    if (!individuals || typeof individuals.create !== "function") {
-      setError("Offspring individuals API is not available.");
-      return;
-    }
-
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Name is required.");
-      return;
-    }
-
-    const parsedBirthWeight =
-      birthWeightOz.trim() === ""
-        ? null
-        : Number.isNaN(Number(birthWeightOz))
-          ? null
-          : Number(birthWeightOz);
-
-    const parsedPrice =
-      price.trim() === ""
-        ? null
-        : Number.isNaN(Number(price))
-          ? null
-          : Number(price);
-
-    const sexWire: "MALE" | "FEMALE" | "UNKNOWN" =
-      sex === "MALE" || sex === "FEMALE" ? sex : "UNKNOWN";
-
-    const statusWire = status ?? "NEWBORN";
-
-    const speciesFromGroup = (group as any)?.species ?? null;
-    const breedFromGroup =
-      (group as any)?.breed ??
-      (group as any)?.breedText ??
-      null;
-
-    const groupId =
-      (group as any)?.id ??
-      (group as any)?.groupId ??
-      null;
-
-    if (groupId == null) {
-      setError("Group id is missing for this offspring.");
-      return;
-    }
-
-    const collarValue =
-      whelpingCollarColor && whelpingCollarColor.trim().length
-        ? whelpingCollarColor.trim()
-        : null;
-
-    const payload: any = {
-      name: trimmedName,
-      sex: sexWire,
-      status: statusWire,
-      groupId,
-      species: speciesFromGroup,
-      breed: breedFromGroup,
-      birthWeightOz: parsedBirthWeight,
-      price: parsedPrice,
-      notes: notes.trim() || null,
-      whelpingCollarColor: collarValue,
-    };
-
-    try {
-      setSubmitting(true);
-      setError(null);
-
-      await individuals.create(payload);
-
-      if (onCreated) {
-        onCreated();
-      }
-
-      reset();
-      onClose();
-    } catch (e: any) {
-      console.error("[Offspring] failed to create individual from group", e);
-      setError(String(e?.message || e) || "Create failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Closed or no group, render nothing
-  if (!open || !group) return null;
-
-  // Modal content
-  const modal = (
-    <div
-      className="fixed inset-0"
-      style={{ zIndex: MODAL_Z + 10, isolation: "isolate" }}
-      onClick={() => {
-        if (!submitting) {
-          onClose();
-        }
-      }}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" />
-
-      {/* Centered card */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="w-full max-w-xl px-4 sm:px-0 pointer-events-auto"
-          onClick={(e) => {
-            // keep clicks inside the card from bubbling up and closing the overlay
-            e.stopPropagation();
-          }}
-        >
-          <Card className="h-full">
-            <form className="flex h-full flex-col" onSubmit={handleSubmit}>
-              <div className="border-b border-[var(--hairline,#222)] px-4 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Add offspring
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Parent group: {(group as any).identifier || `Group #${(group as any).id}`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      onClick={() => {
-                        if (!submitting) {
-                          onClose();
-                        }
-                      }}
-                      disabled={submitting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      size="xs"
-                      disabled={submitting}
-                    >
-                      {submitting ? "Saving…" : "Save offspring"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Name */}
-                  <div>
-                    <span className={labelClass}>Name</span>
-                    <input
-                      className={inputClass}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoFocus
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-
-                  {/* Sex */}
-                  <div>
-                    <span className={labelClass}>Sex</span>
-                    <select
-                      className={inputClass}
-                      value={sex}
-                      onChange={(e) =>
-                        setSex(e.target.value as "MALE" | "FEMALE" | "UNKNOWN")
-                      }
-                    >
-                      <option value="UNKNOWN">Unknown</option>
-                      <option value="MALE">Male</option>
-                      <option value="FEMALE">Female</option>
-                    </select>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <span className={labelClass}>Status</span>
-                    <select
-                      className={inputClass}
-                      value={status}
-                      onChange={(e) =>
-                        setStatus(
-                          e.target.value as "NEWBORN" | "WEANED" | "PLACED" | "DECEASED",
-                        )
-                      }
-                    >
-                      <option value="NEWBORN">Newborn</option>
-                      <option value="WEANED">Weaned</option>
-                      <option value="PLACED">Placed</option>
-                      <option value="DECEASED">Deceased</option>
-                    </select>
-                  </div>
-
-                  {/* Whelping collar color */}
-                  <div>
-                    <span className={labelClass}>Collar Color</span>
-                    <CollarPicker
-                      value={whelpingCollarColor}
-                      onChange={(colorLabel) => setWhelpingCollarColor(colorLabel)}
-                    />
-                  </div>
-
-                  {/* Birth weight */}
-                  <div>
-                    <span className={labelClass}>Birth weight (oz)</span>
-                    <input
-                      className={inputClass}
-                      inputMode="decimal"
-                      value={birthWeightOz}
-                      onChange={(e) => setBirthWeightOz(e.target.value)}
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-
-                  {/* Price */}
-                  <div>
-                    <span className={labelClass}>Price</span>
-                    <input
-                      className={inputClass}
-                      inputMode="decimal"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <span className={labelClass}>Notes</span>
-                  <textarea
-                    className="w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 py-1.5 text-xs text-foreground min-h-[72px]"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Notes about this puppy..."
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                    data-form-type="other"
-                  />
-                </div>
-
-                {error && (
-                  <div className="text-xs text-red-400">
-                    {error}
-                  </div>
-                )}
-              </div>
-            </form>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-
-  return ReactDOM.createPortal(modal, document.body);
-}
-
 /* ───────────────────────── Buyers hook and tab ───────────────────────── */
 
 type Candidate = {
@@ -4677,8 +4298,8 @@ function OffspringGroupsTab(
                         <h3 className="text-sm font-semibold">Offspring</h3>
                         <div className="flex gap-2">
                           <Button
-                            size="xs"
-                            variant="outline"
+                            size="sm"
+                            variant="primary"
                             type="button"
                             onClick={(e) => {
                               e.preventDefault();
@@ -4688,7 +4309,7 @@ function OffspringGroupsTab(
                               setAddOffspringOpen(true);
                             }}
                           >
-                            <Plus className="h-3 w-3 mr-1" />
+                            <Plus className="h-3.5 w-3.5 mr-1.5" />
                             Add Offspring
                           </Button>
                         </div>
@@ -4985,28 +4606,55 @@ function OffspringGroupsTab(
         }}
       />
 
-      {
-        addOffspringGroup && (
-          <AddOffspringForGroupOverlay
-            api={api}
-            tenantId={tenantId}
-            group={addOffspringGroup}
-            open={addOffspringOpen}
-            onClose={() => {
-              setAddOffspringOpen(false);
-              setAddOffspringGroup(null);
-              if (setActiveTabRef.current) {
-                setActiveTabRef.current("linkedOffspring");
-                if (typeof window !== "undefined" && window.requestAnimationFrame) {
-                  window.requestAnimationFrame(() => {
-                    if (setActiveTabRef.current) {
-                      setActiveTabRef.current("linkedOffspring");
-                    }
-                  });
-                }
+      {addOffspringGroup && (
+        <AddOffspringForm
+          open={addOffspringOpen}
+          onClose={() => {
+            setAddOffspringOpen(false);
+            setAddOffspringGroup(null);
+            if (setActiveTabRef.current) {
+              setActiveTabRef.current("linkedOffspring");
+              if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                window.requestAnimationFrame(() => {
+                  if (setActiveTabRef.current) {
+                    setActiveTabRef.current("linkedOffspring");
+                  }
+                });
               }
-            }}
-            onCreated={async () => {
+            }
+          }}
+          onCreate={async (formData: AddOffspringFormData) => {
+            if (!api) return;
+
+            const effectiveTenantId = tenantId ?? readTenantIdFast();
+            if (!effectiveTenantId) {
+              console.error("[Offspring] Missing tenant id.");
+              return;
+            }
+
+            const anyApi: any = api;
+            const individuals = anyApi?.individuals;
+            if (!individuals || typeof individuals.create !== "function") {
+              console.error("[Offspring] Offspring individuals API is not available.");
+              return;
+            }
+
+            const payload: any = {
+              name: formData.name,
+              sex: formData.sex === "UNKNOWN" ? null : formData.sex,
+              status: "NEWBORN",
+              groupId: formData.groupId,
+              species: formData.species,
+              breed: formData.breed,
+              birthWeightOz: formData.birthWeightOz,
+              price: formData.price,
+              notes: formData.notes || null,
+              whelpingCollarColor: formData.whelpingCollarColor,
+            };
+
+            try {
+              await individuals.create(payload);
+
               setAddOffspringOpen(false);
               setAddOffspringGroup(null);
               if (setActiveTabRef.current) {
@@ -5023,10 +4671,19 @@ function OffspringGroupsTab(
                   });
                 }
               }
-            }}
-          />
-        )
-      }
+            } catch (e: any) {
+              console.error("[Offspring] failed to create individual from group", e);
+              window.alert(String(e?.message || e) || "Create failed");
+            }
+          }}
+          groupContext={{
+            id: addOffspringGroup.id,
+            name: (addOffspringGroup as any).identifier || `Group #${addOffspringGroup.id}`,
+            species: (addOffspringGroup as any).species ?? (addOffspringGroup as any).plan?.species ?? null,
+            breed: (addOffspringGroup as any).breed ?? (addOffspringGroup as any).breedName ?? (addOffspringGroup as any).plan?.breedText ?? null,
+          }}
+        />
+      )}
 
       {/* Create Group Modal */}
       <Overlay
@@ -5210,7 +4867,7 @@ export default function AppOffspringModule() {
                     <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
                   )}
                   <span className="relative z-10">🐾</span>
-                  <span className="relative z-10">Offspring</span>
+                  <span className="relative z-10">All Offspring</span>
                 </>
               )}
             </SafeNavLink>

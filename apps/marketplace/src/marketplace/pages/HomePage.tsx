@@ -1151,9 +1151,9 @@ function SellerHomePage() {
               <SettingsIcon className="h-7 w-7 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white mb-1">Manage Your Storefront and Breeding Program Listings</h2>
+              <h2 className="text-xl font-bold text-white mb-1">Manage your Breeding Program Storefront</h2>
               <p className="text-text-secondary">
-                Set up your business profile, location, credentials, and breeding programs
+                Set up your business profile, location, and breeding programs
               </p>
             </div>
           </div>
@@ -1173,7 +1173,7 @@ function SellerHomePage() {
             </div>
             <div>
               <h3 className="font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors">
-                Manage Animals
+                Manage Animal Listings
               </h3>
               <p className="text-sm text-text-tertiary">
                 List individual animals for sale or showcase your breeding stock
@@ -1192,10 +1192,10 @@ function SellerHomePage() {
             </div>
             <div>
               <h3 className="font-semibold text-white mb-1 group-hover:text-green-400 transition-colors">
-                Manage Services
+                Manage Services Listings
               </h3>
               <p className="text-sm text-text-tertiary">
-                Offer stud services, training, grooming, or other professional services
+                Offer training, grooming, or other professional services
               </p>
             </div>
           </div>

@@ -17,6 +17,7 @@ import {
   EyeOff,
   Sparkles,
   Pencil,
+  ChevronDown,
   ChevronUp,
   Upload,
   Clock,
@@ -80,75 +81,87 @@ interface ProgramSummaryStats {
 }
 
 // Status color mappings
-const STATUS_COLORS: Record<string, { border: string; bg: string; text: string; badge: string }> = {
+const STATUS_COLORS: Record<string, { border: string; borderColor: string; bg: string; text: string; badge: string }> = {
   PLANNING: {
     border: "border-l-slate-500",
+    borderColor: "border-slate-500/40",
     bg: "bg-slate-500/10",
     text: "text-slate-400",
     badge: "bg-slate-500/15 text-slate-400 border-slate-500/30"
   },
   COMMITTED: {
     border: "border-l-indigo-500",
+    borderColor: "border-indigo-500/40",
     bg: "bg-indigo-500/10",
     text: "text-indigo-400",
     badge: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30"
   },
   IN_HEAT: {
     border: "border-l-pink-500",
+    borderColor: "border-pink-500/40",
     bg: "bg-pink-500/10",
     text: "text-pink-400",
     badge: "bg-pink-500/15 text-pink-400 border-pink-500/30"
   },
   BRED: {
     border: "border-l-fuchsia-500",
+    borderColor: "border-fuchsia-500/40",
     bg: "bg-fuchsia-500/10",
     text: "text-fuchsia-400",
     badge: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30"
   },
   CONFIRMED: {
     border: "border-l-purple-500",
+    borderColor: "border-purple-500/40",
     bg: "bg-purple-500/10",
     text: "text-purple-400",
     badge: "bg-purple-500/15 text-purple-400 border-purple-500/30"
   },
   WHELPING: {
     border: "border-l-blue-500",
+    borderColor: "border-blue-500/40",
     bg: "bg-blue-500/10",
     text: "text-blue-400",
     badge: "bg-blue-500/15 text-blue-400 border-blue-500/30"
   },
   NURSING: {
     border: "border-l-cyan-500",
+    borderColor: "border-cyan-500/40",
     bg: "bg-cyan-500/10",
     text: "text-cyan-400",
     badge: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
   },
   WEANING: {
     border: "border-l-teal-500",
+    borderColor: "border-teal-500/40",
     bg: "bg-teal-500/10",
     text: "text-teal-400",
     badge: "bg-teal-500/15 text-teal-400 border-teal-500/30"
   },
   PLACING: {
     border: "border-l-amber-500",
+    borderColor: "border-amber-500/40",
     bg: "bg-amber-500/10",
     text: "text-amber-400",
     badge: "bg-amber-500/15 text-amber-400 border-amber-500/30"
   },
   COMPLETED: {
     border: "border-l-emerald-500",
+    borderColor: "border-emerald-500/40",
     bg: "bg-emerald-500/10",
     text: "text-emerald-400",
     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
   },
   CANCELLED: {
     border: "border-l-red-500",
+    borderColor: "border-red-500/40",
     bg: "bg-red-500/10",
     text: "text-red-400",
     badge: "bg-red-500/15 text-red-400 border-red-500/30"
   },
   ARCHIVED: {
     border: "border-l-zinc-500",
+    borderColor: "border-zinc-500/40",
     bg: "bg-zinc-500/10",
     text: "text-zinc-400",
     badge: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30"
@@ -269,6 +282,7 @@ function ProgramDashboardCard({
   matchingGroups,
   onEdit,
   onRemove,
+  onOffspringGroupClick,
 }: {
   program: ListedProgramItem;
   index: number;
@@ -278,6 +292,7 @@ function ProgramDashboardCard({
   matchingGroups: BreederOffspringGroupItem[];
   onEdit: () => void;
   onRemove: () => void;
+  onOffspringGroupClick: (group: BreederOffspringGroupItem) => void;
 }) {
   const isMissingRequired = !program.name?.trim() || !program.breedText?.trim();
 
@@ -385,7 +400,7 @@ function ProgramDashboardCard({
                 <Baby className="w-5 h-5 text-pink-400" />
               </div>
               <div>
-                <div className="text-sm font-bold text-white">
+                <div className="text-sm font-bold text-amber-400">
                   {stats.nextExpectedBirth ? formatDate(stats.nextExpectedBirth) : "—"}
                 </div>
                 <div className="text-xs text-text-tertiary">Next Birth</div>
@@ -439,7 +454,7 @@ function ProgramDashboardCard({
             return (
               <div key={plan.id} className="ml-6">
                 {/* BREEDING PLAN ROW */}
-                <div className={`border-l-4 ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card`}>
+                <div className={`border border-l-4 ${statusStyle.borderColor} ${statusStyle.border} rounded-lg overflow-hidden bg-portal-card`}>
                   <div className="p-4">
                     {/* Plan Header */}
                     <div className="flex items-start justify-between gap-4 mb-3">
@@ -502,15 +517,15 @@ function ProgramDashboardCard({
 
                         {/* Dates */}
                         {(plan.expectedBirthDate || plan.birthDateActual) && (
-                          <div className="flex items-center gap-4 mt-2 text-xs text-text-tertiary">
+                          <div className="flex items-center gap-4 mt-2 text-xs">
                             {plan.birthDateActual && (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1 text-text-tertiary">
                                 <Calendar className="w-3 h-3" />
                                 Born {formatDate(plan.birthDateActual)}
                               </span>
                             )}
                             {!plan.birthDateActual && plan.expectedBirthDate && (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1 text-amber-400 font-medium">
                                 <Calendar className="w-3 h-3" />
                                 Expected {formatDate(plan.expectedBirthDate)}
                               </span>
@@ -536,73 +551,225 @@ function ProgramDashboardCard({
                       </div>
                     </div>
 
-                    {/* OFFSPRING GROUPS GRID */}
+                    {/* OFFSPRING GROUP (Single per plan) */}
                     {planOffspring.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-border-subtle">
-                        <div className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <Baby className="w-4 h-4" />
-                          Offspring Groups ({planOffspring.length})
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {planOffspring.map((group) => (
+                        {(() => {
+                          const group = planOffspring[0]; // Only one group per plan
+                          const [showIndividualOffspring, setShowIndividualOffspring] = React.useState(false);
+                          const hasOffspring = group.offspring && group.offspring.length > 0;
+
+                          return (
                             <div
-                              key={group.id}
-                              className="bg-portal-surface border border-border-subtle rounded-lg p-3 hover:border-accent/50 transition-colors"
+                              className="bg-portal-surface border border-border-subtle rounded-lg p-4 hover:border-amber-500/50 transition-colors cursor-pointer"
+                              onClick={() => onOffspringGroupClick(group)}
                             >
-                              <div className="flex items-start justify-between gap-2 mb-2">
+                              {/* Group Header */}
+                              <div className="flex items-start justify-between gap-4 mb-3">
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium text-white mb-1">
-                                    {group.listingTitle || "Untitled Group"}
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Baby className="w-5 h-5 text-amber-400" />
+                                    <h4 className="text-sm font-semibold text-white">
+                                      {group.listingTitle || "Offspring Group"}
+                                    </h4>
+                                    {hasOffspring && (
+                                      <button
+                                        onClick={() => setShowIndividualOffspring(!showIndividualOffspring)}
+                                        className="ml-2 text-xs text-accent hover:text-accent-hover flex items-center gap-1 transition-colors"
+                                      >
+                                        {showIndividualOffspring ? (
+                                          <>
+                                            <ChevronUp className="w-3 h-3" />
+                                            Hide Individual Offspring
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ChevronDown className="w-3 h-3" />
+                                            Show Individual Offspring ({group.offspring.length})
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
-                                  <div className="flex items-center gap-3 text-xs text-text-tertiary">
+                                  <div className="flex items-center gap-3 text-xs">
                                     {group.actualBirthOn && (
-                                      <span className="flex items-center gap-1">
+                                      <span className="flex items-center gap-1 text-text-tertiary">
                                         <Calendar className="w-3 h-3" />
-                                        {formatDate(group.actualBirthOn)}
+                                        Born {formatDate(group.actualBirthOn)}
                                       </span>
                                     )}
                                     {!group.actualBirthOn && group.expectedBirthOn && (
-                                      <span className="flex items-center gap-1">
+                                      <span className="flex items-center gap-1 text-amber-400 font-medium">
                                         <Clock className="w-3 h-3" />
-                                        {formatDate(group.expectedBirthOn)}
+                                        Expected {formatDate(group.expectedBirthOn)}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <button
-                                    className="p-1 text-text-secondary hover:text-amber-400 hover:bg-amber-500/10 rounded transition-colors"
-                                    title="Set pricing"
+                                    className="p-1.5 text-text-secondary hover:text-amber-400 hover:bg-amber-500/10 rounded transition-colors"
+                                    title="Set group pricing"
                                   >
-                                    <DollarSign size={12} />
+                                    <DollarSign size={14} />
                                   </button>
                                   <button
-                                    className="p-1 text-text-secondary hover:text-white hover:bg-portal-card rounded transition-colors"
+                                    className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-card rounded transition-colors"
                                     title="Group visibility"
                                   >
-                                    <Eye size={12} />
+                                    <Eye size={14} />
                                   </button>
                                   <button
-                                    className="p-1 text-text-secondary hover:text-white hover:bg-portal-card rounded transition-colors"
+                                    className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-card rounded transition-colors"
                                     title="Group settings"
                                   >
-                                    <Settings size={12} />
+                                    <Settings size={14} />
                                   </button>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3 text-xs">
-                                <span className="text-text-secondary">
-                                  {group.totalCount} total
-                                </span>
-                                {group.availableCount > 0 && (
-                                  <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded border border-emerald-500/30 font-medium">
-                                    {group.availableCount} available
-                                  </span>
-                                )}
+
+                              {/* Offspring & Buyer Metrics */}
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                                {/* Total Offspring */}
+                                <div className="bg-portal-bg/50 rounded-lg p-3 border border-border-subtle">
+                                  <div className="text-xs text-text-tertiary mb-1">Total</div>
+                                  <div className="text-xl font-bold text-white">{group.totalCount || 0}</div>
+                                </div>
+
+                                {/* Available */}
+                                <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
+                                  <div className="text-xs text-emerald-400 mb-1">Available</div>
+                                  <div className="text-xl font-bold text-emerald-400">{group.availableCount || 0}</div>
+                                </div>
+
+                                {/* Waitlist - TODO: Need API support */}
+                                <div className="bg-portal-bg/50 rounded-lg p-3 border border-border-subtle">
+                                  <div className="text-xs text-text-tertiary mb-1">Waitlist</div>
+                                  <div className="text-xl font-bold text-blue-400">—</div>
+                                </div>
+
+                                {/* Deposits - TODO: Need API support */}
+                                <div className="bg-portal-bg/50 rounded-lg p-3 border border-border-subtle">
+                                  <div className="text-xs text-text-tertiary mb-1">Deposits</div>
+                                  <div className="text-xl font-bold text-amber-400">—</div>
+                                </div>
+
+                                {/* Paid in Full - TODO: Need API support */}
+                                <div className="bg-portal-bg/50 rounded-lg p-3 border border-border-subtle">
+                                  <div className="text-xs text-text-tertiary mb-1">Paid</div>
+                                  <div className="text-xl font-bold text-green-400">—</div>
+                                </div>
                               </div>
+
+                              {/* Individual Offspring List (Expandable) */}
+                              {hasOffspring && showIndividualOffspring && (
+                                <div className="pt-4 border-t border-border-subtle">
+                                  <div className="space-y-2">
+                                    {group.offspring.map((offspring, idx) => {
+                                      const isAvailable = offspring.keeperIntent === 'AVAILABLE' && offspring.marketplaceListed;
+                                      const statusColor = isAvailable ? 'text-emerald-400' : 'text-text-tertiary';
+
+                                      return (
+                                        <div
+                                          key={offspring.id}
+                                          className="bg-portal-bg/30 border border-border-subtle rounded-lg p-3 hover:border-border-default transition-colors"
+                                        >
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-start gap-3 flex-1">
+                                              {/* Offspring Photo */}
+                                              {offspring.photos && offspring.photos.length > 0 ? (
+                                                <img
+                                                  src={offspring.photos[0]}
+                                                  alt={offspring.name || `Offspring ${idx + 1}`}
+                                                  className="w-16 h-16 rounded-lg object-cover border border-border-subtle"
+                                                />
+                                              ) : (
+                                                <div className="w-16 h-16 rounded-lg bg-portal-surface border border-border-subtle flex items-center justify-center">
+                                                  <Baby className="w-6 h-6 text-text-tertiary" />
+                                                </div>
+                                              )}
+
+                                              {/* Offspring Info */}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                  <h5 className="text-sm font-medium text-white">
+                                                    {offspring.name || `Offspring #${idx + 1}`}
+                                                  </h5>
+                                                  {offspring.collarColorName && (
+                                                    <span className="inline-flex items-center gap-1 text-xs text-text-tertiary">
+                                                      <div
+                                                        className="w-3 h-3 rounded-full border border-border-subtle"
+                                                        style={{ backgroundColor: offspring.collarColorHex || '#888' }}
+                                                      />
+                                                      {offspring.collarColorName}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-3 text-xs">
+                                                  {offspring.sex && (
+                                                    <span className={offspring.sex === 'FEMALE' ? 'text-pink-400' : 'text-blue-400'}>
+                                                      {offspring.sex === 'FEMALE' ? '♀ Female' : '♂ Male'}
+                                                    </span>
+                                                  )}
+                                                  <span className={statusColor}>
+                                                    {isAvailable ? '✓ Listed' : 'Unlisted'}
+                                                  </span>
+                                                  {offspring.marketplacePriceCents && (
+                                                    <span className="text-text-secondary">
+                                                      ${(offspring.marketplacePriceCents / 100).toFixed(0)}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                {offspring.coatDescription && (
+                                                  <p className="text-xs text-text-tertiary mt-1 truncate">
+                                                    {offspring.coatDescription}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Individual Offspring Actions */}
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                className="p-1.5 text-text-secondary hover:text-amber-400 hover:bg-amber-500/10 rounded transition-colors"
+                                                title="Set individual price"
+                                              >
+                                                <DollarSign size={12} />
+                                              </button>
+                                              <button
+                                                className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-surface rounded transition-colors"
+                                                title="Toggle individual visibility"
+                                              >
+                                                {offspring.marketplaceListed ? (
+                                                  <Eye size={12} className="text-emerald-400" />
+                                                ) : (
+                                                  <EyeOff size={12} />
+                                                )}
+                                              </button>
+                                              <button
+                                                className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-surface rounded transition-colors"
+                                                title="Edit offspring"
+                                              >
+                                                <Pencil size={12} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* No offspring yet message */}
+                              {!hasOffspring && (
+                                <div className="text-center py-6 text-sm text-text-tertiary">
+                                  No individual offspring recorded yet. Add offspring to track availability and pricing.
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -970,6 +1137,9 @@ export function ManageBreedingProgramsPage() {
   const [offspringGroups, setOffspringGroups] = React.useState<BreederOffspringGroupItem[]>([]);
   const [loadingStats, setLoadingStats] = React.useState(false);
 
+  // Offspring modal state
+  const [selectedOffspringGroup, setSelectedOffspringGroup] = React.useState<BreederOffspringGroupItem | null>(null);
+
   // Load profile on mount
   React.useEffect(() => {
     if (!tenantId) return;
@@ -1021,30 +1191,39 @@ export function ManageBreedingProgramsPage() {
         return true;
       });
 
-      // Status priority: Active statuses first, then Planning, then Completed/Cancelled/Archived
-      const getStatusPriority = (status: string): number => {
-        // Priority 1: Active breeding cycles (most urgent)
-        if (['COMMITTED', 'IN_HEAT', 'BRED', 'CONFIRMED', 'WHELPING', 'NURSING', 'WEANING', 'PLACING'].includes(status)) return 1;
-        // Priority 2: Planning status (less urgent)
-        if (status === 'PLANNING') return 2;
-        // Priority 3: Completed/Cancelled/Archived (historical)
-        return 3;
-      };
-
-      // Sort by status priority first, then by expected birth date
+      // Sort by birth date ascending (earliest/soonest first at top)
+      // Use actual birth date if available, otherwise expected birth date
       return matched.sort((a, b) => {
-        const priorityA = getStatusPriority(a.status);
-        const priorityB = getStatusPriority(b.status);
+        // Prefer actual birth date, fall back to expected birth date
+        const dateA = a.birthDateActual
+          ? new Date(a.birthDateActual).getTime()
+          : a.expectedBirthDate
+            ? new Date(a.expectedBirthDate).getTime()
+            : Number.MAX_SAFE_INTEGER;
+        const dateB = b.birthDateActual
+          ? new Date(b.birthDateActual).getTime()
+          : b.expectedBirthDate
+            ? new Date(b.expectedBirthDate).getTime()
+            : Number.MAX_SAFE_INTEGER;
 
-        // If different statuses, sort by priority
-        if (priorityA !== priorityB) {
-          return priorityA - priorityB;
+        // If dates are different, sort by date (ascending - earliest first)
+        if (dateA !== dateB) {
+          return dateA - dateB;
         }
 
-        // Same status: sort by expected birth date (earliest first)
-        const dateA = a.expectedBirthDate ? new Date(a.expectedBirthDate).getTime() : Number.MAX_SAFE_INTEGER;
-        const dateB = b.expectedBirthDate ? new Date(b.expectedBirthDate).getTime() : Number.MAX_SAFE_INTEGER;
-        return dateA - dateB;
+        // If dates are the same, prioritize active breeding cycles over planning
+        const getStatusPriority = (status: string): number => {
+          // Priority 1: Active breeding cycles (more important)
+          if (['COMMITTED', 'IN_HEAT', 'BRED', 'CONFIRMED', 'WHELPING', 'NURSING', 'WEANING', 'PLACING'].includes(status)) return 1;
+          // Priority 2: Planning status
+          if (status === 'PLANNING') return 2;
+          // Priority 3: Completed/Cancelled/Archived
+          return 3;
+        };
+
+        const priorityA = getStatusPriority(a.status);
+        const priorityB = getStatusPriority(b.status);
+        return priorityA - priorityB;
       });
     },
     [breedingPlans]
@@ -1207,21 +1386,6 @@ export function ManageBreedingProgramsPage() {
           </div>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-gradient-to-r from-accent/10 to-purple-500/10 border border-accent/30 rounded-lg p-4 mb-8">
-          <div className="flex items-start gap-3">
-            <Heart className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-white">
-              <p className="font-medium mb-1">
-                This is the financial lifeblood of your breeding operation.
-              </p>
-              <p className="text-text-secondary">
-                All breeding plans, offspring groups, and availability automatically appear here organized by program. Click the edit icon to configure program details and marketplace visibility.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Programs List */}
         {programs.length === 0 ? (
           <div className="text-center py-12 bg-portal-card rounded-lg border border-border-subtle">
@@ -1237,28 +1401,48 @@ export function ManageBreedingProgramsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {programs.map((program, index) => (
-              expandedIndex === index ? (
+            {programs
+              .map((program, index) => ({ program, originalIndex: index, stats: getProgramStats(program) }))
+              .sort((a, b) => {
+                // Sort by earliest upcoming birth date (programs requiring attention first)
+                const dateA = a.stats.nextExpectedBirth ? new Date(a.stats.nextExpectedBirth).getTime() : Number.MAX_SAFE_INTEGER;
+                const dateB = b.stats.nextExpectedBirth ? new Date(b.stats.nextExpectedBirth).getTime() : Number.MAX_SAFE_INTEGER;
+
+                // If dates are different, sort by date (earliest first)
+                if (dateA !== dateB) {
+                  return dateA - dateB;
+                }
+
+                // If both have no upcoming births, sort by active plans count (more active = higher priority)
+                if (dateA === Number.MAX_SAFE_INTEGER && dateB === Number.MAX_SAFE_INTEGER) {
+                  return b.stats.activePlans - a.stats.activePlans;
+                }
+
+                return 0;
+              })
+              .map(({ program, originalIndex, stats }) => (
+              expandedIndex === originalIndex ? (
                 <ProgramEditor
-                  key={index}
+                  key={originalIndex}
                   program={program}
-                  index={index}
-                  onChange={(updates) => updateProgram(index, updates)}
+                  index={originalIndex}
+                  onChange={(updates) => updateProgram(originalIndex, updates)}
                   onCollapse={() => setExpandedIndex(null)}
-                  onRemove={() => removeProgram(index)}
+                  onRemove={() => removeProgram(originalIndex)}
                   breederBreeds={(profile.breeds || []) as SelectedBreed[]}
                 />
               ) : (
                 <ProgramDashboardCard
-                  key={index}
+                  key={originalIndex}
                   program={program}
-                  index={index}
-                  stats={getProgramStats(program)}
+                  index={originalIndex}
+                  stats={stats}
                   loadingStats={loadingStats}
                   matchingPlans={getMatchingPlans(program)}
                   matchingGroups={getMatchingGroups(program)}
-                  onEdit={() => setExpandedIndex(index)}
-                  onRemove={() => removeProgram(index)}
+                  onEdit={() => setExpandedIndex(originalIndex)}
+                  onRemove={() => removeProgram(originalIndex)}
+                  onOffspringGroupClick={setSelectedOffspringGroup}
                 />
               )
             ))}
@@ -1270,6 +1454,159 @@ export function ManageBreedingProgramsPage() {
           </div>
         )}
       </div>
+
+      {/* Offspring Group Modal */}
+      {selectedOffspringGroup && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedOffspringGroup(null)}
+        >
+          <div
+            className="bg-portal-card border border-border-subtle rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border-b border-amber-500/20 px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Baby className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-lg font-semibold text-white">
+                      {selectedOffspringGroup.listingTitle || "Offspring Group"}
+                    </h3>
+                  </div>
+                  {selectedOffspringGroup.actualBirthOn && (
+                    <p className="text-sm text-text-tertiary flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Born {formatDate(selectedOffspringGroup.actualBirthOn)}
+                    </p>
+                  )}
+                  {!selectedOffspringGroup.actualBirthOn && selectedOffspringGroup.expectedBirthOn && (
+                    <p className="text-sm text-text-tertiary flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Expected {formatDate(selectedOffspringGroup.expectedBirthOn)}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedOffspringGroup(null)}
+                  className="p-2 hover:bg-portal-surface rounded-lg transition-colors text-text-secondary hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+                <div className="bg-portal-bg/50 rounded-lg p-2.5 border border-border-subtle">
+                  <div className="text-xs text-text-tertiary mb-0.5">Total</div>
+                  <div className="text-lg font-bold text-white">{selectedOffspringGroup.totalCount || 0}</div>
+                </div>
+                <div className="bg-emerald-500/10 rounded-lg p-2.5 border border-emerald-500/30">
+                  <div className="text-xs text-emerald-400 mb-0.5">Available</div>
+                  <div className="text-lg font-bold text-emerald-400">{selectedOffspringGroup.availableCount || 0}</div>
+                </div>
+                <div className="bg-blue-500/10 rounded-lg p-2.5 border border-blue-500/30">
+                  <div className="text-xs text-blue-400 mb-0.5">Waitlist</div>
+                  <div className="text-lg font-bold text-blue-400">—</div>
+                </div>
+                <div className="bg-amber-500/10 rounded-lg p-2.5 border border-amber-500/30">
+                  <div className="text-xs text-amber-400 mb-0.5">Deposits</div>
+                  <div className="text-lg font-bold text-amber-400">—</div>
+                </div>
+                <div className="bg-green-500/10 rounded-lg p-2.5 border border-green-500/30">
+                  <div className="text-xs text-green-400 mb-0.5">Paid</div>
+                  <div className="text-lg font-bold text-green-400">—</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Content - Individual Offspring List */}
+            <div className="overflow-y-auto max-h-[calc(90vh-220px)] p-6">
+              {selectedOffspringGroup.offspring && selectedOffspringGroup.offspring.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedOffspringGroup.offspring.map((offspring, idx) => {
+                    const isAvailable = offspring.keeperIntent === 'AVAILABLE' && offspring.marketplaceListed;
+                    const statusColor = isAvailable ? 'text-emerald-400' : 'text-text-tertiary';
+
+                    return (
+                      <div
+                        key={offspring.id}
+                        className="bg-portal-surface border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors"
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Offspring Photo */}
+                          {offspring.photos && offspring.photos.length > 0 ? (
+                            <img
+                              src={offspring.photos[0]}
+                              alt={offspring.name || `Offspring ${idx + 1}`}
+                              className="w-20 h-20 rounded-lg object-cover border border-border-subtle flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 rounded-lg bg-portal-bg border border-border-subtle flex items-center justify-center flex-shrink-0">
+                              <Baby className="w-8 h-8 text-text-tertiary" />
+                            </div>
+                          )}
+
+                          {/* Offspring Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h5 className="text-base font-semibold text-white">
+                                    {offspring.name || `Offspring #${idx + 1}`}
+                                  </h5>
+                                  {offspring.collarColorName && (
+                                    <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-portal-bg border border-border-subtle text-text-tertiary">
+                                      <div
+                                        className="w-3 h-3 rounded-full border border-border-subtle"
+                                        style={{ backgroundColor: offspring.collarColorHex || '#888' }}
+                                      />
+                                      {offspring.collarColorName}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-sm">
+                                  {offspring.sex && (
+                                    <span className={offspring.sex === 'FEMALE' ? 'text-pink-400' : 'text-blue-400'}>
+                                      {offspring.sex === 'FEMALE' ? '♀ Female' : '♂ Male'}
+                                    </span>
+                                  )}
+                                  {offspring.priceCents && (
+                                    <span className="text-text-secondary">
+                                      ${(offspring.priceCents / 100).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                                isAvailable
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-zinc-500/15 text-zinc-400 border border-zinc-500/30'
+                              }`}>
+                                {isAvailable ? '✓ Listed' : 'Unlisted'}
+                              </span>
+                            </div>
+                            {offspring.headlineOverride && (
+                              <p className="text-sm text-text-secondary mt-1">{offspring.headlineOverride}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Baby className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+                  <p className="text-text-secondary">No individual offspring recorded yet.</p>
+                  <p className="text-sm text-text-tertiary mt-1">Add offspring to track availability and pricing.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

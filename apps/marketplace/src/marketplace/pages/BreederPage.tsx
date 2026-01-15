@@ -473,8 +473,8 @@ interface TabsNavProps {
 
 function TabsNav({ activeTab, onTabChange, programCount, servicesCount, reviewCount = 0 }: TabsNavProps) {
   const tabs: { id: TabType; label: string; count?: number }[] = [
-    { id: "programs", label: "Our Current Programs", count: programCount },
-    { id: "services", label: "Our Services", count: servicesCount },
+    { id: "programs", label: "Animals & Programs", count: programCount },
+    { id: "services", label: "Services", count: servicesCount },
     { id: "about", label: "About" },
     { id: "reviews", label: "Reviews", count: reviewCount },
   ];
@@ -1365,6 +1365,10 @@ export function BreederPage() {
   const [profile, setProfile] = React.useState<BreederProfileResponse | null>(null);
   const [activeTab, setActiveTab] = React.useState<TabType>("programs");
 
+  // Check authentication status
+  const userProfile = useUserProfile();
+  const isAuthenticated = !!userProfile?.userId;
+
   // Animal Programs and Services state
   const [animalPrograms, setAnimalPrograms] = React.useState<PublicAnimalProgramSummaryDTO[]>([]);
   const [animalProgramsLoading, setAnimalProgramsLoading] = React.useState(true);
@@ -1559,14 +1563,16 @@ export function BreederPage() {
           </div>
         </div>
 
-        {/* Desktop Sidebar */}
-        <aside className="hidden md:block w-72 flex-shrink-0">
-          <ContactCard profile={profile} />
-        </aside>
+        {/* Desktop Sidebar - only show for authenticated users */}
+        {isAuthenticated && (
+          <aside className="hidden md:block w-72 flex-shrink-0">
+            <ContactCard profile={profile} />
+          </aside>
+        )}
       </div>
 
-      {/* Mobile Floating CTA */}
-      <FloatingCTA profile={profile} />
+      {/* Mobile Floating CTA - only show for authenticated users */}
+      {isAuthenticated && <FloatingCTA profile={profile} />}
     </div>
   );
 }

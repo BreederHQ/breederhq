@@ -2939,6 +2939,8 @@ export interface MarketplaceProfileDraft {
   businessName?: string;
   bio?: string;
   logoAssetId?: string | null;
+  logoUrl?: string | null;
+  bannerImageUrl?: string | null;
 
   // Location (full address for draft, stripped on publish)
   address?: {
@@ -3018,6 +3020,8 @@ export interface MarketplaceProfileDraft {
 
   // Business Identity
   showBusinessIdentity?: boolean;
+  showLogo?: boolean;
+  showBanner?: boolean;
   yearEstablished?: number | null;
 }
 

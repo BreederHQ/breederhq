@@ -8,7 +8,9 @@ import { getUserMessage } from "../../api/errors";
 import type { PublicAnimalProgramDetailDTO } from "../../api/types";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
+import { DefaultAnimalImage } from "../../shared/DefaultAnimalImage";
 import { Users, MapPin, DollarSign, Mail, Globe, Eye, Calendar } from "lucide-react";
+import { useUserProfile } from "../../gate/MarketplaceGate";
 
 // Template type labels
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -23,6 +25,10 @@ const TEMPLATE_LABELS: Record<string, string> = {
 export function AnimalProgramDetailPage() {
   const { slug = "" } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+
+  // Check authentication status
+  const userProfile = useUserProfile();
+  const isAuthenticated = !!userProfile?.userId;
 
   const [program, setProgram] = React.useState<PublicAnimalProgramDetailDTO | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -111,7 +117,7 @@ export function AnimalProgramDetailPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumbs */}
         <Breadcrumb
-          segments={[
+          items={[
             { label: "Animals", href: "/animals" },
             { label: program.name },
           ]}
@@ -171,18 +177,22 @@ export function AnimalProgramDetailPage() {
 
             {/* Quick Actions */}
             <div className="flex gap-3 pt-4">
-              {program.acceptInquiries && (
+              {/* Contact Breeder - only show for authenticated users */}
+              {isAuthenticated && program.acceptInquiries && (
                 <button className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors">
                   <Mail size={18} />
                   Contact Breeder
                 </button>
               )}
+              {/* Visit Website - show for all users */}
               {program.breeder.website && (
                 <a
                   href={program.breeder.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-portal-surface border border-border-default hover:border-border-default hover:bg-portal-card text-white font-medium rounded-lg transition-colors"
+                  className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-portal-surface border border-border-default hover:border-border-default hover:bg-portal-card text-white font-medium rounded-lg transition-colors ${
+                    !isAuthenticated || !program.acceptInquiries ? 'flex-1' : ''
+                  }`}
                 >
                   <Globe size={18} />
                   Visit Website
@@ -220,7 +230,9 @@ export function AnimalProgramDetailPage() {
                 {program.participants.map((participant) => (
                   <div
                     key={participant.id}
-                    className="bg-portal-surface border border-border-subtle rounded-lg overflow-hidden hover:border-border-default transition-colors"
+                    className={`bg-portal-surface border border-border-subtle rounded-lg overflow-hidden transition-colors relative ${
+                      isAuthenticated ? 'hover:border-border-default cursor-pointer' : ''
+                    }`}
                   >
                     <div className="h-48 relative">
                       {participant.photoUrl ? (
@@ -230,15 +242,21 @@ export function AnimalProgramDetailPage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-portal-card to-portal-bg flex items-center justify-center">
-                          <Users size={48} className="text-text-tertiary" />
-                        </div>
+                        <DefaultAnimalImage species={participant.species} />
                       )}
                       {participant.featured && (
                         <div className="absolute top-2 right-2">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/90 text-white">
                             Featured
                           </span>
+                        </div>
+                      )}
+                      {/* Anonymous user overlay */}
+                      {!isAuthenticated && (
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                          <div className="text-center px-4">
+                            <p className="text-white text-sm font-medium">Sign in to view details</p>
+                          </div>
                         </div>
                       )}
                     </div>

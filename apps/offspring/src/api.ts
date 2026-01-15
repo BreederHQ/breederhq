@@ -742,6 +742,12 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
     remove: (id: number, opts?: TenantInit): Promise<{ ok: true }> =>
       raw.del<{ ok: true }>(`/offspring/individuals/${id}`, opts),
 
+    archive: (id: number, reason?: string, opts?: TenantInit): Promise<{ ok: true }> =>
+      raw.post<{ ok: true }>(`/offspring/individuals/${id}/archive`, { reason }, opts),
+
+    restore: (id: number, opts?: TenantInit): Promise<{ ok: true }> =>
+      raw.post<{ ok: true }>(`/offspring/individuals/${id}/restore`, {}, opts),
+
     addHealthEvent: (id: number, body: HealthEventInput, opts?: TenantInit): Promise<OffspringDetail> =>
       raw.post<OffspringDetail>(`/offspring/individuals/${id}/health-events`, body, opts),
 

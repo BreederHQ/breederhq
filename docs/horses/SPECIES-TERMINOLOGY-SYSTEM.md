@@ -325,8 +325,15 @@ React hook version with convenience methods.
 
 ## Related Documentation
 
+### Core Documentation
 - [Horse Breeding Database Model Compatibility Analysis](./BREEDING-MODEL-COMPATIBILITY-ANALYSIS.md)
 - [Implementation Plan (Full)](C:\Users\Aaron\.claude\plans\reactive-beaming-music.md)
+
+### Enforcement & Integration
+- [ESLint Rule Documentation](../ESLINT-SPECIES-TERMINOLOGY-RULE.md) - Automatic detection of hardcoded terms
+- [Enforcement Guide](../SPECIES-TERMINOLOGY-ENFORCEMENT.md) - How to ensure future compliance
+- [Integration Plan](../SPECIES-TERMINOLOGY-INTEGRATION-PLAN.md) - Module-by-module integration status
+- [Marketplace Integration Report](../MARKETPLACE-STS-INTEGRATION-REPORT.md) - Completed marketplace integration
 
 ---
 

@@ -55,6 +55,8 @@ import {
   type BreederBreedingPlanItem,
   type BreederOffspringGroupItem,
 } from "../../api/client";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
+import { ImageUpload } from "../../shared/ImageUpload";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -740,6 +742,48 @@ function BusinessProfileSection({
               placeholder="Your Breeding Program Name"
               className="w-full px-3 py-2 text-sm bg-portal-surface border border-border-subtle rounded-lg focus:border-accent focus:outline-none"
             />
+          </div>
+
+          <div className="flex items-start gap-4">
+            <ImageUpload
+              value={form.logoUrl}
+              onChange={(url) => updateForm({ logoUrl: url })}
+              label="Program Logo"
+              placeholder="https://example.com/logo.png"
+              recommendedSize="Recommended: Square image (e.g., 400x400px). Displayed on breeder cards and profile pages."
+              previewClassName="w-24 h-24"
+              showDefaultWhenEmpty={true}
+              emptyStateHint="💡 Add your logo to stand out"
+              emptyStateExplanation="Without a custom logo, buyers see the BreederHQ default. Adding your logo helps build brand recognition."
+            />
+            <div className="pt-6">
+              <VisibilityToggle
+                isPublic={form.showLogo ?? true}
+                onChange={(v) => updateForm({ showLogo: v })}
+                disabled={!form.logoUrl?.trim()}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <ImageUpload
+              value={form.bannerImageUrl}
+              onChange={(url) => updateForm({ bannerImageUrl: url })}
+              label="Profile Banner Image"
+              placeholder="https://example.com/banner.jpg"
+              recommendedSize="Recommended: Wide image (e.g., 1200x400px). Displayed as a banner at the top of your breeder profile page."
+              previewClassName="w-full h-32"
+              showDefaultWhenEmpty={true}
+              emptyStateHint="💡 Showcase your facility or animals"
+              emptyStateExplanation="Without a custom banner, buyers see the BreederHQ default. A banner featuring your facilities, animals, or landscape creates a professional first impression."
+            />
+            <div className="pt-6">
+              <VisibilityToggle
+                isPublic={form.showBanner ?? true}
+                onChange={(v) => updateForm({ showBanner: v })}
+                disabled={!form.bannerImageUrl?.trim()}
+              />
+            </div>
           </div>
 
           <div>

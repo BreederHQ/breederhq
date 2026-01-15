@@ -174,74 +174,99 @@ export function ManageAnimalsPage() {
           </div>
         </div>
 
-        {/* Quick Navigation */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-portal-card border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-base font-semibold text-white">Direct Listings</h3>
+        {/* Main Navigation Cards - Prominent Focus */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Direct Listings Card */}
+          <div className="bg-gradient-to-br from-purple-500/10 via-portal-card to-portal-surface border-l-4 border-l-purple-500 rounded-xl overflow-hidden hover:border-l-purple-400 transition-all group cursor-pointer shadow-lg hover:shadow-purple-500/20">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-purple-500/20 rounded-xl group-hover:bg-purple-500/30 transition-colors">
+                  <Sparkles className="w-8 h-8 text-purple-400" />
                 </div>
-                <p className="text-sm text-text-tertiary mb-2">
-                  Individual animal listings for one-time sales or services
-                </p>
-                <p className="text-2xl font-bold text-white">{stats.total}</p>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
               </div>
-              <ChevronRight className="w-5 h-5 text-text-tertiary" />
+              <h3 className="text-xl font-bold text-white mb-2">Direct Listings</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                Individual animal listings for one-time sales or services
+              </p>
+              <div className="grid grid-cols-3 gap-3 pt-4 border-t border-border-subtle">
+                <div>
+                  <div className="text-2xl font-bold text-white">{stats.total}</div>
+                  <div className="text-xs text-text-tertiary">Total</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-emerald-400">{stats.live}</div>
+                  <div className="text-xs text-text-tertiary">Live</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-text-secondary">{stats.draft}</div>
+                  <div className="text-xs text-text-tertiary">Draft</div>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Animal Programs Card */}
           <Link
             to="/manage/animal-programs"
-            className="bg-portal-card border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors"
+            className="bg-gradient-to-br from-blue-500/10 via-portal-card to-portal-surface border-l-4 border-l-blue-500 rounded-xl overflow-hidden hover:border-l-blue-400 transition-all group shadow-lg hover:shadow-blue-500/20"
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Users className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-base font-semibold text-white">Animal Programs</h3>
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-blue-500/20 rounded-xl group-hover:bg-blue-500/30 transition-colors">
+                  <Users className="w-8 h-8 text-blue-400" />
                 </div>
-                <p className="text-sm text-text-tertiary mb-2">
-                  STUD, REHOME, GUARDIAN, etc.
-                </p>
-                <p className="text-sm text-accent">Manage →</p>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
               </div>
-              <ChevronRight className="w-5 h-5 text-text-tertiary" />
+              <h3 className="text-xl font-bold text-white mb-2">Animal Programs</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                STUD, REHOME, GUARDIAN, and other recurring programs
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Programs
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
             </div>
           </Link>
+
+          {/* Breeding Programs Card */}
           <Link
             to="/manage/breeding-programs"
-            className="bg-portal-card border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors"
+            className="bg-gradient-to-br from-amber-500/10 via-portal-card to-portal-surface border-l-4 border-l-amber-500 rounded-xl overflow-hidden hover:border-l-amber-400 transition-all group shadow-lg hover:shadow-amber-500/20"
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <PawPrint className="w-5 h-5 text-amber-400" />
-                  <h3 className="text-base font-semibold text-white">Breeding Programs</h3>
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-amber-500/20 rounded-xl group-hover:bg-amber-500/30 transition-colors">
+                  <PawPrint className="w-8 h-8 text-amber-400" />
                 </div>
-                <p className="text-sm text-text-tertiary mb-2">
-                  Offspring groups from breeding plans
-                </p>
-                <p className="text-sm text-accent">Manage →</p>
+                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
               </div>
-              <ChevronRight className="w-5 h-5 text-text-tertiary" />
+              <h3 className="text-xl font-bold text-white mb-2">Breeding Programs</h3>
+              <p className="text-sm text-text-tertiary mb-4">
+                Offspring groups from your breeding plans
+              </p>
+              <div className="pt-4 border-t border-border-subtle">
+                <div className="text-accent font-medium flex items-center gap-2">
+                  Manage Programs
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
             </div>
           </Link>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
-            <p className="text-2xl font-bold text-white">{stats.total}</p>
-            <p className="text-sm text-text-tertiary">Total Direct Listings</p>
-          </div>
-          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
-            <p className="text-2xl font-bold text-green-400">{stats.live}</p>
-            <p className="text-sm text-text-tertiary">Live</p>
-          </div>
-          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
-            <p className="text-2xl font-bold text-text-secondary">{stats.draft}</p>
-            <p className="text-sm text-text-tertiary">Draft</p>
+        {/* Privacy Info - Compact */}
+        <div className="mb-6 bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <Eye className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-text-secondary">
+                <span className="font-medium text-blue-300">Public listings</span> show animal names, photos, pricing, and location.
+                <span className="text-blue-300 font-medium ml-1">Detailed profiles require account creation.</span>
+              </p>
+            </div>
           </div>
         </div>
 

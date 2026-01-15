@@ -242,6 +242,7 @@ export interface PublicAnimalProgramParticipant {
   animalId: number;
   name: string;
   photoUrl: string | null;
+  species: string;
   breed: string | null;
   sex: string | null;
   birthDate: string | null;
@@ -293,6 +294,7 @@ export interface PublicAnimalProgramSummaryDTO extends MonetizationFields {
     animalId: number;
     name: string;
     photoUrl: string | null;
+    species: string;
     breed: string | null;
     sex: string | null;
   }>;

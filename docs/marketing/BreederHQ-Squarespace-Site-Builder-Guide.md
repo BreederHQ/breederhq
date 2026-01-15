@@ -557,7 +557,7 @@ Every authoritative page follows this exact structure:
 │     variation. Pedigree tracking with genetic health markers.       │
 │     A breeding calendar that shows you what's coming. Waitlist      │
 │     management that doesn't require a separate spreadsheet.         │
-│     Buyer portals so you stop answering the same questions.         │
+│     Client portals so you stop answering the same questions.        │
 │     Invoicing that connects to the actual puppy.                    │
 │                                                                     │
 │     All of it connected. None of it requiring you to become a       │
@@ -625,7 +625,7 @@ Every authoritative page follows this exact structure:
 │       Yes. Ownership can be shared and tracked.                     │
 │                                                                     │
 │     ▸ Can buyers see health testing results?                        │
-│       Yes. The buyer portal shows what you choose to share.         │
+│       Yes. The client portal shows what you choose to share.        │
 │                                                                     │
 │     ▸ What if I breed multiple breeds?                              │
 │       No problem. Animals are organized however you want.           │
@@ -925,7 +925,7 @@ If three or more of these apply, you've probably outgrown spreadsheets.
 │  Genetics tracking             ✓ (manual)        ✓ (structured)     │
 │  Waitlist management           ✓ (manual)        ✓ (integrated)     │
 │  Client communication          Separate          ✓ (integrated)     │
-│  Buyer portal                  Not possible      ✓                  │
+│  Client portal                 Not possible      ✓                  │
 │  Invoicing                     Separate          ✓ (connected)      │
 │  Mobile access                 ✓                 ✓                  │
 │  Multi-user access             Limited           ✓                  │
@@ -1040,7 +1040,7 @@ you need us.
 │     ✓ Client/contact management                                     │
 │     ✓ Waitlist management                                           │
 │     ✓ Invoicing & payment tracking                                  │
-│     ✓ Buyer portal                                                  │
+│     ✓ Client portal                                                 │
 │     ✓ Marketplace listing                                           │
 │     ✓ Document storage                                              │
 │     ✓ Unlimited breeding plans                                      │

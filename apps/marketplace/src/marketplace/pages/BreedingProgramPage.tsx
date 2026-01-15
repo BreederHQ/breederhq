@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useSpeciesTerminology } from "@bhq/ui";
 import { Breadcrumb } from "../components/Breadcrumb";
 
 interface BreedingProgramDTO {
@@ -292,6 +293,9 @@ function TabButton({
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function ProgramOverview({ program }: { program: BreedingProgramDTO }) {
+  // Get species-aware terminology
+  const terms = useSpeciesTerminology(program.species);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Content */}
@@ -323,7 +327,7 @@ function ProgramOverview({ program }: { program: BreedingProgramDTO }) {
           <h3 className="text-lg font-semibold text-white mb-4">Program Stats</h3>
           <div className="space-y-3">
             <StatRow label="Active Plans" value={program.stats.activeBreedingPlans} />
-            <StatRow label="Upcoming Litters" value={program.stats.upcomingLitters} />
+            <StatRow label={`Upcoming ${terms.group.pluralCap}`} value={program.stats.upcomingLitters} />
             <StatRow
               label="Available Now"
               value={program.stats.totalAvailable}
@@ -493,6 +497,9 @@ interface ContactFormProps {
 }
 
 function ContactForm({ program, onSuccess }: ContactFormProps) {
+  // Get species-aware terminology
+  const terms = useSpeciesTerminology(program.species);
+
   const [submitting, setSubmitting] = React.useState(false);
   const [success, setSuccess] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -651,8 +658,8 @@ function ContactForm({ program, onSuccess }: ContactFormProps) {
               className="w-full px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-white focus:border-accent focus:outline-none"
             >
               <option value="">Select...</option>
-              <option value="Next litter">Next litter</option>
-              <option value="Specific horse">Specific horse</option>
+              <option value={`Next ${terms.group.singular}`}>Next {terms.group.singular}</option>
+              <option value={`Specific ${terms.offspring.singular}`}>Specific {terms.offspring.singular}</option>
               <option value="General info">General info</option>
             </select>
           </div>

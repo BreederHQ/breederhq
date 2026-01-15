@@ -16,6 +16,7 @@ import { Breadcrumb } from "../components/Breadcrumb";
 import { useSaveButton } from "../../hooks/useSavedListings";
 import { AnimalProgramTile } from "../components/AnimalProgramTile";
 import { updateSEO } from "../../utils/seo";
+import { useSpeciesTerminology } from "@bhq/ui";
 
 // =============================================================================
 // Icons
@@ -581,6 +582,7 @@ function AnimalCard({
   rating,
   reviewCount,
   breed,
+  species,
   breederName,
   href,
   listingType,
@@ -588,6 +590,9 @@ function AnimalCard({
   // Use the save hook - map listingType to savedListingType
   const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
   const { isSaved, toggleSave } = useSaveButton(savedListingType, id);
+
+  // Get species-aware terminology
+  const terms = useSpeciesTerminology(species);
 
   // Format price display
   let priceDisplay: string | null = null;
@@ -632,7 +637,7 @@ function AnimalCard({
           <div className="absolute top-2 left-2 flex flex-wrap gap-1.5">
             {listingType === "offspring" && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/90 text-white">
-                Litter
+                {terms.group.singularCap}
               </span>
             )}
           </div>
@@ -829,6 +834,9 @@ function AnimalListRow({
   const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
   const { isSaved, toggleSave } = useSaveButton(savedListingType, id);
 
+  // Get species-aware terminology
+  const terms = useSpeciesTerminology(species);
+
   // Format price display
   let priceDisplay: string | null = null;
   if (priceType === "fixed" && price != null) {
@@ -873,7 +881,7 @@ function AnimalListRow({
             </h3>
             {listingType === "offspring" && (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/20 text-blue-400 whitespace-nowrap">
-                Litter
+                {terms.group.singularCap}
               </span>
             )}
             {isVerified && (
@@ -1551,7 +1559,7 @@ export function AnimalsIndexPage() {
               <p className="text-sm text-text-secondary mb-6 max-w-md mx-auto">
                 {filters.search || filters.species || filters.location
                   ? "Try adjusting your filters or browse all breeders to see their programs."
-                  : "Browse our breeders to see their programs and upcoming litters."}
+                  : "Browse our breeders to see their programs and available animals."}
               </p>
               <div className="flex flex-wrap justify-center gap-3">
                 {(filters.search || filters.species || filters.location) && (
