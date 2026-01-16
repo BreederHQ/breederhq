@@ -6,6 +6,7 @@ updates:
   # Root workspace - handles shared dependencies
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -60,6 +61,7 @@ updates:
   # Platform app
   - package-ecosystem: "npm"
     directory: "/apps/platform"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -83,6 +85,7 @@ updates:
   # Portal app
   - package-ecosystem: "npm"
     directory: "/apps/portal"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -106,6 +109,7 @@ updates:
   # Marketing app
   - package-ecosystem: "npm"
     directory: "/apps/marketing"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -129,6 +133,7 @@ updates:
   # Marketplace app
   - package-ecosystem: "npm"
     directory: "/apps/marketplace"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
