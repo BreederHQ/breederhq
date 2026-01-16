@@ -759,13 +759,13 @@ function SellerHomePage() {
 
         {/* Management Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link to="/manage/animal-listings" className="bg-portal-card border-l-4 border-l-purple-500 rounded-xl hover:shadow-md transition-all group p-6">
+          <Link to="/manage/individual-animals" className="bg-portal-card border-l-4 border-l-purple-500 rounded-xl hover:shadow-md transition-all group p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 bg-purple-500/20 rounded-xl"><PawFilledIcon className="w-8 h-8 text-purple-400" /></div>
               <ChevronRightIcon className="w-6 h-6 text-text-muted group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Direct Listings</h3>
-            <p className="text-sm text-text-muted">Individual animal listings</p>
+            <h3 className="text-xl font-bold text-white mb-2">Individual Animals</h3>
+            <p className="text-sm text-text-muted">List individual animals for sale or placement</p>
           </Link>
 
           <Link to="/manage/animal-programs" className="bg-portal-card border-l-4 border-l-blue-500 rounded-xl hover:shadow-md transition-all group p-6">
@@ -786,12 +786,12 @@ function SellerHomePage() {
             <p className="text-sm text-text-muted">Offspring groups</p>
           </Link>
 
-          <Link to="/manage/services-direct" className="bg-portal-card border-l-4 border-l-green-500 rounded-xl hover:shadow-md transition-all group p-6">
+          <Link to="/manage/your-services" className="bg-portal-card border-l-4 border-l-green-500 rounded-xl hover:shadow-md transition-all group p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 bg-green-500/20 rounded-xl"><BriefcaseIcon className="w-8 h-8 text-green-400" /></div>
               <ChevronRightIcon className="w-6 h-6 text-text-muted group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Services</h3>
+            <h3 className="text-xl font-bold text-white mb-2">Your Services</h3>
             <p className="text-sm text-text-muted">Professional services</p>
           </Link>
         </div>

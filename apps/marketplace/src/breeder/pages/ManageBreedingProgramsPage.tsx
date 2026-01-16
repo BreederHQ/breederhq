@@ -50,13 +50,20 @@ import {
   getBreederOffspringGroups,
   getBreedingPrograms,
   syncBreedingProgramsFromProfile,
+  getProgramAnalytics,
   type MarketplaceProfileDraft,
   type BreederBreedingPlanItem,
   type BreederOffspringGroupItem,
+  type ProgramAnalyticsResponse,
+  type ProgramStats,
+  type InsightItem,
 } from "../../api/client";
 
 // Component imports
 import InlineRulesWidget from "../components/InlineRulesWidget";
+import { PerformanceSummaryRow } from "../components/analytics/PerformanceSummaryRow";
+import { InsightsCallout } from "../components/analytics/InsightsCallout";
+import { InlineCardStats } from "../components/analytics/ProgramStatsOverlay";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES & CONSTANTS
@@ -368,6 +375,7 @@ function ProgramDashboardCard({
   program,
   index,
   stats,
+  analyticsStats,
   loadingStats,
   matchingPlans,
   matchingGroups,
@@ -380,6 +388,7 @@ function ProgramDashboardCard({
   program: ListedProgramItem;
   index: number;
   stats: ProgramSummaryStats;
+  analyticsStats?: ProgramStats;
   loadingStats: boolean;
   matchingPlans: BreederBreedingPlanItem[];
   matchingGroups: BreederOffspringGroupItem[];
@@ -437,6 +446,17 @@ function ProgramDashboardCard({
                 {program.species ? PROGRAM_SPECIES_OPTIONS.find(s => s.value === program.species)?.label || program.species : "No species"}
                 {program.breedText && ` · ${program.breedText}`}
               </div>
+              {/* Marketplace Analytics Stats */}
+              {analyticsStats && (
+                <div className="mt-2">
+                  <InlineCardStats
+                    viewsThisMonth={analyticsStats.viewsThisMonth}
+                    inquiriesThisMonth={analyticsStats.inquiriesThisMonth}
+                    isTrending={analyticsStats.isTrending}
+                    trendMultiplier={analyticsStats.trendMultiplier || undefined}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button
@@ -1428,6 +1448,44 @@ export function ManageBreedingProgramsPage() {
   const [selectedBreedingPlan, setSelectedBreedingPlan] = React.useState<BreederBreedingPlanItem | null>(null);
   const [planTab, setPlanTab] = React.useState<'details' | 'rules'>('details');
 
+  // Analytics state
+  const [analytics, setAnalytics] = React.useState<ProgramAnalyticsResponse | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
+  const [dismissedInsights, setDismissedInsights] = React.useState<Set<string>>(new Set());
+
+  // Build a map of program name -> stats for matching
+  const programStatsMap = React.useMemo(() => {
+    const map = new Map<string, ProgramStats>();
+    if (analytics?.programStats) {
+      for (const stat of analytics.programStats) {
+        // Key by program name (case-insensitive)
+        if (stat.programName) {
+          map.set(stat.programName.toLowerCase(), stat);
+        }
+      }
+    }
+    return map;
+  }, [analytics?.programStats]);
+
+  // Filter out dismissed insights
+  const visibleInsights = React.useMemo(() => {
+    if (!analytics?.insights) return [];
+    return analytics.insights.filter((i) => !dismissedInsights.has(i.id));
+  }, [analytics?.insights, dismissedInsights]);
+
+  const handleDismissInsight = React.useCallback((id: string) => {
+    setDismissedInsights((prev) => new Set([...prev, id]));
+  }, []);
+
+  // Get analytics stats for a listed program
+  const getAnalyticsForProgram = React.useCallback(
+    (program: ListedProgramItem): ProgramStats | undefined => {
+      if (!program.name) return undefined;
+      return programStatsMap.get(program.name.toLowerCase());
+    },
+    [programStatsMap]
+  );
+
   // Load profile on mount
   React.useEffect(() => {
     if (!tenantId) return;
@@ -1470,6 +1528,24 @@ export function ManageBreedingProgramsPage() {
         setBreedingPrograms(programsRes.items || []);
       })
       .finally(() => setLoadingStats(false));
+  }, [tenantId]);
+
+  // Fetch analytics data
+  React.useEffect(() => {
+    if (!tenantId) return;
+
+    setAnalyticsLoading(true);
+    getProgramAnalytics(tenantId)
+      .then((data) => {
+        setAnalytics(data);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch program analytics:", err);
+        // Don't show error to user - analytics is supplementary
+      })
+      .finally(() => {
+        setAnalyticsLoading(false);
+      });
   }, [tenantId]);
 
   // Find matching breeding program with slug
@@ -1719,9 +1795,9 @@ export function ManageBreedingProgramsPage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Breeding Program Dashboard</h1>
+              <h1 className="text-3xl font-bold text-white mb-2">Breeding Programs</h1>
               <p className="text-text-secondary">
-                Your complete view of breeding programs, plans, and available offspring
+                Offspring groups from your breeding plans
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1737,6 +1813,26 @@ export function ManageBreedingProgramsPage() {
             </div>
           </div>
         </div>
+
+        {/* Performance Summary */}
+        {analytics?.summary && (
+          <PerformanceSummaryRow
+            summary={analytics.summary}
+            period="month"
+            showSparklines={true}
+            className="mb-6"
+          />
+        )}
+
+        {/* Insights Callouts */}
+        {visibleInsights.length > 0 && (
+          <InsightsCallout
+            insights={visibleInsights}
+            onDismiss={handleDismissInsight}
+            maxItems={3}
+            className="mb-6"
+          />
+        )}
 
         {/* Public Visibility Info Banner */}
         <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
@@ -1805,6 +1901,7 @@ export function ManageBreedingProgramsPage() {
                   program={program}
                   index={originalIndex}
                   stats={stats}
+                  analyticsStats={getAnalyticsForProgram(program)}
                   loadingStats={loadingStats}
                   matchingPlans={getMatchingPlans(program)}
                   matchingGroups={getMatchingGroups(program)}

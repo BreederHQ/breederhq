@@ -1,0 +1,28 @@
+{
+  "name": "@bhq/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/App-Contracts.tsx",
+    "./App-Contracts": "./src/App-Contracts.tsx"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.7.0",
+    "concurrently": "^9.2.1",
+    "typescript": "5.9.3",
+    "vite": "5.4.21"
+  },
+  "scripts": {
+    "dev": "vite --port 6179 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5179"
+  }
+}

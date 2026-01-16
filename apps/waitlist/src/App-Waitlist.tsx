@@ -370,7 +370,7 @@ function PendingWaitlistTable({
   // View mode: cards | list | table
   const { viewMode, setViewMode } = useViewMode({
     storageKey: "bhq_waitlist_pending_view",
-    defaultMode: "table",
+    defaultMode: "cards",
   });
 
   const onToggleSort = (key: string) => {
@@ -423,51 +423,65 @@ function PendingWaitlistTable({
   return (
     <Card>
       <div className="relative">
-        <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+        {/* Toolbar - matches offspring module pattern */}
+        <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+          <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search pending..." widthPx={400} />
+
           {/* View mode toggle */}
-          <div className="flex items-center border border-hairline rounded-md overflow-hidden">
+          <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
             <button
               type="button"
               onClick={() => setViewMode("cards")}
-              className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "cards"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
               title="Card view"
             >
               <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Cards</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode("list")}
-              className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "list"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
               title="List view"
             >
               <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode("table")}
-              className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "table"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
               title="Table view"
             >
               <TableIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Table</span>
             </button>
           </div>
-          <span className="text-xs text-secondary">{rows.length} pending</span>
-        </div>
 
-        {/* Search bar - shown for all view modes */}
-        <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-          <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search pending..." widthPx={520} />
-          <div className="flex items-center gap-2">
-            {viewMode === "table" && (
-              <ColumnsPopover
-                columns={cols.map}
-                onToggle={cols.toggle}
-                onSet={cols.setAll}
-                allColumns={PENDING_COLS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-          </div>
+          {/* Column toggle - show in table and list modes */}
+          {(viewMode === "table" || viewMode === "list") && (
+            <ColumnsPopover
+              columns={cols.map}
+              onToggle={cols.toggle}
+              onSet={cols.setAll}
+              allColumns={PENDING_COLS}
+              triggerClassName="bhq-columns-trigger"
+            />
+          )}
+
+          <div className="ml-auto" />
         </div>
 
         {/* Card View */}
@@ -1846,7 +1860,7 @@ function RejectedWaitlistTab({
   // View mode: cards | list | table
   const { viewMode, setViewMode } = useViewMode({
     storageKey: "bhq_waitlist_rejected_view",
-    defaultMode: "table",
+    defaultMode: "cards",
   });
 
   // Block modal state
@@ -1930,51 +1944,65 @@ function RejectedWaitlistTab({
 
       <Card>
         <div className="relative">
-          <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+          {/* Toolbar - matches offspring module pattern */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search rejected..." widthPx={400} />
+
             {/* View mode toggle */}
-            <div className="flex items-center border border-hairline rounded-md overflow-hidden">
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
                 onClick={() => setViewMode("cards")}
-                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="Card view"
               >
                 <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("list")}
-                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="List view"
               >
                 <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("table")}
-                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="Table view"
               >
                 <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
               </button>
             </div>
-            <span className="text-xs text-secondary">{rows.length} rejected</span>
-          </div>
 
-          {/* Search bar - shown for all view modes */}
-          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search rejected..." widthPx={520} />
-            <div className="flex items-center gap-2">
-              {viewMode === "table" && (
-                <ColumnsPopover
-                  columns={cols.map}
-                  onToggle={cols.toggle}
-                  onSet={cols.setAll}
-                  allColumns={REJECTED_COLS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              )}
-            </div>
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
+              <ColumnsPopover
+                columns={cols.map}
+                onToggle={cols.toggle}
+                onSet={cols.setAll}
+                allColumns={REJECTED_COLS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+
+            <div className="ml-auto" />
           </div>
 
           {/* Card View */}
@@ -2124,7 +2152,7 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
   // View mode toggle
   const { viewMode, setViewMode } = useViewMode({
     storageKey: "bhq_waitlist_blocked_view",
-    defaultMode: "table",
+    defaultMode: "cards",
   });
 
   const load = React.useCallback(async () => {
@@ -2184,35 +2212,68 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
 
       <Card>
         <div className="relative">
-          {/* View mode toggle + count */}
-          <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-            <span className="text-xs text-secondary">{rows.length} blocked</span>
-            <div className="flex items-center border border-hairline rounded overflow-hidden">
+          {/* Toolbar - matches offspring module pattern */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            {/* Placeholder for visual consistency - blocked users list is typically small */}
+            <div className="text-sm text-secondary">
+              {loading ? "Loading..." : `${rows.length} blocked user${rows.length === 1 ? "" : "s"}`}
+            </div>
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
                 onClick={() => setViewMode("cards")}
-                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="Card view"
               >
                 <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("list")}
-                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="List view"
               >
                 <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("table")}
-                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
                 title="Table view"
               >
                 <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
               </button>
             </div>
+
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
+              <ColumnsPopover
+                columns={cols.map}
+                onToggle={cols.toggle}
+                onSet={cols.setAll}
+                allColumns={BLOCKED_COLS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+
+            <div className="ml-auto" />
           </div>
 
           {/* Card View */}
@@ -2246,24 +2307,8 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
               onColumnStateChange={cols.setAll}
               getRowId={(r: BlockedUserInfo) => r.id}
               pageSize={25}
-              renderStickyRight={() => (
-                <ColumnsPopover
-                  columns={cols.map}
-                  onToggle={cols.toggle}
-                  onSet={cols.setAll}
-                  allColumns={BLOCKED_COLS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              )}
               stickyRightWidthPx={40}
             >
-              <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-                <div className="text-sm text-secondary">
-                  {loading ? "Loading..." : `${rows.length} blocked user${rows.length === 1 ? "" : "s"}`}
-                </div>
-                <div />
-              </div>
-
               <table className="min-w-max w-full text-sm">
                 <TableHeader
                   columns={visibleSafe.filter((c) => c.key !== "actions")}

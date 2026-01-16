@@ -97,6 +97,7 @@ function emojiFor(label: string) {
   if (k.includes("breed")) return "🧬";
   if (k.includes("calendar")) return "📅";
   if (k.includes("plan")) return "🗂️";
+  if (k.includes("contract")) return "✍️";
   return "🧭";
 }
 
