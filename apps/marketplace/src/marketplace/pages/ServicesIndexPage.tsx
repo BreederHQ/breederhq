@@ -520,7 +520,7 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
         {/* Category badge overlay */}
         <div className="absolute top-3 left-3">
           <span className="inline-block px-2.5 py-1 text-xs font-medium rounded-full bg-portal-bg/80 backdrop-blur-sm text-white border border-white/10">
-            {SERVICE_TYPE_LABELS[service.listingType] || service.listingType}
+            {service.customServiceType || SERVICE_TYPE_LABELS[service.listingType] || service.listingType}
           </span>
         </div>
       </div>
@@ -715,7 +715,7 @@ function ServiceListRow({ service }: { service: PublicServiceListing }) {
             {service.title}
           </h3>
           <span className="inline-block px-2 py-0.5 text-[10px] font-medium rounded-full bg-border-default text-text-secondary shrink-0">
-            {SERVICE_TYPE_LABELS[service.listingType] || service.listingType}
+            {service.customServiceType || SERVICE_TYPE_LABELS[service.listingType] || service.listingType}
           </span>
         </div>
         {service.description && (

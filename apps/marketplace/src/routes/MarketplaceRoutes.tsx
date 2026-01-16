@@ -20,6 +20,7 @@ import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MyListingPage } from "../marketplace/pages/MyListingPage";
+import { DirectListingPage } from "../marketplace/pages/DirectListingPage";
 // import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage"; // ARCHIVED
 import { AnimalProgramDetailPage } from "../marketplace/pages/AnimalProgramDetailPage";
 import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
@@ -35,6 +36,7 @@ import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgr
 import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
 import BreedingProgramRulesPage from "../breeder/pages/BreedingProgramRulesPage";
 import { CreateDirectListingWizard } from "../breeder/pages/CreateDirectListingWizard";
+import { CreateServiceWizard } from "../breeder/pages/CreateServiceWizard";
 
 /**
  * Route guard for seller-only routes.
@@ -70,6 +72,9 @@ export function MarketplaceRoutes() {
       <Route path="/animal-programs/:slug" element={<AnimalProgramDetailPage />} />
       <Route path="/services" element={<ServicesIndexPage />} />
 
+      {/* V2 Direct Listing Detail */}
+      <Route path="/listings/:slug" element={<DirectListingPage />} />
+
       {/* Buyer activity */}
       <Route path="/dashboard" element={<BuyerDashboardPage />} />
       <Route path="/inquiries" element={<InquiriesPage />} />
@@ -92,7 +97,7 @@ export function MarketplaceRoutes() {
 
       {/* V2 Dedicated Management Pages - Seller only */}
       <Route
-        path="/manage/animals-direct"
+        path="/manage/individual-animals"
         element={
           <SellerOnlyRoute>
             <ManageAnimalsPage />
@@ -100,7 +105,7 @@ export function MarketplaceRoutes() {
         }
       />
       <Route
-        path="/manage/animals-direct/new"
+        path="/manage/individual-animals/new"
         element={
           <SellerOnlyRoute>
             <CreateDirectListingWizard />
@@ -116,21 +121,29 @@ export function MarketplaceRoutes() {
         }
       />
       <Route
-        path="/manage/services-direct"
+        path="/manage/your-services"
         element={
           <SellerOnlyRoute>
             <ManageServicesPage />
           </SellerOnlyRoute>
         }
       />
+      <Route
+        path="/manage/your-services/new"
+        element={
+          <SellerOnlyRoute>
+            <CreateServiceWizard />
+          </SellerOnlyRoute>
+        }
+      />
       {/* Legacy route redirects */}
       <Route
         path="/manage/animal-listings"
-        element={<Navigate to="/manage/animals-direct" replace />}
+        element={<Navigate to="/manage/individual-animals" replace />}
       />
       <Route
         path="/manage/services"
-        element={<Navigate to="/manage/services-direct" replace />}
+        element={<Navigate to="/manage/your-services" replace />}
       />
       <Route
         path="/manage/breeding-programs"
@@ -170,7 +183,7 @@ export function MarketplaceRoutes() {
         path="/me/services"
         element={
           <SellerOnlyRoute>
-            <Navigate to="/manage/services-direct" replace />
+            <Navigate to="/manage/your-services" replace />
           </SellerOnlyRoute>
         }
       />
@@ -191,23 +204,9 @@ export function MarketplaceRoutes() {
         }
       />
 
-      {/* Service Provider Portal - Seller only */}
-      <Route
-        path="/provider"
-        element={
-          <SellerOnlyRoute>
-            <ProviderDashboardPage />
-          </SellerOnlyRoute>
-        }
-      />
-      <Route
-        path="/provider/*"
-        element={
-          <SellerOnlyRoute>
-            <ProviderDashboardPage />
-          </SellerOnlyRoute>
-        }
-      />
+      {/* Service Provider Portal - Open to all authenticated marketplace users */}
+      <Route path="/provider" element={<ProviderDashboardPage />} />
+      <Route path="/provider/*" element={<ProviderDashboardPage />} />
 
       {/* Legacy redirects */}
       <Route path="/litters" element={<Navigate to="/animals" replace />} />

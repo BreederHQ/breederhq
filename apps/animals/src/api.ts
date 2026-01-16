@@ -1391,5 +1391,37 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds, registries, finance, tags, animalLinking, animalPublicListing, titleDefinitions };
+  /* ───────── Mare Reproductive History API ───────── */
+
+  const mareReproductiveHistory = {
+    /**
+     * Get aggregate reproductive history for a mare.
+     */
+    async get(mareId: string | number): Promise<any> {
+      return reqWithExtra<any>(
+        `/breeding/mares/${encodeURIComponent(String(mareId))}/reproductive-history`
+      );
+    },
+
+    /**
+     * Get detailed foaling history for a mare (list of all foalings).
+     */
+    async getDetailedHistory(mareId: string | number): Promise<any[]> {
+      return reqWithExtra<any[]>(
+        `/breeding/mares/${encodeURIComponent(String(mareId))}/foaling-history`
+      );
+    },
+
+    /**
+     * Recalculate reproductive history from scratch for a mare.
+     */
+    async recalculate(mareId: string | number): Promise<any> {
+      return reqWithExtra<any>(
+        `/breeding/mares/${encodeURIComponent(String(mareId))}/reproductive-history/recalculate`,
+        { method: "POST", json: {} }
+      );
+    },
+  };
+
+  return { animals, lookups, breeds, registries, finance, tags, animalLinking, animalPublicListing, titleDefinitions, mareReproductiveHistory };
 }

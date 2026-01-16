@@ -2006,7 +2006,7 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
   // View mode: cards | list | table
   const { viewMode, setViewMode } = useViewMode({
     storageKey: "bhq_waitlist_approved_view",
-    defaultMode: "table",
+    defaultMode: "cards",
   });
 
   // Sorting for Waitlist table
@@ -2045,6 +2045,7 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
         q: q || undefined,
         limit: 200,
         tenantId: tenantId ?? undefined,
+        status: "APPROVED,DEPOSIT_DUE,READY,ALLOCATED", // Show all approved/active waitlist statuses
       });
       const items: any[] = Array.isArray(res) ? res : (res as any)?.items ?? [];
       setRaw(items as WaitlistRowWire[]);
@@ -2089,46 +2090,6 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
       <ApprovedWaitlistInfoCard />
       <Card>
         <div className="relative">
-          <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-            {/* View mode toggle */}
-            <div className="flex items-center border border-hairline rounded-md overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setViewMode("cards")}
-                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
-                title="Card view"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
-                title="List view"
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-              </button>
-            </div>
-            {!readOnlyGlobal && (
-              <Button
-                size="sm"
-                onClick={() => window.dispatchEvent(new CustomEvent("bhq:waitlist:add"))}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add to Waitlist
-              </Button>
-            )}
-            {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
-          </div>
-
           <DetailsHost key="waitlist"
           rows={raw}
           config={{
@@ -2242,20 +2203,76 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
             },
           }}
         >
-          {/* Search bar - shown for all view modes */}
-          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
-            <div className="flex items-center gap-2">
-              {viewMode === "table" && (
-                <ColumnsPopover
-                  columns={cols.map}
-                  onToggle={cols.toggle}
-                  onSet={cols.setAll}
-                  allColumns={WAITLIST_COLS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              )}
+          {/* Toolbar - matches offspring module pattern */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={400} />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
             </div>
+
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
+              <ColumnsPopover
+                columns={cols.map}
+                onToggle={cols.toggle}
+                onSet={cols.setAll}
+                allColumns={WAITLIST_COLS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+
+            <div className="ml-auto" />
+
+            {!readOnlyGlobal && (
+              <Button
+                size="sm"
+                onClick={() => window.dispatchEvent(new CustomEvent("bhq:waitlist:add"))}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add to Waitlist
+              </Button>
+            )}
+            {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
           </div>
 
           {/* Card View */}

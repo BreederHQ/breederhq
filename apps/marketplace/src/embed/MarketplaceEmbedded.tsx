@@ -25,6 +25,7 @@ import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgr
 import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
 import { CreateProgramWizard } from "../breeder/pages/CreateProgramWizard";
 import { CreateDirectListingWizard } from "../breeder/pages/CreateDirectListingWizard";
+import { CreateServiceWizard } from "../breeder/pages/CreateServiceWizard";
 import { ProgramDetailPage } from "../breeder/pages/ProgramDetailPage";
 // Import the shared GateContext so hooks work correctly
 import { GateContext, type GateContextValue } from "../gate/MarketplaceGate";
@@ -154,17 +155,18 @@ export function MarketplaceEmbedded() {
             <Route path="/" element={<HomePage />} />
             {/* Seller management pages */}
             <Route path="/manage/breeder" element={<MarketplaceManagePortal />} />
-            <Route path="/manage/animals-direct" element={<ManageAnimalsPage />} />
-            <Route path="/manage/animals-direct/new" element={<CreateDirectListingWizard />} />
+            <Route path="/manage/individual-animals" element={<ManageAnimalsPage />} />
+            <Route path="/manage/individual-animals/new" element={<CreateDirectListingWizard />} />
             <Route path="/manage/animal-programs" element={<AnimalProgramsPage />} />
             <Route path="/manage/animal-programs/new" element={<CreateProgramWizard />} />
             <Route path="/manage/animal-programs/:programId" element={<ProgramDetailPage />} />
             <Route path="/manage/breeding-programs" element={<ManageBreedingProgramsPage />} />
-            <Route path="/manage/services-direct" element={<ManageServicesPage />} />
+            <Route path="/manage/your-services" element={<ManageServicesPage />} />
+            <Route path="/manage/your-services/new" element={<CreateServiceWizard />} />
             {/* Legacy redirects */}
-            <Route path="/manage/animals" element={<Navigate to="/manage/animals-direct" replace />} />
-            <Route path="/manage/animal-listings" element={<Navigate to="/manage/animals-direct" replace />} />
-            <Route path="/manage/services" element={<Navigate to="/manage/services-direct" replace />} />
+            <Route path="/manage/animals" element={<Navigate to="/manage/individual-animals" replace />} />
+            <Route path="/manage/animal-listings" element={<Navigate to="/manage/individual-animals" replace />} />
+            <Route path="/manage/services" element={<Navigate to="/manage/your-services" replace />} />
             <Route path="/manage" element={<Navigate to="/manage/breeder" replace />} />
             <Route path="/animals" element={<AnimalsIndexPage />} />
             <Route path="/breeders" element={<BreedersIndexPage />} />

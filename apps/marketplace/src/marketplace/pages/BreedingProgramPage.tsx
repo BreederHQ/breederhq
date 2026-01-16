@@ -389,6 +389,36 @@ function ProgramGallery({
 }) {
   const [lightboxIndex, setLightboxIndex] = React.useState(-1);
 
+  const closeLightbox = React.useCallback(() => setLightboxIndex(-1), []);
+  const goToPrevious = React.useCallback(() => {
+    setLightboxIndex((prev) => (prev > 0 ? prev - 1 : media.length - 1));
+  }, [media.length]);
+  const goToNext = React.useCallback(() => {
+    setLightboxIndex((prev) => (prev < media.length - 1 ? prev + 1 : 0));
+  }, [media.length]);
+
+  // Keyboard navigation
+  React.useEffect(() => {
+    if (lightboxIndex < 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case "Escape":
+          closeLightbox();
+          break;
+        case "ArrowLeft":
+          goToPrevious();
+          break;
+        case "ArrowRight":
+          goToNext();
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxIndex, closeLightbox, goToPrevious, goToNext]);
+
   if (media.length === 0) {
     return (
       <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
@@ -421,17 +451,78 @@ function ProgramGallery({
         ))}
       </div>
 
-      {/* Simple lightbox */}
+      {/* Lightbox with keyboard navigation */}
       {lightboxIndex >= 0 && (
         <div
           className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
-          onClick={() => setLightboxIndex(-1)}
+          onClick={closeLightbox}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image lightbox"
         >
-          <img
-            src={media[lightboxIndex].assetUrl}
-            alt={media[lightboxIndex].caption || ""}
-            className="max-w-full max-h-full object-contain"
-          />
+          {/* Previous button */}
+          {media.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                goToPrevious();
+              }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+              aria-label="Previous image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* Image with caption */}
+          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={media[lightboxIndex].assetUrl}
+              alt={media[lightboxIndex].caption || ""}
+              className="max-w-full max-h-[calc(100vh-8rem)] object-contain"
+            />
+            {media[lightboxIndex].caption && (
+              <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white px-4 py-3 text-center">
+                <p className="text-sm md:text-base">{media[lightboxIndex].caption}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Next button */}
+          {media.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                goToNext();
+              }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+              aria-label="Next image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+
+          {/* Close button */}
+          <button
+            onClick={closeLightbox}
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            aria-label="Close lightbox"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* Image counter */}
+          {media.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 text-white text-sm">
+              {lightboxIndex + 1} / {media.length}
+            </div>
+          )}
         </div>
       )}
     </div>

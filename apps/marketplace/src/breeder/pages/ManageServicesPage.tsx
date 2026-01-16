@@ -24,15 +24,21 @@ import {
 
 import {
   getBreederServices,
-  createBreederService,
   updateBreederService,
   publishBreederService,
   unpublishBreederService,
   deleteBreederService,
+  getServiceAnalytics,
   type ServiceListingItem,
   type ServiceListingCreateInput,
   type BreederServiceType,
+  type ServiceAnalyticsResponse,
+  type ServiceStats,
 } from "../../api/client";
+
+import { PerformanceSummaryRow } from "../components/analytics/PerformanceSummaryRow";
+import { InsightsCallout } from "../components/analytics/InsightsCallout";
+import { InlineCardStats } from "../components/analytics/ProgramStatsOverlay";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPERS & CONSTANTS
@@ -81,7 +87,48 @@ export function ManageServicesPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [typeFilter, setTypeFilter] = React.useState<string>("ALL");
-  const [editing, setEditing] = React.useState<ServiceListingItem | "new" | null>(null);
+  const [editing, setEditing] = React.useState<ServiceListingItem | null>(null);
+
+  // Analytics state
+  const [analytics, setAnalytics] = React.useState<ServiceAnalyticsResponse | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
+  const [dismissedInsights, setDismissedInsights] = React.useState<Set<string>>(new Set());
+
+  // Build a map of service ID -> stats for quick lookup
+  const serviceStatsMap = React.useMemo(() => {
+    const map = new Map<number, ServiceStats>();
+    if (analytics?.serviceStats) {
+      for (const stat of analytics.serviceStats) {
+        map.set(stat.serviceId, stat);
+      }
+    }
+    return map;
+  }, [analytics?.serviceStats]);
+
+  // Filter out dismissed insights
+  const visibleInsights = React.useMemo(() => {
+    if (!analytics?.insights) return [];
+    return analytics.insights.filter((i) => !dismissedInsights.has(i.id));
+  }, [analytics?.insights, dismissedInsights]);
+
+  const handleDismissInsight = React.useCallback((id: string) => {
+    setDismissedInsights((prev) => new Set([...prev, id]));
+  }, []);
+
+  // Fetch analytics
+  const fetchAnalytics = React.useCallback(async () => {
+    if (!tenantId) return;
+    setAnalyticsLoading(true);
+    try {
+      const data = await getServiceAnalytics(tenantId);
+      setAnalytics(data);
+    } catch (err: any) {
+      console.error("Failed to fetch service analytics:", err);
+      // Don't show error to user - analytics is supplementary
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [tenantId]);
 
   const fetchServices = React.useCallback(async () => {
     if (!tenantId) return;
@@ -102,7 +149,8 @@ export function ManageServicesPage() {
 
   React.useEffect(() => {
     fetchServices();
-  }, [fetchServices]);
+    fetchAnalytics();
+  }, [fetchServices, fetchAnalytics]);
 
   const handleToggleStatus = async (service: ServiceListingItem) => {
     try {
@@ -150,25 +198,47 @@ export function ManageServicesPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-white mb-4"
+            to="/marketplace"
+            className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
-            Back to Dashboard
+            Back to Marketplace
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">Manage Service Listings</h1>
+              <h1 className="text-2xl font-bold text-white">Your Services</h1>
               <p className="text-sm text-text-secondary mt-1">
-                Offer stud services, training, grooming, and more
+                Offer training, grooming, or other professional services
               </p>
             </div>
-            <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus size={16} className="mr-1.5" />
-              Add Service
-            </Button>
+            <Link to="/manage/your-services/new">
+              <Button variant="primary">
+                <Plus size={16} className="mr-1.5" />
+                Add Service
+              </Button>
+            </Link>
           </div>
         </div>
+
+        {/* Performance Summary */}
+        {analytics?.summary && (
+          <PerformanceSummaryRow
+            summary={analytics.summary}
+            period="month"
+            showSparklines={true}
+            className="mb-6"
+          />
+        )}
+
+        {/* Insights Callouts */}
+        {visibleInsights.length > 0 && (
+          <InsightsCallout
+            insights={visibleInsights}
+            onDismiss={handleDismissInsight}
+            maxItems={3}
+            className="mb-6"
+          />
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -231,13 +301,9 @@ export function ManageServicesPage() {
           <div className="text-center py-12 bg-portal-card rounded-lg border border-border-subtle">
             <Wrench className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
             <p className="text-text-secondary mb-2">No services yet</p>
-            <p className="text-sm text-text-tertiary mb-4">
+            <p className="text-sm text-text-tertiary">
               Offer stud services, training, grooming, and more.
             </p>
-            <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus size={16} className="mr-1.5" />
-              Add Your First Service
-            </Button>
           </div>
         )}
 
@@ -247,6 +313,7 @@ export function ManageServicesPage() {
               <ServiceCard
                 key={service.id}
                 service={service}
+                stats={serviceStatsMap.get(service.id)}
                 onToggleStatus={() => handleToggleStatus(service)}
                 onEdit={() => setEditing(service)}
                 onDelete={() => handleDelete(service)}
@@ -259,7 +326,7 @@ export function ManageServicesPage() {
         {editing && (
           <ServiceEditDrawer
             tenantId={tenantId}
-            service={editing === "new" ? null : editing}
+            service={editing}
             onClose={() => setEditing(null)}
             onSaved={() => {
               setEditing(null);
@@ -278,11 +345,13 @@ export function ManageServicesPage() {
 
 function ServiceCard({
   service,
+  stats,
   onToggleStatus,
   onEdit,
   onDelete,
 }: {
   service: ServiceListingItem;
+  stats?: ServiceStats;
   onToggleStatus: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -351,6 +420,18 @@ function ServiceCard({
           </span>
         </div>
       </div>
+
+      {/* Analytics Stats */}
+      {stats && (
+        <div className="mt-3 pt-3 border-t border-border-subtle">
+          <InlineCardStats
+            viewsThisMonth={stats.viewsThisMonth}
+            inquiriesThisMonth={stats.inquiriesThisMonth}
+            isTrending={stats.isTrending}
+            trendMultiplier={stats.trendMultiplier || undefined}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -366,23 +447,22 @@ function ServiceEditDrawer({
   onSaved,
 }: {
   tenantId: string;
-  service: ServiceListingItem | null;
+  service: ServiceListingItem;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const isNew = service === null;
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState({
-    listingType: service?.listingType || ("TRAINING" as BreederServiceType),
-    title: service?.title || "",
-    description: service?.description || "",
-    contactName: service?.contactName || "",
-    contactEmail: service?.contactEmail || "",
-    contactPhone: service?.contactPhone || "",
-    city: service?.city || "",
-    state: service?.state || "",
-    priceCents: service?.priceCents ?? null,
-    priceType: (service?.priceType || "contact") as "fixed" | "starting_at" | "contact",
+    listingType: service.listingType,
+    title: service.title,
+    description: service.description || "",
+    contactName: service.contactName || "",
+    contactEmail: service.contactEmail || "",
+    contactPhone: service.contactPhone || "",
+    city: service.city || "",
+    state: service.state || "",
+    priceCents: service.priceCents ?? null,
+    priceType: (service.priceType || "contact") as "fixed" | "starting_at" | "contact",
   });
 
   const handleSave = async () => {
@@ -401,11 +481,7 @@ function ServiceEditDrawer({
         priceType: form.priceType,
       };
 
-      if (isNew) {
-        await createBreederService(tenantId, input);
-      } else {
-        await updateBreederService(tenantId, service!.id, input);
-      }
+      await updateBreederService(tenantId, service.id, input);
       onSaved();
     } catch (err: any) {
       alert(err.message || "Failed to save service");
@@ -420,9 +496,7 @@ function ServiceEditDrawer({
       <div className="relative w-full max-w-md bg-portal-surface border-l border-border-subtle flex flex-col h-full">
         {/* Header */}
         <div className="px-5 py-4 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">
-            {isNew ? "Add Service" : "Edit Service"}
-          </h2>
+          <h2 className="text-lg font-semibold text-white">Edit Service</h2>
           <button onClick={onClose} className="p-1 text-text-secondary hover:text-white">
             <X size={20} />
           </button>
@@ -557,7 +631,7 @@ function ServiceEditDrawer({
         <div className="px-5 py-4 border-t border-border-subtle flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button variant="primary" onClick={handleSave} disabled={saving || !form.title.trim()}>
-            {saving ? "Saving..." : isNew ? "Create" : "Save"}
+            {saving ? "Saving..." : "Save"}
           </Button>
         </div>
       </div>

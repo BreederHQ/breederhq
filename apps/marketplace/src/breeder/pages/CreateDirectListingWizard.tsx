@@ -1,5 +1,5 @@
 // apps/marketplace/src/breeder/pages/CreateDirectListingWizard.tsx
-// Create Direct Animal Listing Wizard - 6-step guided experience for individual animals
+// Create Individual Animal Listing Wizard - 6-step guided experience for individual animals
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
@@ -21,11 +21,14 @@ import {
 import {
   saveDirectListing,
   getTenantAnimals,
+  getAnimalListingData,
   type DirectAnimalListingCreate,
   type TemplateType,
   type DataDrawerConfig,
   type TenantAnimalItem,
+  type AnimalListingData,
 } from "../../api/client";
+import { DataDrawer } from "../components/DataDrawer";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES & CONSTANTS
@@ -127,7 +130,13 @@ export function CreateDirectListingWizard() {
     locationRegion: "",
     published: false,
     listed: true,
+    dataDrawerConfig: {} as DataDrawerConfig,
   });
+
+  // Data Drawer state
+  const [dataDrawerOpen, setDataDrawerOpen] = React.useState(false);
+  const [animalListingData, setAnimalListingData] = React.useState<AnimalListingData | null>(null);
+  const [loadingAnimalData, setLoadingAnimalData] = React.useState(false);
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
   const canGoNext = validateStep(currentStep, form);
@@ -137,7 +146,7 @@ export function CreateDirectListingWizard() {
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        navigate("/manage/animals-direct");
+        navigate("/manage/individual-animals");
       }
     };
     window.addEventListener("keydown", handleEscape);
@@ -149,7 +158,7 @@ export function CreateDirectListingWizard() {
       case "template":
         return data.templateType !== null;
       case "animal":
-        return data.animalId !== null && data.slug.trim().length > 0;
+        return data.animalId !== null; // Slug auto-generates from animal name
       case "content":
         return true; // Optional fields
       case "pricing":
@@ -178,16 +187,27 @@ export function CreateDirectListingWizard() {
   };
 
   const handleCreate = async () => {
-    if (!form.templateType || !form.animalId || !form.slug.trim()) {
+    if (!form.templateType || !form.animalId) {
       alert("Please complete required fields");
       return;
+    }
+
+    // Ensure slug exists (should be auto-generated, but fallback just in case)
+    let slug = form.slug.trim();
+    if (!slug && form.selectedAnimal?.name) {
+      slug = form.selectedAnimal.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
     }
 
     setSaving(true);
     try {
       const input: DirectAnimalListingCreate = {
         animalId: form.animalId,
-        slug: form.slug.trim(),
+        slug: slug,
         templateType: form.templateType,
         status: form.published ? "ACTIVE" : "DRAFT",
         listed: form.listed,
@@ -199,13 +219,13 @@ export function CreateDirectListingWizard() {
         priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
         locationCity: form.locationCity.trim() || undefined,
         locationRegion: form.locationRegion.trim() || undefined,
-        dataDrawerConfig: {} as DataDrawerConfig,
+        dataDrawerConfig: form.dataDrawerConfig,
         listingContent: {},
       };
 
       console.log("Sending listing data:", input);
       await saveDirectListing(tenantId, input);
-      navigate(`/manage/animals-direct`);
+      navigate(`/manage/individual-animals`);
     } catch (err: any) {
       console.error("Create listing error:", err);
       const errorMsg = err.message || "Failed to create listing";
@@ -213,7 +233,7 @@ export function CreateDirectListingWizard() {
       // Handle slug conflict - add timestamp and retry
       if (errorMsg.includes("already exists")) {
         const timestamp = Date.now().toString().slice(-6);
-        const newSlug = `${form.slug.trim()}-${timestamp}`;
+        const newSlug = `${slug}-${timestamp}`;
 
         try {
           const retryInput: DirectAnimalListingCreate = {
@@ -230,11 +250,11 @@ export function CreateDirectListingWizard() {
             priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
             locationCity: form.locationCity.trim() || undefined,
             locationRegion: form.locationRegion.trim() || undefined,
-            dataDrawerConfig: {} as DataDrawerConfig,
+            dataDrawerConfig: form.dataDrawerConfig,
             listingContent: {},
           };
           await saveDirectListing(tenantId, retryInput);
-          navigate(`/manage/animals-direct`);
+          navigate(`/manage/individual-animals`);
           return;
         } catch (retryErr: any) {
           alert(retryErr.message || "Failed to create listing");
@@ -250,7 +270,7 @@ export function CreateDirectListingWizard() {
   // Handle background click to close wizard
   const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
-      navigate("/manage/animals-direct");
+      navigate("/manage/individual-animals");
     }
   };
 
@@ -279,19 +299,19 @@ export function CreateDirectListingWizard() {
           <div className="flex items-start justify-between">
             <div>
               <button
-                onClick={() => navigate("/manage/animals-direct")}
+                onClick={() => navigate("/manage/individual-animals")}
                 className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-white mb-4"
               >
                 <ArrowLeft size={16} />
                 Cancel & Return
               </button>
-              <h1 className="text-2xl font-bold text-white">Create Direct Listing</h1>
+              <h1 className="text-2xl font-bold text-white">Create Individual Animal Listing</h1>
               <p className="text-sm text-text-secondary mt-1">
                 Step {currentStepIndex + 1} of {STEPS.length}: {STEPS[currentStepIndex].label}
               </p>
             </div>
             <button
-              onClick={() => navigate("/manage/animals-direct")}
+              onClick={() => navigate("/manage/individual-animals")}
               className="p-2 text-text-secondary hover:text-white hover:bg-portal-card rounded-lg transition-colors"
               title="Close (Esc)"
             >
@@ -355,7 +375,26 @@ export function CreateDirectListingWizard() {
             <TemplateStep form={form} setForm={setForm} />
           )}
           {currentStep === "animal" && (
-            <AnimalStep form={form} setForm={setForm} tenantId={tenantId} />
+            <AnimalStep
+              form={form}
+              setForm={setForm}
+              tenantId={tenantId}
+              onOpenDataDrawer={async () => {
+                if (!form.animalId) return;
+                setLoadingAnimalData(true);
+                try {
+                  const data = await getAnimalListingData(tenantId, form.animalId);
+                  setAnimalListingData(data);
+                  setDataDrawerOpen(true);
+                } catch (err) {
+                  console.error("Failed to load animal data:", err);
+                  alert("Failed to load animal data. Please try again.");
+                } finally {
+                  setLoadingAnimalData(false);
+                }
+              }}
+              loadingAnimalData={loadingAnimalData}
+            />
           )}
           {currentStep === "content" && (
             <ContentStep form={form} setForm={setForm} />
@@ -376,7 +415,7 @@ export function CreateDirectListingWizard() {
           {currentStepIndex === 0 ? (
             <Button
               variant="secondary"
-              onClick={() => navigate("/manage/animals-direct")}
+              onClick={() => navigate("/manage/individual-animals")}
             >
               <X size={16} className="mr-1.5" />
               Cancel
@@ -411,6 +450,18 @@ export function CreateDirectListingWizard() {
             </Button>
           )}
         </div>
+
+        {/* Data Drawer */}
+        <DataDrawer
+          open={dataDrawerOpen}
+          onClose={() => setDataDrawerOpen(false)}
+          animalData={animalListingData}
+          initialConfig={form.dataDrawerConfig}
+          onSave={(config) => {
+            setForm({ ...form, dataDrawerConfig: config });
+            setDataDrawerOpen(false);
+          }}
+        />
       </div>
     </div>
   );
@@ -451,7 +502,19 @@ function TemplateStep({ form, setForm }: { form: any; setForm: any }) {
   );
 }
 
-function AnimalStep({ form, setForm, tenantId }: { form: any; setForm: any; tenantId: string }) {
+function AnimalStep({
+  form,
+  setForm,
+  tenantId,
+  onOpenDataDrawer,
+  loadingAnimalData,
+}: {
+  form: any;
+  setForm: any;
+  tenantId: string;
+  onOpenDataDrawer: () => void;
+  loadingAnimalData: boolean;
+}) {
   const [animals, setAnimals] = React.useState<TenantAnimalItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -583,22 +646,28 @@ function AnimalStep({ form, setForm, tenantId }: { form: any; setForm: any; tena
           </div>
         )}
 
-        {/* Slug field (shown after animal selection) */}
-        {form.animalId && (
-          <div className="pt-6 border-t border-border-subtle">
-            <label className="block text-sm font-medium text-white mb-2">
-              Listing URL Slug <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              className="w-full px-4 py-3 bg-portal-surface border border-border-subtle rounded-lg text-white"
-              placeholder="unique-listing-slug"
-            />
-            <p className="text-xs text-text-tertiary mt-2">
-              This will be used in the URL for this listing (auto-generated from animal name)
-            </p>
+        {/* Customize Data Button */}
+        {form.animalId && form.selectedAnimal && (
+          <div className="mt-6 pt-6 border-t border-border-subtle">
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-medium text-white mb-1">Customize Listing Data</h3>
+                  <p className="text-sm text-text-secondary">
+                    Select which information about <strong>{form.selectedAnimal.name}</strong> to include in this listing
+                    (health testing, genetics, titles, media, etc.)
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onOpenDataDrawer}
+                  disabled={loadingAnimalData}
+                >
+                  {loadingAnimalData ? "Loading..." : "Customize Data"}
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -832,23 +901,6 @@ function SettingsStep({ form, setForm }: { form: any; setForm: any }) {
               </p>
             </div>
           </label>
-
-          <div className="border-t border-border-subtle pt-4">
-            <label className="flex items-start gap-4 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.listed}
-                onChange={(e) => setForm({ ...form, listed: e.target.checked })}
-                className="mt-1 rounded"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-white mb-1">Show in marketplace search</div>
-                <p className="text-xs text-text-secondary">
-                  Allow this listing to appear in marketplace search results and browse pages.
-                </p>
-              </div>
-            </label>
-          </div>
         </div>
       </div>
     </div>
@@ -894,8 +946,13 @@ function ReviewStep({ form }: { form: any }) {
               <p className="text-white">{selectedTemplate?.label || "Not selected"}</p>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-text-tertiary mb-1">URL Slug</h3>
-              <p className="text-white text-sm font-mono">{form.slug || <span className="text-text-tertiary italic">Not set</span>}</p>
+              <h3 className="text-sm font-medium text-text-tertiary mb-1">Listing URL</h3>
+              <p className="text-white text-sm font-mono break-all">
+                {form.slug || <span className="text-text-tertiary italic">Not set</span>}
+              </p>
+              <p className="text-xs text-text-tertiary mt-1">
+                Auto-generated from animal name for web addresses
+              </p>
             </div>
           </div>
         </div>
@@ -947,12 +1004,6 @@ function ReviewStep({ form }: { form: any }) {
               <Check size={16} className={form.published ? "text-green-400" : "text-text-tertiary"} />
               <span className={form.published ? "text-white" : "text-text-tertiary"}>
                 {form.published ? "Will be published immediately" : "Will be saved as draft"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Check size={16} className={form.listed ? "text-green-400" : "text-text-tertiary"} />
-              <span className={form.listed ? "text-white" : "text-text-tertiary"}>
-                {form.listed ? "Will appear in marketplace search" : "Hidden from marketplace search"}
               </span>
             </div>
           </div>

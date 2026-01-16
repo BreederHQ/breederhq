@@ -1,41 +1,55 @@
 // apps/marketplace/src/breeder/pages/ManageAnimalsPage.tsx
-// Animal Listings Management Page - V2
+// Direct Animal Listings Management Page - V2
 //
-// Two-path marketplace management:
-// 1. Direct Listings - Individual animal listings (one-time sales/services)
-// 2. Animal Programs - Grouped offerings (ongoing breeding programs)
+// Manage individual animal listings for one-time sales or services
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Badge } from "@bhq/ui";
 import {
-  Dog,
+  Users,
   Plus,
   Eye,
-  EyeOff,
   Pencil,
   Trash2,
   Filter,
   ArrowLeft,
   AlertCircle,
-  X,
   ChevronRight,
-  Sparkles,
-  Users,
-  PawPrint,
+  Flame,
+  X,
+  Save,
+  FileText,
+  DollarSign,
+  Settings,
+  MapPin,
+  Globe,
+  Link as LinkIcon,
+  ExternalLink,
+  Check,
+  Copy,
 } from "lucide-react";
 
 import {
   getDirectListings,
+  getDirectListing,
+  deleteDirectListing,
   saveDirectListing,
   updateDirectListingStatus,
-  deleteDirectListing,
+  getListingAnalytics,
   type DirectAnimalListing,
   type DirectAnimalListingCreate,
   type TemplateType,
+  type ListingAnalyticsResponse,
+  type ListingStats,
   type DirectListingStatus,
-  type DataDrawerConfig,
 } from "../../api/client";
+
+import { PerformanceSummaryRow } from "../components/analytics/PerformanceSummaryRow";
+import { InsightsCallout } from "../components/analytics/InsightsCallout";
+import { InlineCardStats, StatsBadgeOverlay } from "../components/analytics/ProgramStatsOverlay";
+
+import logoUrl from "@bhq/ui/assets/logo.png";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPERS & CONSTANTS
@@ -50,11 +64,6 @@ function getTenantId(): string {
   }
 }
 
-function formatPrice(cents: number | null | undefined): string {
-  if (cents == null) return "—";
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
 const TEMPLATE_CONFIG: Record<TemplateType, { label: string; color: string }> = {
   STUD_SERVICES: { label: "Stud", color: "bg-purple-500/20 text-purple-300 border-purple-500/30" },
   GUARDIAN: { label: "Guardian", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
@@ -62,12 +71,6 @@ const TEMPLATE_CONFIG: Record<TemplateType, { label: string; color: string }> = 
   REHOME: { label: "Rehome", color: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
   CO_OWNERSHIP: { label: "Co-Own", color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" },
   CUSTOM: { label: "Custom", color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30" },
-};
-
-const STATUS_CONFIG: Record<DirectListingStatus, { label: string; variant: "success" | "amber" | "neutral" | "red" }> = {
-  ACTIVE: { label: "Live", variant: "success" },
-  DRAFT: { label: "Draft", variant: "neutral" },
-  PAUSED: { label: "Paused", variant: "amber" },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -82,7 +85,13 @@ export function ManageAnimalsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [templateFilter, setTemplateFilter] = React.useState<string>("ALL");
-  const [editing, setEditing] = React.useState<DirectAnimalListing | null>(null);
+
+  // Analytics state
+  const [analytics, setAnalytics] = React.useState<ListingAnalyticsResponse | null>(null);
+  const [dismissedInsights, setDismissedInsights] = React.useState<Set<string>>(new Set());
+
+  // Selected listing for detail drawer
+  const [selectedListing, setSelectedListing] = React.useState<DirectAnimalListing | null>(null);
 
   const fetchListings = React.useCallback(async () => {
     if (!tenantId) return;
@@ -101,18 +110,41 @@ export function ManageAnimalsPage() {
     }
   }, [tenantId, statusFilter, templateFilter]);
 
+  // Fetch analytics data
+  const fetchAnalytics = React.useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const data = await getListingAnalytics(tenantId);
+      setAnalytics(data);
+    } catch (err: any) {
+      console.error("Failed to fetch listing analytics:", err);
+    }
+  }, [tenantId]);
+
   React.useEffect(() => {
     fetchListings();
-  }, [fetchListings]);
+    fetchAnalytics();
+  }, [fetchListings, fetchAnalytics]);
 
-  const handleToggleStatus = async (listing: DirectAnimalListing) => {
-    const newStatus: DirectListingStatus = listing.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
-    try {
-      await updateDirectListingStatus(tenantId, listing.id, newStatus);
-      fetchListings();
-    } catch (err: any) {
-      alert(err.message || "Failed to update status");
+  // Create a map of listing stats by ID for quick lookup
+  const listingStatsMap = React.useMemo(() => {
+    const map = new Map<number, ListingStats>();
+    if (analytics?.listingStats) {
+      for (const stat of analytics.listingStats) {
+        map.set(stat.listingId, stat);
+      }
     }
+    return map;
+  }, [analytics]);
+
+  // Filter insights that haven't been dismissed
+  const visibleInsights = React.useMemo(() => {
+    if (!analytics?.insights) return [];
+    return analytics.insights.filter((insight) => !dismissedInsights.has(insight.id));
+  }, [analytics, dismissedInsights]);
+
+  const handleDismissInsight = (id: string) => {
+    setDismissedInsights((prev) => new Set([...prev, id]));
   };
 
   const handleDelete = async (listing: DirectAnimalListing) => {
@@ -130,7 +162,7 @@ export function ManageAnimalsPage() {
     return (
       <div className="min-h-screen bg-portal-surface flex items-center justify-center">
         <div className="text-center">
-          <Dog className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
+          <Users className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
           <p className="text-text-secondary">No business selected.</p>
         </div>
       </div>
@@ -141,6 +173,7 @@ export function ManageAnimalsPage() {
     total: listings.length,
     live: listings.filter((l) => l.status === "ACTIVE").length,
     draft: listings.filter((l) => l.status === "DRAFT").length,
+    paused: listings.filter((l) => l.status === "PAUSED").length,
   };
 
   return (
@@ -149,119 +182,90 @@ export function ManageAnimalsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-white mb-4"
+            to="/marketplace"
+            className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
-            Back to Dashboard
+            Back to Marketplace
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">Animal Listings</h1>
+              <h1 className="text-2xl font-bold text-white">Individual Animals</h1>
               <p className="text-sm text-text-secondary mt-1">
-                Manage individual listings and breeding programs
+                Manage individual animal listings for sale or placement
               </p>
             </div>
-            <Button variant="primary" onClick={() => navigate("/manage/animals-direct/new")}>
+            <Button variant="primary" onClick={() => navigate("/manage/individual-animals/new")}>
               <Plus size={16} className="mr-1.5" />
               New Listing
             </Button>
           </div>
         </div>
 
-        {/* Main Navigation Cards - Prominent Focus */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Direct Listings Card */}
-          <div className="bg-gradient-to-br from-purple-500/10 via-portal-card to-portal-surface border-l-4 border-l-purple-500 rounded-xl overflow-hidden hover:border-l-purple-400 transition-all group cursor-pointer shadow-lg hover:shadow-purple-500/20">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-purple-500/20 rounded-xl group-hover:bg-purple-500/30 transition-colors">
-                  <Sparkles className="w-8 h-8 text-purple-400" />
-                </div>
-                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Direct Listings</h3>
-              <p className="text-sm text-text-tertiary mb-4">
-                Individual animal listings for one-time sales or services
+        {/* Public Visibility Info Banner */}
+        <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Eye className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-blue-300 mb-1">
+                What Anonymous Marketplace Visitors See
+              </h3>
+              <p className="text-xs text-text-secondary mb-2">
+                Published listings are publicly visible to help buyers discover your animals. Here's what anonymous users can see:
               </p>
-              <div className="grid grid-cols-3 gap-3 pt-4 border-t border-border-subtle">
-                <div>
-                  <div className="text-2xl font-bold text-white">{stats.total}</div>
-                  <div className="text-xs text-text-tertiary">Total</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-emerald-400">{stats.live}</div>
-                  <div className="text-xs text-text-tertiary">Live</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-text-secondary">{stats.draft}</div>
-                  <div className="text-xs text-text-tertiary">Draft</div>
-                </div>
+              <ul className="text-xs text-text-secondary ml-4 list-disc grid grid-cols-2 gap-x-4 gap-y-1">
+                <li>Animal name, photos, and headline</li>
+                <li>Pricing information and location (city/state)</li>
+                <li>Template type (Stud Services, Guardian, etc.)</li>
+                <li>Breed, sex, and basic animal info</li>
+                <li>Your breeder profile and website link (if public)</li>
+              </ul>
+              <div className="mt-2 pt-2 border-t border-blue-500/20">
+                <p className="text-xs text-blue-300 font-medium">
+                  ✓ Anonymous users CANNOT view detailed animal profiles (pedigrees, health records, lineage) or send marketplace messages without creating an account
+                </p>
               </div>
             </div>
           </div>
-
-          {/* Animal Programs Card */}
-          <Link
-            to="/manage/animal-programs"
-            className="bg-gradient-to-br from-blue-500/10 via-portal-card to-portal-surface border-l-4 border-l-blue-500 rounded-xl overflow-hidden hover:border-l-blue-400 transition-all group shadow-lg hover:shadow-blue-500/20"
-          >
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-blue-500/20 rounded-xl group-hover:bg-blue-500/30 transition-colors">
-                  <Users className="w-8 h-8 text-blue-400" />
-                </div>
-                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Animal Programs</h3>
-              <p className="text-sm text-text-tertiary mb-4">
-                STUD, REHOME, GUARDIAN, and other recurring programs
-              </p>
-              <div className="pt-4 border-t border-border-subtle">
-                <div className="text-accent font-medium flex items-center gap-2">
-                  Manage Programs
-                  <ChevronRight className="w-4 h-4" />
-                </div>
-              </div>
-            </div>
-          </Link>
-
-          {/* Breeding Programs Card */}
-          <Link
-            to="/manage/breeding-programs"
-            className="bg-gradient-to-br from-amber-500/10 via-portal-card to-portal-surface border-l-4 border-l-amber-500 rounded-xl overflow-hidden hover:border-l-amber-400 transition-all group shadow-lg hover:shadow-amber-500/20"
-          >
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-amber-500/20 rounded-xl group-hover:bg-amber-500/30 transition-colors">
-                  <PawPrint className="w-8 h-8 text-amber-400" />
-                </div>
-                <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Breeding Programs</h3>
-              <p className="text-sm text-text-tertiary mb-4">
-                Offspring groups from your breeding plans
-              </p>
-              <div className="pt-4 border-t border-border-subtle">
-                <div className="text-accent font-medium flex items-center gap-2">
-                  Manage Programs
-                  <ChevronRight className="w-4 h-4" />
-                </div>
-              </div>
-            </div>
-          </Link>
         </div>
 
-        {/* Privacy Info - Compact */}
-        <div className="mb-6 bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
-          <div className="flex items-start gap-2">
-            <Eye className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-text-secondary">
-                <span className="font-medium text-blue-300">Public listings</span> show animal names, photos, pricing, and location.
-                <span className="text-blue-300 font-medium ml-1">Detailed profiles require account creation.</span>
-              </p>
-            </div>
+        {/* Performance Summary */}
+        {analytics?.summary && (
+          <PerformanceSummaryRow
+            summary={analytics.summary}
+            period="month"
+            showSparklines={true}
+            className="mb-6"
+          />
+        )}
+
+        {/* Insights Callouts */}
+        {visibleInsights.length > 0 && (
+          <InsightsCallout
+            insights={visibleInsights}
+            onDismiss={handleDismissInsight}
+            maxItems={3}
+            className="mb-6"
+          />
+        )}
+
+        {/* Basic Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
+            <p className="text-2xl font-bold text-white">{stats.total}</p>
+            <p className="text-sm text-text-tertiary">Total Listings</p>
+          </div>
+          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
+            <p className="text-2xl font-bold text-green-400">{stats.live}</p>
+            <p className="text-sm text-text-tertiary">Live</p>
+          </div>
+          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
+            <p className="text-2xl font-bold text-text-secondary">{stats.draft}</p>
+            <p className="text-sm text-text-tertiary">Draft</p>
+          </div>
+          <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
+            <p className="text-2xl font-bold text-amber-400">{stats.paused}</p>
+            <p className="text-sm text-text-tertiary">Paused</p>
           </div>
         </div>
 
@@ -310,42 +314,28 @@ export function ManageAnimalsPage() {
           </div>
         )}
 
-        {!loading && !error && listings.length === 0 && (
-          <div className="text-center py-12 bg-portal-card rounded-lg border border-border-subtle">
-            <Dog className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
-            <p className="text-text-secondary mb-2">No direct listings yet</p>
-            <p className="text-sm text-text-tertiary mb-4">
-              Create your first animal listing to showcase studs, rehomes, or other animals.
-            </p>
-            <Button variant="primary" onClick={() => navigate("/manage/animals-direct/new")}>
-              <Plus size={16} className="mr-1.5" />
-              Create First Listing
-            </Button>
-          </div>
-        )}
-
-        {!loading && !error && listings.length > 0 && (
+        {!loading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {listings.map((listing) => (
               <ListingCard
                 key={listing.id}
                 listing={listing}
-                onToggleStatus={() => handleToggleStatus(listing)}
-                onEdit={() => setEditing(listing)}
+                stats={listingStatsMap.get(listing.id)}
+                onEdit={() => setSelectedListing(listing)}
                 onDelete={() => handleDelete(listing)}
               />
             ))}
           </div>
         )}
 
-        {/* Edit Drawer */}
-        {editing && (
-          <ListingEditDrawer
+        {/* Listing Detail Drawer */}
+        {selectedListing && (
+          <ListingDetailDrawer
             tenantId={tenantId}
-            listing={editing}
-            onClose={() => setEditing(null)}
+            listing={selectedListing}
+            onClose={() => setSelectedListing(null)}
             onSaved={() => {
-              setEditing(null);
+              setSelectedListing(null);
               fetchListings();
             }}
           />
@@ -356,122 +346,20 @@ export function ManageAnimalsPage() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LISTING CARD
+// LISTING DETAIL DRAWER
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ListingCard({
-  listing,
-  onToggleStatus,
-  onEdit,
-  onDelete,
-}: {
-  listing: DirectAnimalListing;
-  onToggleStatus: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const templateConfig = TEMPLATE_CONFIG[listing.templateType] || {
-    label: listing.templateType,
-    color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
-  };
-  const statusConfig = STATUS_CONFIG[listing.status] || {
-    label: listing.status,
-    variant: "neutral" as const
-  };
+type DrawerTab = "overview" | "content" | "pricing" | "settings" | "preview";
 
-  const animalName = listing.animal?.name || "Untitled";
-  const animalBreed = listing.animal?.breed;
-  const animalSex = listing.animal?.sex;
-  const photoUrl = listing.animal?.photoUrl;
+const DRAWER_TABS: { id: DrawerTab; label: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Overview", icon: <Eye size={16} /> },
+  { id: "content", label: "Content", icon: <FileText size={16} /> },
+  { id: "pricing", label: "Pricing", icon: <DollarSign size={16} /> },
+  { id: "settings", label: "Settings", icon: <Settings size={16} /> },
+  { id: "preview", label: "Preview", icon: <Globe size={16} /> },
+];
 
-  return (
-    <div className="bg-portal-card border border-border-subtle rounded-lg overflow-hidden hover:border-border-default transition-colors">
-      {/* Image */}
-      <div className="aspect-video bg-portal-surface relative">
-        {photoUrl ? (
-          <img
-            src={photoUrl}
-            alt={animalName}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Dog className="w-12 h-12 text-text-tertiary" />
-          </div>
-        )}
-        {/* Status badge overlay */}
-        <div className="absolute top-2 right-2">
-          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        <div className="flex items-start justify-between mb-2">
-          <div>
-            <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded border mb-1 ${templateConfig.color}`}>
-              {templateConfig.label}
-            </span>
-            <h3 className="text-base font-semibold text-white">
-              {animalName}
-            </h3>
-          </div>
-        </div>
-
-        {listing.headline && (
-          <p className="text-sm text-text-secondary line-clamp-1 mb-2">{listing.headline}</p>
-        )}
-
-        <div className="flex items-center gap-3 text-sm text-text-tertiary mb-3">
-          {animalBreed && <span>{animalBreed}</span>}
-          {animalSex && <span>• {animalSex}</span>}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-accent font-medium">
-            {listing.priceModel === "inquire"
-              ? "Contact for price"
-              : listing.priceModel === "fixed" && listing.priceCents
-              ? formatPrice(listing.priceCents)
-              : listing.priceModel === "range" && listing.priceMinCents && listing.priceMaxCents
-              ? `${formatPrice(listing.priceMinCents)} - ${formatPrice(listing.priceMaxCents)}`
-              : "—"
-            }
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onToggleStatus}
-              className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
-              title={listing.status === "ACTIVE" ? "Pause" : "Publish"}
-            >
-              {listing.status === "ACTIVE" ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-            <button
-              onClick={onEdit}
-              className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
-              title="Edit"
-            >
-              <Pencil size={14} />
-            </button>
-            <button
-              onClick={onDelete}
-              className="p-1.5 text-text-secondary hover:text-red-400 transition-colors rounded hover:bg-white/5"
-              title="Delete"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LISTING EDIT DRAWER
-// ═══════════════════════════════════════════════════════════════════════════
-
-function ListingEditDrawer({
+function ListingDetailDrawer({
   tenantId,
   listing,
   onClose,
@@ -482,14 +370,13 @@ function ListingEditDrawer({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [activeTab, setActiveTab] = React.useState<DrawerTab>("overview");
   const [saving, setSaving] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<"basic" | "content" | "pricing">("basic");
+  const [hasChanges, setHasChanges] = React.useState(false);
 
+  // Form state
   const [form, setForm] = React.useState({
-    animalId: listing.animalId,
     slug: listing.slug,
-    templateType: listing.templateType,
-    status: listing.status,
     headline: listing.headline || "",
     title: listing.title || "",
     summary: listing.summary || "",
@@ -501,41 +388,52 @@ function ListingEditDrawer({
     locationCity: listing.locationCity || "",
     locationRegion: listing.locationRegion || "",
     locationCountry: listing.locationCountry || "USA",
+    status: listing.status,
     listed: listing.listed ?? true,
   });
 
-  const selectedAnimal = listing.animal;
+  // Track changes
+  const updateForm = (updates: Partial<typeof form>) => {
+    setForm((prev) => ({ ...prev, ...updates }));
+    setHasChanges(true);
+  };
 
+  // Handle escape key
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  // Handle save
   const handleSave = async () => {
-    if (!form.slug.trim()) {
-      alert("Please enter a slug");
-      return;
-    }
-
     setSaving(true);
     try {
       const input: DirectAnimalListingCreate = {
         id: listing.id,
-        animalId: form.animalId,
+        animalId: listing.animalId,
         slug: form.slug.trim(),
-        templateType: form.templateType,
-        status: form.status,
+        templateType: listing.templateType,
+        status: form.status as DirectListingStatus,
         listed: form.listed,
         headline: form.headline.trim() || undefined,
         title: form.title.trim() || undefined,
         summary: form.summary.trim() || undefined,
         description: form.description.trim() || undefined,
-        priceModel: form.priceModel,
-        priceCents: form.priceModel === "fixed" ? (form.priceCents || undefined) : undefined,
-        priceMinCents: form.priceModel === "range" ? (form.priceMinCents || undefined) : undefined,
-        priceMaxCents: form.priceModel === "range" ? (form.priceMaxCents || undefined) : undefined,
+        priceModel: form.priceModel as "fixed" | "range" | "inquire",
+        priceCents: form.priceModel === "fixed" ? form.priceCents : undefined,
+        priceMinCents: form.priceModel === "range" ? form.priceMinCents : undefined,
+        priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
         locationCity: form.locationCity.trim() || undefined,
         locationRegion: form.locationRegion.trim() || undefined,
-        locationCountry: form.locationCountry.trim() || undefined,
-        dataDrawerConfig: {} as DataDrawerConfig, // TODO: implement data drawer
-        listingContent: {}, // TODO: implement template-specific content
+        locationCountry: form.locationCountry || undefined,
       };
       await saveDirectListing(tenantId, input);
+      setHasChanges(false);
       onSaved();
     } catch (err: any) {
       alert(err.message || "Failed to save listing");
@@ -544,353 +442,801 @@ function ListingEditDrawer({
     }
   };
 
-  const canSave = form.slug.trim().length > 0;
+  // Handle status toggle
+  const handleStatusToggle = async (newStatus: DirectListingStatus) => {
+    setSaving(true);
+    try {
+      await updateDirectListingStatus(tenantId, listing.id, newStatus);
+      updateForm({ status: newStatus });
+      onSaved();
+    } catch (err: any) {
+      alert(err.message || "Failed to update status");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle background click
+  const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  const templateConfig = TEMPLATE_CONFIG[listing.templateType] || {
+    label: listing.templateType,
+    color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
+  };
+
+  const animal = listing.animal;
+  const isLive = form.status === "ACTIVE";
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-end z-50">
-      <div className="bg-portal-card border-l border-border-subtle w-full max-w-2xl h-full flex flex-col shadow-2xl">
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+      onClick={handleBackgroundClick}
+    >
+      <div
+        className="bg-portal-card border border-border-subtle rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border-subtle">
-          <h2 className="text-xl font-bold text-white">Edit Listing</h2>
+          <div className="flex items-center gap-4">
+            {/* Animal photo */}
+            {animal?.photoUrl ? (
+              <img
+                src={animal.photoUrl}
+                alt={animal.name}
+                className="w-14 h-14 rounded-lg object-cover"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-lg bg-portal-surface flex items-center justify-center">
+                <Users className="w-7 h-7 text-text-tertiary" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`px-2 py-0.5 text-xs font-medium rounded border ${templateConfig.color}`}>
+                  {templateConfig.label}
+                </span>
+                <Badge variant={isLive ? "success" : "neutral"}>
+                  {isLive ? "Live" : form.status === "PAUSED" ? "Paused" : "Draft"}
+                </Badge>
+              </div>
+              <h2 className="text-xl font-bold text-white">{animal?.name || "Untitled"}</h2>
+              <p className="text-sm text-text-tertiary">
+                {animal?.breed || "Unknown breed"} • {animal?.sex || "Unknown"}
+              </p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="p-1 text-text-secondary hover:text-white transition-colors"
+            className="p-2 text-text-secondary hover:text-white hover:bg-portal-surface rounded-lg transition-colors"
           >
-            <X size={20} />
+            <X size={24} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-6 px-6 border-b border-border-subtle">
-          <button
-            onClick={() => setActiveTab("basic")}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "basic"
-                ? "border-accent text-white"
-                : "border-transparent text-text-secondary hover:text-white"
-            }`}
-          >
-            Basic Info
-          </button>
-          <button
-            onClick={() => setActiveTab("content")}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "content"
-                ? "border-accent text-white"
-                : "border-transparent text-text-secondary hover:text-white"
-            }`}
-          >
-            Public Content
-          </button>
-          <button
-            onClick={() => setActiveTab("pricing")}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "pricing"
-                ? "border-accent text-white"
-                : "border-transparent text-text-secondary hover:text-white"
-            }`}
-          >
-            Pricing & Location
-          </button>
+        <div className="flex items-center gap-1 px-6 pt-4 border-b border-border-subtle">
+          {DRAWER_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === tab.id
+                  ? "bg-portal-surface text-white border-b-2 border-accent"
+                  : "text-text-secondary hover:text-white hover:bg-portal-surface/50"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === "basic" && (
-            <>
-              {/* Animal Display (read-only) */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Animal</label>
-                <div className="flex items-center gap-3 p-3 bg-portal-surface border border-border-subtle rounded-lg">
-                  {selectedAnimal?.photoUrl ? (
-                    <img
-                      src={selectedAnimal.photoUrl}
-                      alt={selectedAnimal.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-portal-card flex items-center justify-center">
-                      <Dog className="w-6 h-6 text-text-tertiary" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="text-white font-medium">{selectedAnimal?.name || "Unknown"}</p>
-                    <p className="text-sm text-text-tertiary">
-                      {[selectedAnimal?.breed, selectedAnimal?.sex].filter(Boolean).join(" • ")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Slug <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.slug}
-                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                  placeholder="unique-listing-slug"
-                />
-                <p className="text-xs text-text-tertiary mt-1">
-                  URL-friendly identifier for this listing
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Template <span className="text-red-400">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(TEMPLATE_CONFIG).map(([key, config]) => (
-                    <button
-                      key={key}
-                      onClick={() => setForm({ ...form, templateType: key as TemplateType })}
-                      className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                        form.templateType === key
-                          ? config.color
-                          : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                      }`}
-                    >
-                      {config.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Status</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setForm({ ...form, status: "DRAFT" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.status === "DRAFT"
-                        ? "bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Draft
-                  </button>
-                  <button
-                    onClick={() => setForm({ ...form, status: "ACTIVE" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.status === "ACTIVE"
-                        ? "bg-green-500/20 text-green-300 border-green-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Active
-                  </button>
-                  <button
-                    onClick={() => setForm({ ...form, status: "PAUSED" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.status === "PAUSED"
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Paused
-                  </button>
-                </div>
-              </div>
-            </>
+        <div className="flex-1 overflow-y-auto p-6">
+          {activeTab === "overview" && (
+            <OverviewTab
+              listing={listing}
+              form={form}
+              updateForm={updateForm}
+              templateConfig={templateConfig}
+              onStatusToggle={handleStatusToggle}
+              saving={saving}
+            />
           )}
-
           {activeTab === "content" && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Headline
-                </label>
-                <input
-                  type="text"
-                  value={form.headline}
-                  onChange={(e) => setForm({ ...form, headline: e.target.value })}
-                  maxLength={120}
-                  className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                  placeholder="Eye-catching headline (120 chars)"
-                />
-                <p className="text-xs text-text-tertiary mt-1">
-                  {form.headline.length}/120 characters
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Title</label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  maxLength={100}
-                  className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                  placeholder="Full listing title (100 chars)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Summary</label>
-                <textarea
-                  value={form.summary}
-                  onChange={(e) => setForm({ ...form, summary: e.target.value })}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white resize-none"
-                  placeholder="Brief summary (500 chars)"
-                />
-                <p className="text-xs text-text-tertiary mt-1">
-                  {form.summary.length}/500 characters
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  maxLength={5000}
-                  rows={8}
-                  className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white resize-none"
-                  placeholder="Full description (5000 chars, supports markdown)"
-                />
-                <p className="text-xs text-text-tertiary mt-1">
-                  {form.description.length}/5000 characters
-                </p>
-              </div>
-            </>
+            <ContentTab form={form} updateForm={updateForm} />
           )}
-
           {activeTab === "pricing" && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Price Model</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setForm({ ...form, priceModel: "inquire" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.priceModel === "inquire"
-                        ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Inquire
-                  </button>
-                  <button
-                    onClick={() => setForm({ ...form, priceModel: "fixed" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.priceModel === "fixed"
-                        ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Fixed
-                  </button>
-                  <button
-                    onClick={() => setForm({ ...form, priceModel: "range" })}
-                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      form.priceModel === "range"
-                        ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                        : "bg-portal-surface border-border-subtle text-text-secondary hover:text-white"
-                    }`}
-                  >
-                    Range
-                  </button>
-                </div>
-              </div>
-
-              {form.priceModel === "fixed" && (
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">Price</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-text-secondary">$</span>
-                    <input
-                      type="number"
-                      value={form.priceCents ? form.priceCents / 100 : ""}
-                      onChange={(e) =>
-                        setForm({ ...form, priceCents: Math.round(parseFloat(e.target.value || "0") * 100) })
-                      }
-                      className="flex-1 px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                      placeholder="0.00"
-                      step="0.01"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {form.priceModel === "range" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-2">Min Price</label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-secondary">$</span>
-                      <input
-                        type="number"
-                        value={form.priceMinCents ? form.priceMinCents / 100 : ""}
-                        onChange={(e) =>
-                          setForm({ ...form, priceMinCents: Math.round(parseFloat(e.target.value || "0") * 100) })
-                        }
-                        className="flex-1 px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                        placeholder="0.00"
-                        step="0.01"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-2">Max Price</label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-secondary">$</span>
-                      <input
-                        type="number"
-                        value={form.priceMaxCents ? form.priceMaxCents / 100 : ""}
-                        onChange={(e) =>
-                          setForm({ ...form, priceMaxCents: Math.round(parseFloat(e.target.value || "0") * 100) })
-                        }
-                        className="flex-1 px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                        placeholder="0.00"
-                        step="0.01"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-4 border-t border-border-subtle">
-                <label className="block text-sm font-medium text-white mb-2">Location (Optional)</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-text-secondary mb-2">City</label>
-                    <input
-                      type="text"
-                      value={form.locationCity}
-                      onChange={(e) => setForm({ ...form, locationCity: e.target.value })}
-                      className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                      placeholder="City"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-text-secondary mb-2">State/Region</label>
-                    <input
-                      type="text"
-                      value={form.locationRegion}
-                      onChange={(e) => setForm({ ...form, locationRegion: e.target.value })}
-                      className="w-full px-3 py-2 bg-portal-surface border border-border-subtle rounded-lg text-white"
-                      placeholder="State/Region"
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
+            <PricingTab form={form} updateForm={updateForm} />
+          )}
+          {activeTab === "settings" && (
+            <SettingsTab form={form} updateForm={updateForm} />
+          )}
+          {activeTab === "preview" && (
+            <PreviewTab listing={listing} form={form} templateConfig={templateConfig} />
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-border-subtle">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
+        <div className="flex items-center justify-between p-6 border-t border-border-subtle bg-portal-surface/50">
+          <div className="text-sm text-text-tertiary">
+            {hasChanges ? (
+              <span className="text-amber-400">You have unsaved changes</span>
+            ) : (
+              <span>Last updated: {new Date(listing.updatedAt).toLocaleDateString()}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSave} disabled={!hasChanges || saving}>
+              <Save size={16} className="mr-1.5" />
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DRAWER TABS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function OverviewTab({
+  listing,
+  form,
+  updateForm,
+  templateConfig,
+  onStatusToggle,
+  saving,
+}: {
+  listing: DirectAnimalListing;
+  form: any;
+  updateForm: (u: any) => void;
+  templateConfig: { label: string; color: string };
+  onStatusToggle: (status: DirectListingStatus) => void;
+  saving: boolean;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const animal = listing.animal;
+  const isLive = form.status === "ACTIVE";
+  const listingUrl = `/animals/${listing.slug}`;
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(window.location.origin + listingUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Status & Actions */}
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-white mb-4">Listing Status</h3>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`w-3 h-3 rounded-full ${isLive ? "bg-green-500" : form.status === "PAUSED" ? "bg-amber-500" : "bg-gray-500"}`} />
+            <div>
+              <p className="text-white font-medium">
+                {isLive ? "Published & Live" : form.status === "PAUSED" ? "Paused" : "Draft"}
+              </p>
+              <p className="text-sm text-text-tertiary">
+                {isLive
+                  ? "This listing is visible to buyers on the marketplace"
+                  : form.status === "PAUSED"
+                  ? "This listing is temporarily hidden from the marketplace"
+                  : "This listing is not yet published"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isLive ? (
+              <Button
+                variant="secondary"
+                onClick={() => onStatusToggle("PAUSED")}
+                disabled={saving}
+              >
+                Pause Listing
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => onStatusToggle("ACTIVE")}
+                disabled={saving}
+              >
+                {form.status === "DRAFT" ? "Publish Now" : "Unpause"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Listing URL */}
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-white mb-4">Listing URL</h3>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-portal-card border border-border-subtle rounded-lg">
+            <LinkIcon size={16} className="text-text-tertiary flex-shrink-0" />
+            <input
+              type="text"
+              value={form.slug}
+              onChange={(e) => updateForm({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })}
+              className="flex-1 bg-transparent text-white text-sm outline-none"
+              placeholder="listing-url-slug"
+            />
+          </div>
+          <Button variant="secondary" onClick={copyUrl}>
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={!canSave || saving}>
-            {saving ? "Saving..." : "Save Changes"}
-          </Button>
+          {isLive && (
+            <a
+              href={listingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-text-secondary hover:text-white transition-colors"
+            >
+              <ExternalLink size={18} />
+            </a>
+          )}
+        </div>
+        <p className="text-xs text-text-tertiary mt-2">
+          Full URL: {window.location.origin}{listingUrl}
+        </p>
+      </div>
+
+      {/* Animal Info (Read-only) */}
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-white mb-4">Animal Information</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-text-tertiary mb-1">Name</p>
+            <p className="text-white">{animal?.name || "Unknown"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-tertiary mb-1">Breed</p>
+            <p className="text-white">{animal?.breed || "Unknown"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-tertiary mb-1">Sex</p>
+            <p className="text-white">{animal?.sex || "Unknown"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-tertiary mb-1">Species</p>
+            <p className="text-white">{animal?.species || "Unknown"}</p>
+          </div>
+        </div>
+        <p className="text-xs text-text-tertiary mt-4">
+          To update animal details, edit the animal record directly in your animal management.
+        </p>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-portal-surface border border-border-subtle rounded-lg p-4 text-center">
+          <p className="text-2xl font-bold text-white">{listing.viewCount || 0}</p>
+          <p className="text-xs text-text-tertiary">Total Views</p>
+        </div>
+        <div className="bg-portal-surface border border-border-subtle rounded-lg p-4 text-center">
+          <p className="text-2xl font-bold text-white">{listing.inquiryCount || 0}</p>
+          <p className="text-xs text-text-tertiary">Inquiries</p>
+        </div>
+        <div className="bg-portal-surface border border-border-subtle rounded-lg p-4 text-center">
+          <p className="text-2xl font-bold text-white">
+            {listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "—"}
+          </p>
+          <p className="text-xs text-text-tertiary">Created</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContentTab({ form, updateForm }: { form: any; updateForm: (u: any) => void }) {
+  return (
+    <div className="space-y-6">
+      {/* Headline */}
+      <div>
+        <label className="block text-sm font-medium text-white mb-2">
+          Headline
+          <span className="text-text-tertiary font-normal ml-2">(Displayed prominently on listing)</span>
+        </label>
+        <input
+          type="text"
+          value={form.headline}
+          onChange={(e) => updateForm({ headline: e.target.value })}
+          className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+          placeholder="e.g., Champion bloodline stud available for breeding"
+          maxLength={200}
+        />
+        <p className="text-xs text-text-tertiary mt-1">{form.headline.length}/200 characters</p>
+      </div>
+
+      {/* Title */}
+      <div>
+        <label className="block text-sm font-medium text-white mb-2">
+          Title
+          <span className="text-text-tertiary font-normal ml-2">(Optional page title)</span>
+        </label>
+        <input
+          type="text"
+          value={form.title}
+          onChange={(e) => updateForm({ title: e.target.value })}
+          className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+          placeholder="Optional title for the listing page"
+          maxLength={100}
+        />
+      </div>
+
+      {/* Summary */}
+      <div>
+        <label className="block text-sm font-medium text-white mb-2">
+          Summary
+          <span className="text-text-tertiary font-normal ml-2">(Brief description for cards/previews)</span>
+        </label>
+        <textarea
+          value={form.summary}
+          onChange={(e) => updateForm({ summary: e.target.value })}
+          rows={2}
+          className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent resize-none"
+          placeholder="A brief 1-2 sentence summary..."
+          maxLength={500}
+        />
+        <p className="text-xs text-text-tertiary mt-1">{form.summary.length}/500 characters</p>
+      </div>
+
+      {/* Full Description */}
+      <div>
+        <label className="block text-sm font-medium text-white mb-2">
+          Full Description
+          <span className="text-text-tertiary font-normal ml-2">(Detailed information for the listing page)</span>
+        </label>
+        <textarea
+          value={form.description}
+          onChange={(e) => updateForm({ description: e.target.value })}
+          rows={8}
+          className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent resize-none"
+          placeholder="Provide detailed information about this animal, their qualities, requirements, and what makes them special..."
+        />
+        <p className="text-xs text-text-tertiary mt-1">
+          Supports basic formatting. {form.description.length} characters
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PricingTab({ form, updateForm }: { form: any; updateForm: (u: any) => void }) {
+  const formatPrice = (cents: number | null) => {
+    if (cents === null || cents === undefined) return "";
+    return (cents / 100).toFixed(2);
+  };
+
+  const parsePrice = (value: string): number | null => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return null;
+    return Math.round(num * 100);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Price Model */}
+      <div>
+        <label className="block text-sm font-medium text-white mb-3">Pricing Model</label>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { value: "fixed", label: "Fixed Price", desc: "Set a specific price" },
+            { value: "range", label: "Price Range", desc: "Show a min-max range" },
+            { value: "inquire", label: "Contact for Price", desc: "Buyers must inquire" },
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => updateForm({ priceModel: option.value })}
+              className={`p-4 rounded-lg border text-left transition-all ${
+                form.priceModel === option.value
+                  ? "border-accent bg-accent/10"
+                  : "border-border-subtle bg-portal-surface hover:border-border-default"
+              }`}
+            >
+              <p className={`font-medium ${form.priceModel === option.value ? "text-accent" : "text-white"}`}>
+                {option.label}
+              </p>
+              <p className="text-xs text-text-tertiary mt-1">{option.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Fixed Price Input */}
+      {form.priceModel === "fixed" && (
+        <div>
+          <label className="block text-sm font-medium text-white mb-2">Price</label>
+          <div className="flex items-center gap-2">
+            <span className="text-text-tertiary">$</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={formatPrice(form.priceCents)}
+              onChange={(e) => updateForm({ priceCents: parsePrice(e.target.value) })}
+              className="w-48 px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+              placeholder="0.00"
+            />
+            <span className="text-text-tertiary">USD</span>
+          </div>
+        </div>
+      )}
+
+      {/* Price Range Inputs */}
+      {form.priceModel === "range" && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Minimum Price</label>
+            <div className="flex items-center gap-2">
+              <span className="text-text-tertiary">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formatPrice(form.priceMinCents)}
+                onChange={(e) => updateForm({ priceMinCents: parsePrice(e.target.value) })}
+                className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Maximum Price</label>
+            <div className="flex items-center gap-2">
+              <span className="text-text-tertiary">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formatPrice(form.priceMaxCents)}
+                onChange={(e) => updateForm({ priceMaxCents: parsePrice(e.target.value) })}
+                className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location */}
+      <div className="pt-4 border-t border-border-subtle">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <MapPin size={16} />
+          Location
+        </h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">City</label>
+            <input
+              type="text"
+              value={form.locationCity}
+              onChange={(e) => updateForm({ locationCity: e.target.value })}
+              className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+              placeholder="e.g., Denver"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">State/Region</label>
+            <input
+              type="text"
+              value={form.locationRegion}
+              onChange={(e) => updateForm({ locationRegion: e.target.value })}
+              className="w-full px-4 py-2.5 bg-portal-surface border border-border-subtle rounded-lg text-white placeholder-text-tertiary focus:outline-none focus:border-accent"
+              placeholder="e.g., Colorado"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab({ form, updateForm }: { form: any; updateForm: (u: any) => void }) {
+  return (
+    <div className="space-y-6">
+      {/* Visibility */}
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-white mb-4">Visibility Settings</h3>
+
+        <label className="flex items-start gap-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.listed}
+            onChange={(e) => updateForm({ listed: e.target.checked })}
+            className="w-5 h-5 rounded border-border-subtle bg-portal-card text-accent focus:ring-accent focus:ring-offset-0 mt-0.5"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-white mb-1">Show in marketplace search</div>
+            <p className="text-xs text-text-secondary">
+              When enabled, this listing will appear in marketplace search results and browse pages.
+              When disabled, the listing is only accessible via direct link.
+            </p>
+          </div>
+        </label>
+      </div>
+
+      {/* Status Management */}
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-white mb-4">Listing Status</h3>
+
+        <div className="space-y-3">
+          {[
+            { value: "DRAFT", label: "Draft", desc: "Not visible to anyone. Work in progress." },
+            { value: "ACTIVE", label: "Active / Live", desc: "Published and visible to buyers." },
+            { value: "PAUSED", label: "Paused", desc: "Temporarily hidden from marketplace." },
+          ].map((option) => (
+            <label
+              key={option.value}
+              className={`flex items-start gap-4 p-3 rounded-lg border cursor-pointer transition-all ${
+                form.status === option.value
+                  ? "border-accent bg-accent/5"
+                  : "border-border-subtle hover:border-border-default"
+              }`}
+            >
+              <input
+                type="radio"
+                name="status"
+                value={option.value}
+                checked={form.status === option.value}
+                onChange={(e) => updateForm({ status: e.target.value })}
+                className="w-4 h-4 text-accent focus:ring-accent focus:ring-offset-0 mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-white">{option.label}</div>
+                <p className="text-xs text-text-tertiary">{option.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-red-400 mb-2">Danger Zone</h3>
+        <p className="text-xs text-text-secondary mb-4">
+          Deleting this listing is permanent and cannot be undone. All listing data, analytics, and history will be lost.
+        </p>
+        <Button variant="secondary" className="text-red-400 border-red-500/30 hover:bg-red-500/10">
+          <Trash2 size={16} className="mr-1.5" />
+          Delete Listing
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PreviewTab({
+  listing,
+  form,
+  templateConfig,
+}: {
+  listing: DirectAnimalListing;
+  form: any;
+  templateConfig: { label: string; color: string };
+}) {
+  const animal = listing.animal;
+
+  const formatPrice = () => {
+    if (form.priceModel === "inquire") return "Contact for pricing";
+    if (form.priceModel === "fixed" && form.priceCents) {
+      return `$${(form.priceCents / 100).toLocaleString()}`;
+    }
+    if (form.priceModel === "range" && form.priceMinCents && form.priceMaxCents) {
+      return `$${(form.priceMinCents / 100).toLocaleString()} – $${(form.priceMaxCents / 100).toLocaleString()}`;
+    }
+    return "Contact for pricing";
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-4 mb-4">
+        <p className="text-sm text-text-secondary">
+          This is a preview of how your listing will appear to buyers on the marketplace.
+        </p>
+      </div>
+
+      {/* Preview Card */}
+      <div className="bg-portal-card border border-border-subtle rounded-xl overflow-hidden max-w-md">
+        {/* Image */}
+        <div className="aspect-video bg-portal-surface relative">
+          {animal?.photoUrl ? (
+            <img
+              src={animal.photoUrl}
+              alt={animal.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#0d0d0d] via-[#1a1a1a] to-[#0a0a0a]">
+              <Users className="w-16 h-16 text-text-tertiary" />
+            </div>
+          )}
+          <div className="absolute top-3 left-3">
+            <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${templateConfig.color}`}>
+              {templateConfig.label}
+            </span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-5">
+          <h3 className="text-lg font-bold text-white mb-1">{animal?.name || "Animal Name"}</h3>
+          {form.headline && (
+            <p className="text-sm text-text-secondary mb-3">{form.headline}</p>
+          )}
+
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-lg font-bold text-accent">{formatPrice()}</p>
+            {(form.locationCity || form.locationRegion) && (
+              <p className="text-sm text-text-tertiary flex items-center gap-1">
+                <MapPin size={14} />
+                {[form.locationCity, form.locationRegion].filter(Boolean).join(", ")}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-text-tertiary">
+            <span>{animal?.breed || "Unknown breed"}</span>
+            {animal?.sex && (
+              <>
+                <span>•</span>
+                <span>{animal.sex}</span>
+              </>
+            )}
+          </div>
+
+          {form.summary && (
+            <p className="text-sm text-text-secondary mt-3 line-clamp-2">{form.summary}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Full Page Preview Info */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-blue-300 mb-2">Full Listing Preview</h4>
+        <p className="text-xs text-text-secondary">
+          Save your changes and use the external link in the Overview tab to see the full public listing page.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LISTING CARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ListingCard({
+  listing,
+  stats,
+  onEdit,
+  onDelete,
+}: {
+  listing: DirectAnimalListing;
+  stats?: ListingStats;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const templateConfig = TEMPLATE_CONFIG[listing.templateType] || {
+    label: listing.templateType,
+    color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30"
+  };
+
+  const animalName = listing.animal?.name || "Untitled";
+  const photoUrl = listing.animal?.photoUrl;
+  const isLive = listing.status === "ACTIVE";
+
+  return (
+    <div
+      className="bg-portal-card border border-border-subtle rounded-lg overflow-hidden hover:border-border-default transition-colors cursor-pointer"
+      onClick={onEdit}
+    >
+      {/* Image */}
+      <div className="aspect-video bg-portal-surface relative">
+        {photoUrl ? (
+          <img
+            src={photoUrl}
+            alt={animalName}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#0d0d0d] via-[#1a1a1a] to-[#0a0a0a] relative overflow-hidden">
+            {/* Subtle warm glow - purple/magenta to complement orange */}
+            <div className="absolute inset-0" style={{
+              background: 'radial-gradient(ellipse at center, rgba(139, 92, 246, 0.06) 0%, transparent 65%)'
+            }}></div>
+            {/* Very subtle accent hints - teal and purple */}
+            <div className="absolute inset-0" style={{
+              backgroundImage: 'radial-gradient(circle at 25% 30%, rgba(20, 184, 166, 0.04) 0%, transparent 45%), radial-gradient(circle at 75% 70%, rgba(168, 85, 247, 0.05) 0%, transparent 50%)'
+            }}></div>
+            {/* Logo */}
+            <div className="relative z-10 flex items-center justify-center">
+              <img src={logoUrl} alt="BreederHQ" className="h-20 w-auto" />
+            </div>
+          </div>
+        )}
+        {/* Status badge overlay */}
+        <div className="absolute top-2 right-2">
+          <Badge variant={isLive ? "success" : "neutral"}>
+            {isLive ? "Live" : listing.status === "PAUSED" ? "Paused" : "Draft"}
+          </Badge>
+        </div>
+        {/* Stats badge overlay */}
+        {stats && stats.viewsThisMonth > 0 && (
+          <StatsBadgeOverlay
+            viewsThisMonth={stats.viewsThisMonth}
+            isTrending={stats.isTrending}
+          />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded border mb-1 ${templateConfig.color}`}>
+              {templateConfig.label}
+            </span>
+            <h3 className="text-base font-semibold text-white">{animalName}</h3>
+          </div>
+        </div>
+
+        {listing.headline && (
+          <p className="text-sm text-text-secondary line-clamp-2 mb-2">{listing.headline}</p>
+        )}
+
+        {/* Performance stats row */}
+        {stats && (
+          <div className="mb-3 pb-3 border-b border-border-subtle">
+            <InlineCardStats
+              viewsThisMonth={stats.viewsThisMonth}
+              inquiriesThisMonth={stats.inquiriesThisMonth}
+              isTrending={stats.isTrending}
+              trendMultiplier={stats.trendMultiplier}
+            />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 text-text-tertiary">
+            <Users size={14} />
+            <span>{listing.animal?.breed || "Unknown breed"}</span>
+            {listing.animal?.sex && <span className="text-text-tertiary">• {listing.animal.sex}</span>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
+              title="Edit"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="p-1.5 text-text-secondary hover:text-red-400 transition-colors rounded hover:bg-white/5"
+              title="Delete"
+            >
+              <Trash2 size={14} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
+              title="View Details"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

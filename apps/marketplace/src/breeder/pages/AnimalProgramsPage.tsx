@@ -10,21 +10,29 @@ import {
   Users,
   Plus,
   Eye,
-  EyeOff,
+  MessageSquare,
   Pencil,
   Trash2,
   Filter,
   ArrowLeft,
   AlertCircle,
   ChevronRight,
+  Flame,
 } from "lucide-react";
 
 import {
   getAnimalPrograms,
   deleteAnimalProgram,
+  getProgramAnalytics,
   type AnimalProgram,
   type TemplateType,
+  type ProgramAnalyticsResponse,
+  type ProgramStats,
 } from "../../api/client";
+
+import { PerformanceSummaryRow } from "../components/analytics/PerformanceSummaryRow";
+import { InsightsCallout, InsightBanner } from "../components/analytics/InsightsCallout";
+import { InlineCardStats, StatsBadgeOverlay } from "../components/analytics/ProgramStatsOverlay";
 
 import logoUrl from "@bhq/ui/assets/logo.png";
 
@@ -63,6 +71,11 @@ export function AnimalProgramsPage() {
   const [publishedFilter, setPublishedFilter] = React.useState<string>("ALL");
   const [templateFilter, setTemplateFilter] = React.useState<string>("ALL");
 
+  // Analytics state
+  const [analytics, setAnalytics] = React.useState<ProgramAnalyticsResponse | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
+  const [dismissedInsights, setDismissedInsights] = React.useState<Set<string>>(new Set());
+
   const fetchPrograms = React.useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
@@ -80,9 +93,46 @@ export function AnimalProgramsPage() {
     }
   }, [tenantId, publishedFilter, templateFilter]);
 
+  // Fetch analytics data
+  const fetchAnalytics = React.useCallback(async () => {
+    if (!tenantId) return;
+    setAnalyticsLoading(true);
+    try {
+      const data = await getProgramAnalytics(tenantId);
+      setAnalytics(data);
+    } catch (err: any) {
+      console.error("Failed to fetch analytics:", err);
+      // Don't show error to user - analytics is supplementary
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [tenantId]);
+
   React.useEffect(() => {
     fetchPrograms();
-  }, [fetchPrograms]);
+    fetchAnalytics();
+  }, [fetchPrograms, fetchAnalytics]);
+
+  // Create a map of program stats by ID for quick lookup
+  const programStatsMap = React.useMemo(() => {
+    const map = new Map<number, ProgramStats>();
+    if (analytics?.programStats) {
+      for (const stat of analytics.programStats) {
+        map.set(stat.programId, stat);
+      }
+    }
+    return map;
+  }, [analytics]);
+
+  // Filter insights that haven't been dismissed
+  const visibleInsights = React.useMemo(() => {
+    if (!analytics?.insights) return [];
+    return analytics.insights.filter((insight) => !dismissedInsights.has(insight.id));
+  }, [analytics, dismissedInsights]);
+
+  const handleDismissInsight = (id: string) => {
+    setDismissedInsights((prev) => new Set([...prev, id]));
+  };
 
   const handleDelete = async (program: AnimalProgram) => {
     if (!confirm(`Delete program "${program.name}"? This cannot be undone.`)) return;
@@ -118,11 +168,11 @@ export function AnimalProgramsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/manage/animals"
-            className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-white mb-4"
+            to="/marketplace"
+            className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
-            Back to Animal Listings
+            Back to Marketplace
           </Link>
           <div className="flex items-center justify-between">
             <div>
@@ -165,7 +215,27 @@ export function AnimalProgramsPage() {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Performance Summary */}
+        {analytics?.summary && (
+          <PerformanceSummaryRow
+            summary={analytics.summary}
+            period="month"
+            showSparklines={true}
+            className="mb-6"
+          />
+        )}
+
+        {/* Insights Callouts */}
+        {visibleInsights.length > 0 && (
+          <InsightsCallout
+            insights={visibleInsights}
+            onDismiss={handleDismissInsight}
+            maxItems={3}
+            className="mb-6"
+          />
+        )}
+
+        {/* Basic Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-portal-card border border-border-subtle rounded-lg p-4">
             <p className="text-2xl font-bold text-white">{stats.total}</p>
@@ -249,6 +319,7 @@ export function AnimalProgramsPage() {
               <ProgramCard
                 key={program.id}
                 program={program}
+                stats={programStatsMap.get(program.id)}
                 onEdit={() => navigate(`/manage/animal-programs/${program.id}?edit=true`)}
                 onDelete={() => handleDelete(program)}
               />
@@ -266,10 +337,12 @@ export function AnimalProgramsPage() {
 
 function ProgramCard({
   program,
+  stats,
   onEdit,
   onDelete,
 }: {
   program: AnimalProgram;
+  stats?: ProgramStats;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -312,6 +385,13 @@ function ProgramCard({
             {program.published ? "Published" : "Draft"}
           </Badge>
         </div>
+        {/* Stats badge overlay */}
+        {stats && stats.viewsThisMonth > 0 && (
+          <StatsBadgeOverlay
+            viewsThisMonth={stats.viewsThisMonth}
+            isTrending={stats.isTrending}
+          />
+        )}
       </div>
 
       {/* Content */}
@@ -326,7 +406,19 @@ function ProgramCard({
         </div>
 
         {program.headline && (
-          <p className="text-sm text-text-secondary line-clamp-2 mb-3">{program.headline}</p>
+          <p className="text-sm text-text-secondary line-clamp-2 mb-2">{program.headline}</p>
+        )}
+
+        {/* Performance stats row */}
+        {stats && (
+          <div className="mb-3 pb-3 border-b border-border-subtle">
+            <InlineCardStats
+              viewsThisMonth={stats.viewsThisMonth}
+              inquiriesThisMonth={stats.inquiriesThisMonth}
+              isTrending={stats.isTrending}
+              trendMultiplier={stats.trendMultiplier}
+            />
+          </div>
         )}
 
         <div className="flex items-center justify-between text-sm">

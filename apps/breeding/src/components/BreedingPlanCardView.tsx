@@ -3,6 +3,8 @@
 
 import * as React from "react";
 import { Calendar, Heart, Baby, Home } from "lucide-react";
+import { Tooltip } from "@bhq/ui";
+import { FoalingAlertBadge, type FoalingAlertState } from "./FoalingAlertBadge";
 
 type PlanRow = {
   id: number | string;
@@ -74,9 +76,11 @@ type BreedingPlanCardViewProps = {
   loading: boolean;
   error: string | null;
   onRowClick?: (row: PlanRow) => void;
+  /** Foaling alerts keyed by plan ID (for horses only) */
+  foalingAlerts?: Record<number | string, FoalingAlertState>;
 };
 
-function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
+function PlanCard({ row, onClick, foalingAlert }: { row: PlanRow; onClick?: () => void; foalingAlert?: FoalingAlertState }) {
   const statusKey = (row.status || "PLANNING").toUpperCase();
   const accentColor = STATUS_COLORS[statusKey] || STATUS_COLORS.PLANNING;
   const statusLabel = STATUS_LABELS[statusKey] || row.status;
@@ -116,6 +120,21 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
             </span>
             {row.archived && (
               <span className="text-xs text-amber-400">(Archived)</span>
+            )}
+            {foalingAlert?.hasIssues && (
+              <Tooltip content={
+                foalingAlert.overdueCount > 0
+                  ? `${foalingAlert.overdueCount} overdue milestone${foalingAlert.overdueCount !== 1 ? 's' : ''}`
+                  : `${foalingAlert.dueSoonCount} milestone${foalingAlert.dueSoonCount !== 1 ? 's' : ''} due soon`
+              }>
+                <span>
+                  <FoalingAlertBadge
+                    overdueCount={foalingAlert.overdueCount}
+                    dueSoonCount={foalingAlert.dueSoonCount}
+                    size="sm"
+                  />
+                </span>
+              </Tooltip>
             )}
           </div>
           <div className="text-xs text-secondary mt-0.5">
@@ -185,7 +204,7 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
   );
 }
 
-export function BreedingPlanCardView({ rows, loading, error, onRowClick }: BreedingPlanCardViewProps) {
+export function BreedingPlanCardView({ rows, loading, error, onRowClick, foalingAlerts }: BreedingPlanCardViewProps) {
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-secondary">
@@ -218,6 +237,7 @@ export function BreedingPlanCardView({ rows, loading, error, onRowClick }: Breed
             key={row.id}
             row={row}
             onClick={() => onRowClick?.(row)}
+            foalingAlert={foalingAlerts?.[row.id]}
           />
         ))}
       </div>

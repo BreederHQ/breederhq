@@ -42,6 +42,8 @@ export type OffspringPlanLite = {
   lockedCycleStart?: string | null;
   expectedBirthDate?: string | null;
   expectedWeaned?: string | null;
+  // Foaling outcome for horses (imported from FoalingOutcome type below)
+  foalingOutcome?: FoalingOutcome | null;
   [key: string]: any;
 };
 
@@ -860,13 +862,73 @@ export type OffspringApi = {
   /* Tags from unified @bhq/api */
   tags: TagsResource;
 
-  /* Breeding namespace for recording birth date from offspring group */
+  /* Breeding namespace for recording birth date and foaling outcome */
   breeding: {
     recordFoaling(
       planId: number,
       body: { actualBirthDate: string; foals?: Array<{ sex: "MALE" | "FEMALE"; color?: string }> }
     ): Promise<{ plan: any; offspringGroup: any; offspring: any[] }>;
+
+    addFoalingOutcome(
+      planId: number,
+      body: FoalingOutcomeInput
+    ): Promise<FoalingOutcome>;
+
+    getFoalingTimeline(planId: number): Promise<FoalingTimeline>;
   };
+};
+
+/* Foaling outcome types */
+export type MarePostFoalingCondition =
+  | "EXCELLENT"
+  | "GOOD"
+  | "FAIR"
+  | "POOR"
+  | "VETERINARY_CARE_REQUIRED";
+
+export type FoalingOutcomeInput = {
+  hadComplications: boolean;
+  complicationDetails?: string | null;
+  veterinarianCalled: boolean;
+  veterinarianName?: string | null;
+  veterinarianNotes?: string | null;
+  placentaPassed?: boolean | null;
+  placentaPassedMinutes?: number | null;
+  mareCondition?: MarePostFoalingCondition | null;
+  postFoalingHeatDate?: string | null;
+  postFoalingHeatNotes?: string | null;
+  readyForRebreeding?: boolean;
+  rebredDate?: string | null;
+};
+
+export type FoalingOutcome = FoalingOutcomeInput & {
+  id: number;
+  tenantId: number;
+  breedingPlanId: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FoalingMilestone = {
+  id: number;
+  type: string;
+  scheduledDate: string;
+  completedDate: string | null;
+  isCompleted: boolean;
+  daysUntil: number;
+};
+
+export type FoalingTimeline = {
+  breedingPlanId: number;
+  dam: { id: number; name: string } | null;
+  sire: { id: number; name: string } | null;
+  expectedBirthDate: string;
+  actualBirthDate: string | null;
+  daysUntilFoaling: number;
+  status: "EXPECTING" | "MONITORING" | "IMMINENT" | "OVERDUE" | "FOALED";
+  milestones: FoalingMilestone[];
+  offspring: any[];
+  outcome: FoalingOutcome | null;
 };
 
 export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
@@ -1081,7 +1143,7 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
     // Wire up unified tags from @bhq/api
     tags: makeTags(createHttp(normBase(typeof opts === "string" ? opts : opts?.baseUrl))),
 
-    // Breeding namespace for recording birth date from offspring group
+    // Breeding namespace for recording birth date and foaling outcome
     breeding: {
       recordFoaling: (
         planId: number,
@@ -1091,6 +1153,19 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
         body,
         {}
       ),
+
+      addFoalingOutcome: (planId: number, body: FoalingOutcomeInput) =>
+        core.raw.post<FoalingOutcome>(
+          `/breeding/plans/${planId}/foaling-outcome`,
+          body,
+          {}
+        ),
+
+      getFoalingTimeline: (planId: number) =>
+        core.raw.get<FoalingTimeline>(
+          `/breeding/plans/${planId}/foaling-timeline`,
+          {}
+        ),
     },
   };
 }

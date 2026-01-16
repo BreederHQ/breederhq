@@ -54,6 +54,8 @@ import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
 import { PrivacyTab } from "./components/PrivacyTab";
 import { OffspringTab } from "./components/OffspringTab";
+import { ValuationSection, type ValuationData } from "./components/ValuationSection";
+import { MareReproductiveHistoryTab } from "./components/MareReproductiveHistoryTab";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
 import { GeneticsEmptyState } from "@bhq/ui/components/GeneticsEmptyState";
 import { AddGeneticResultDialog } from "@bhq/ui/components/AddGeneticResultDialog";
@@ -231,6 +233,15 @@ type AnimalRow = {
     titles?: number;
     competitionEntries?: number;
   };
+  // Valuation fields (primarily for horses)
+  intendedUse?: string | null;
+  declaredValueCents?: number | null;
+  declaredValueCurrency?: string | null;
+  valuationDate?: string | null;
+  valuationSource?: string | null;
+  forSale?: boolean;
+  inSyndication?: boolean;
+  isLeased?: boolean;
 };
 
 type ProgramFlags = {
@@ -8156,6 +8167,10 @@ export default function AppAnimals() {
         tabs.push({ key: "offspring", label: "Offspring" } as any);
         tabs.push({ key: "titles", label: "Titles" } as any);
         tabs.push({ key: "competitions", label: "Competitions" } as any);
+        // Mare reproductive history tab (horses only, females only)
+        if ((r.species || "").toUpperCase() === "HORSE" && (r.sex || "").toUpperCase() === "FEMALE") {
+          tabs.push({ key: "mare-history", label: "Breeding History" } as any);
+        }
         tabs.push({ key: "privacy", label: "Privacy" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
@@ -8631,6 +8646,32 @@ export default function AppAnimals() {
                 }
               />
 
+              {/* Asset Valuation - only shows for horses */}
+              <ValuationSection
+                animalId={row.id}
+                species={row.species}
+                data={{
+                  intendedUse: row.intendedUse as any,
+                  declaredValueCents: row.declaredValueCents ?? null,
+                  declaredValueCurrency: row.declaredValueCurrency ?? null,
+                  valuationDate: row.valuationDate ?? null,
+                  valuationSource: row.valuationSource as any,
+                  forSale: row.forSale ?? false,
+                  inSyndication: row.inSyndication ?? false,
+                  isLeased: row.isLeased ?? false,
+                }}
+                mode={mode}
+                onSave={async (updates) => {
+                  await api.animals.update(row.id, updates);
+                  // Update local state
+                  setRows((prev) =>
+                    prev.map((r) =>
+                      r.id === row.id ? { ...r, ...updates } : r
+                    )
+                  );
+                }}
+              />
+
               <SectionCard title={<SectionTitle icon="📝">Notes</SectionTitle>} highlight={mode === "edit"}>
                 {mode === "view" ? (
                   <div className="text-sm">{row.notes || "—"}</div>
@@ -8758,6 +8799,18 @@ export default function AppAnimals() {
 
           {activeTab === "competitions" && (
             <CompetitionsTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "mare-history" && (
+            <MareReproductiveHistoryTab
+              animal={row}
+              mode={mode}
+              api={{
+                getMareReproductiveHistory: api.mareReproductiveHistory.get,
+                getMareDetailedFoalingHistory: api.mareReproductiveHistory.getDetailedHistory,
+                recalculateMareHistory: api.mareReproductiveHistory.recalculate,
+              }}
+            />
           )}
 
           {activeTab === "privacy" && (

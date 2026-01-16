@@ -41,11 +41,12 @@ const SERVICE_TYPE_LABELS: Record<ProviderServiceType, string> = {
   OTHER_SERVICE: "Other Service",
 };
 
-const PLAN_LIMITS: Record<string, number> = {
-  FREE: 1,
-  PREMIUM: 5,
-  BUSINESS: 20,
-};
+// Free during early access - no listing limits
+// const PLAN_LIMITS: Record<string, number> = {
+//   FREE: 1,
+//   PREMIUM: 5,
+//   BUSINESS: 20,
+// };
 
 // ============================================================================
 // Helper Components
@@ -199,6 +200,7 @@ export function ProviderDashboardPage() {
         listingType: listing.listingType,
         title: listing.title,
         description: listing.description || "",
+        customServiceType: listing.customServiceType || "",
         city: listing.city || "",
         state: listing.state || "",
         priceCents: listing.priceCents || undefined,
@@ -210,6 +212,7 @@ export function ProviderDashboardPage() {
         listingType: "TRAINING",
         title: "",
         description: "",
+        customServiceType: "",
         city: profile?.city || "",
         state: profile?.state || "",
         priceCents: undefined,
@@ -445,9 +448,8 @@ export function ProviderDashboardPage() {
   // ============================================================================
   // Render: Main Dashboard
   // ============================================================================
-  const canCreateListing = dashboard
-    ? dashboard.limits.currentListings < dashboard.limits.maxListings
-    : false;
+  // Free during early access - no listing limits
+  const canCreateListing = true;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -459,10 +461,11 @@ export function ProviderDashboardPage() {
               {profile?.businessName || "Service Provider Portal"}
             </h1>
             <div className="flex items-center gap-2 mt-1">
-              <PlanBadge plan={profile?.plan || "FREE"} />
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                Free during early access
+              </span>
               <span className="text-sm text-gray-500">
-                {dashboard?.limits.currentListings || 0} /{" "}
-                {dashboard?.limits.maxListings || 1} listings
+                {dashboard?.limits.currentListings || 0} listing{dashboard?.limits.currentListings === 1 ? '' : 's'}
               </span>
             </div>
           </div>
@@ -473,21 +476,6 @@ export function ProviderDashboardPage() {
             >
               Back to Marketplace
             </Link>
-            {profile?.stripeCustomerId ? (
-              <button
-                onClick={handleManageBilling}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                Manage Billing
-              </button>
-            ) : (
-              <button
-                onClick={() => handleUpgrade("PREMIUM")}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                Upgrade
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -537,8 +525,7 @@ export function ProviderDashboardPage() {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => handleOpenListingModal()}
-                  disabled={!canCreateListing}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   + Add Listing
                 </button>
@@ -549,46 +536,23 @@ export function ProviderDashboardPage() {
                   Manage Listings
                 </button>
               </div>
-              {!canCreateListing && (
-                <p className="mt-3 text-sm text-amber-600">
-                  You've reached your plan limit. Upgrade to add more listings.
-                </p>
-              )}
+              <p className="mt-3 text-sm text-green-700 flex items-center gap-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Unlimited listings during early access
+              </p>
             </div>
 
-            {/* Plan Upgrade */}
-            {profile?.plan === "FREE" && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                  Upgrade Your Plan
-                </h2>
-                <p className="text-gray-600 mb-4">
-                  Get more listings and premium features with our paid plans.
-                </p>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-lg p-4 border border-gray-200">
-                    <h3 className="font-semibold text-gray-900">Premium</h3>
-                    <p className="text-sm text-gray-600 mb-2">Up to 5 listings</p>
-                    <button
-                      onClick={() => handleUpgrade("PREMIUM")}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Upgrade to Premium
-                    </button>
-                  </div>
-                  <div className="bg-white rounded-lg p-4 border border-gray-200">
-                    <h3 className="font-semibold text-gray-900">Business</h3>
-                    <p className="text-sm text-gray-600 mb-2">Up to 20 listings</p>
-                    <button
-                      onClick={() => handleUpgrade("BUSINESS")}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Upgrade to Business
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Early Access Callout - replaces plan upgrade */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                🎉 Free During Early Access
+              </h2>
+              <p className="text-gray-600 mb-4">
+                Create unlimited service listings at no cost while we're in early access. Build your presence on the marketplace today!
+              </p>
+            </div>
           </div>
         )}
 
@@ -599,8 +563,7 @@ export function ProviderDashboardPage() {
               <h2 className="text-lg font-semibold text-gray-900">Your Listings</h2>
               <button
                 onClick={() => handleOpenListingModal()}
-                disabled={!canCreateListing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 + Add Listing
               </button>
@@ -731,9 +694,11 @@ export function ProviderDashboardPage() {
                 </p>
               </div>
               <div>
-                <span className="text-sm text-gray-500">Plan</span>
+                <span className="text-sm text-gray-500">Status</span>
                 <p>
-                  <PlanBadge plan={profile.plan} />
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Free during early access
+                  </span>
                 </p>
               </div>
             </div>
@@ -771,6 +736,40 @@ export function ProviderDashboardPage() {
                   ))}
                 </select>
               </div>
+
+              {/* Custom Service Type - shown when OTHER_SERVICE is selected */}
+              {listingFormData.listingType === "OTHER_SERVICE" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    What type of service do you offer? *
+                  </label>
+                  <input
+                    type="text"
+                    value={listingFormData.customServiceType || ""}
+                    onChange={(e) =>
+                      setListingFormData((prev) => ({ ...prev, customServiceType: e.target.value }))
+                    }
+                    maxLength={50}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Equine Massage Therapy"
+                  />
+                  <p className="text-xs text-gray-600 mt-1.5">
+                    {listingFormData.customServiceType?.length || 0}/50 characters
+                  </p>
+                  <div className="mt-3 text-sm text-gray-700">
+                    <p className="font-medium mb-1">Examples of services:</p>
+                    <ul className="text-xs text-gray-600 space-y-0.5 ml-4">
+                      <li>• Animal Photography & Videography</li>
+                      <li>• Pet Sitting & Dog Walking</li>
+                      <li>• Behavioral Consultation</li>
+                      <li>• Microchipping & DNA Testing</li>
+                      <li>• Show Handling & Coaching</li>
+                      <li>• Canine Nutrition Consulting</li>
+                      <li>• Facility Design & Setup</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

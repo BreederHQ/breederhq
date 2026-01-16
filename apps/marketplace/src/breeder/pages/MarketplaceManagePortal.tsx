@@ -624,7 +624,7 @@ export function MarketplaceManagePortal() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Direct Listings Card */}
           <Link
-            to="/manage/animals-direct"
+            to="/manage/individual-animals"
             className="bg-gradient-to-br from-purple-500/10 via-portal-card to-portal-surface border-l-4 border-l-purple-500 rounded-xl overflow-hidden hover:border-l-purple-400 transition-all group cursor-pointer shadow-lg hover:shadow-purple-500/20 block"
           >
             <div className="p-6">
@@ -634,9 +634,9 @@ export function MarketplaceManagePortal() {
                 </div>
                 <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Direct Listings</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Individual Animals</h3>
               <p className="text-sm text-text-tertiary mb-4">
-                Individual animal listings for one-time sales or services
+                List individual animals for sale or placement
               </p>
               <div className="pt-4 border-t border-border-subtle">
                 <div className="text-accent font-medium flex items-center gap-2">
@@ -699,7 +699,7 @@ export function MarketplaceManagePortal() {
 
           {/* Services Listings Card */}
           <Link
-            to="/manage/services-direct"
+            to="/manage/your-services"
             className="bg-gradient-to-br from-green-500/10 via-portal-card to-portal-surface border-l-4 border-l-green-500 rounded-xl overflow-hidden hover:border-l-green-400 transition-all group cursor-pointer shadow-lg hover:shadow-green-500/20 block"
           >
             <div className="p-6">
@@ -709,7 +709,7 @@ export function MarketplaceManagePortal() {
                 </div>
                 <ChevronRight className="w-6 h-6 text-text-tertiary group-hover:text-green-400 group-hover:translate-x-1 transition-all" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Services Listings</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Your Services</h3>
               <p className="text-sm text-text-tertiary mb-4">
                 Offer training, grooming, or other professional services
               </p>
