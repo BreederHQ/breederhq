@@ -147,6 +147,74 @@ export type BreedingProgramCreateInput = {
   typicalWaitTime?: string | null;
 };
 
+/* Foaling milestones and outcome types (horse-specific) */
+export type MarePostFoalingCondition =
+  | "EXCELLENT"
+  | "GOOD"
+  | "FAIR"
+  | "POOR"
+  | "VETERINARY_CARE_REQUIRED";
+
+export type FoalingMilestoneType =
+  | "VET_PREGNANCY_CHECK_15D"
+  | "VET_ULTRASOUND_45D"
+  | "VET_ULTRASOUND_90D"
+  | "BEGIN_MONITORING_300D"
+  | "PREPARE_FOALING_AREA_320D"
+  | "DAILY_CHECKS_330D"
+  | "DUE_DATE_340D"
+  | "OVERDUE_VET_CALL_350D";
+
+export type FoalingMilestone = {
+  id: number;
+  tenantId: number;
+  breedingPlanId: number;
+  type: FoalingMilestoneType;
+  scheduledDate: string;
+  completedDate: string | null;
+  isCompleted: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FoalingOutcomeInput = {
+  hadComplications: boolean;
+  complicationDetails?: string | null;
+  veterinarianCalled: boolean;
+  veterinarianName?: string | null;
+  veterinarianNotes?: string | null;
+  placentaPassed?: boolean | null;
+  placentaPassedMinutes?: number | null;
+  mareCondition?: MarePostFoalingCondition | null;
+  postFoalingHeatDate?: string | null;
+  postFoalingHeatNotes?: string | null;
+  readyForRebreeding?: boolean;
+  rebredDate?: string | null;
+};
+
+export type FoalingOutcome = FoalingOutcomeInput & {
+  id: number;
+  tenantId: number;
+  breedingPlanId: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FoalingTimeline = {
+  breedingPlanId: number;
+  dam: { id: number; name: string } | null;
+  sire: { id: number; name: string } | null;
+  expectedBirthDate: string | null;
+  actualBreedDate: string | null;
+  actualBirthDate: string | null;
+  daysUntilFoaling: number | null;
+  status: "PLANNING" | "EXPECTING" | "MONITORING" | "IMMINENT" | "OVERDUE" | "FOALED";
+  milestones: FoalingMilestone[];
+  offspring: any[];
+  outcome: FoalingOutcome | null;
+};
+
 /* Offspring Groups, types (new) */
 export type OffspringGroupLite = {
   id: number;
@@ -421,10 +489,12 @@ export function makeBreedingApi(opts: ApiOpts) {
   };
 
   /** Build headers per request, attach CSRF for non GET when asked */
-  const buildHeaders = (method: string, extra?: HeadersInit): HeadersInit => {
-    const h: Record<string, string> = {
-      "content-type": "application/json",
-    };
+  const buildHeaders = (method: string, extra?: HeadersInit, hasBody = true): HeadersInit => {
+    const h: Record<string, string> = {};
+    // Only set content-type for requests that have a body (not GET or bodyless DELETE)
+    if (hasBody && method !== "GET") {
+      h["content-type"] = "application/json";
+    }
     if (tenantId) h["x-tenant-id"] = String(tenantId);
     if (opts.withCsrf && method !== "GET" && typeof document !== "undefined") {
       const token = getCookie("XSRF-TOKEN");
@@ -489,7 +559,7 @@ export function makeBreedingApi(opts: ApiOpts) {
     const res = await fetchFn(joinUrl(base, path), {
       method: "DELETE",
       credentials: "include",
-      headers: buildHeaders("DELETE", init?.headers),
+      headers: buildHeaders("DELETE", init?.headers, false), // No body for DELETE
       ...init,
     });
     if (!res.ok) throw await toError(res);
@@ -876,6 +946,38 @@ export function makeBreedingApi(opts: ApiOpts) {
       },
       getBlockBookings(blockId: number) {
         return get<{ bookings: SchedulingBooking[] }>(`/scheduling/blocks/${blockId}/bookings`).then(res => res.bookings || []);
+      },
+    },
+
+    /* Foaling milestones namespace for horse-specific vet checkpoints */
+    foaling: {
+      /** Get foaling timeline with milestones for a breeding plan */
+      getTimeline(planId: number) {
+        return get<FoalingTimeline>(`/breeding/plans/${planId}/foaling-timeline`);
+      },
+      /** Create foaling milestones for a breeding plan (requires actualBreedDate) */
+      createMilestones(planId: number) {
+        return post<FoalingMilestone[]>(`/breeding/plans/${planId}/milestones`, {});
+      },
+      /** Delete all milestones for a breeding plan */
+      deleteMilestones(planId: number) {
+        return del<{ deletedCount: number }>(`/breeding/plans/${planId}/milestones`);
+      },
+      /** Recalculate milestone dates from actual breed date */
+      recalculateMilestones(planId: number) {
+        return post<FoalingMilestone[]>(`/breeding/plans/${planId}/milestones/recalculate`, {});
+      },
+      /** Mark a milestone as completed */
+      completeMilestone(milestoneId: number) {
+        return patch<FoalingMilestone>(`/breeding/milestones/${milestoneId}/complete`, {});
+      },
+      /** Mark a milestone as incomplete (undo completion) */
+      uncompleteMilestone(milestoneId: number) {
+        return patch<FoalingMilestone>(`/breeding/milestones/${milestoneId}/uncomplete`, {});
+      },
+      /** Add foaling outcome record */
+      addOutcome(planId: number, body: FoalingOutcomeInput) {
+        return post<FoalingOutcome>(`/breeding/plans/${planId}/foaling-outcome`, body);
       },
     },
   };

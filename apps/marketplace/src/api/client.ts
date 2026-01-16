@@ -1211,6 +1211,7 @@ export interface ProviderListingItem {
   listingType: ProviderServiceType;
   title: string;
   description: string | null;
+  customServiceType: string | null; // For OTHER_SERVICE - custom service type name
   city: string | null;
   state: string | null;
   priceCents: number | null;
@@ -1227,6 +1228,7 @@ export interface ProviderListingCreateInput {
   listingType: ProviderServiceType;
   title: string;
   description?: string;
+  customServiceType?: string; // For OTHER_SERVICE category - custom service type name
   contactName?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -1639,6 +1641,7 @@ export interface PublicServiceListing {
   listingType: ServiceListingType;
   title: string;
   description: string | null;
+  customServiceType: string | null; // For OTHER_SERVICE - custom service type name
   city: string | null;
   state: string | null;
   country: string | null;
@@ -3729,6 +3732,703 @@ export async function getTenantAnimals(
 
   const data = await safeReadJson<{ items: TenantAnimalItem[]; total: number }>(response);
   return data || { items: [], total: 0 };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA DRAWER - LISTING DATA CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Configuration for which animal data to display in a marketplace listing.
+ * Each section can be enabled/disabled and have specific items selected.
+ * This config is saved to DirectAnimalListing.dataDrawerConfig field.
+ */
+export interface DataDrawerConfig {
+  identity?: {
+    enabled: boolean;
+    showName?: boolean;
+    showPhoto?: boolean;
+    showDob?: boolean;
+  };
+  registry?: {
+    enabled: boolean;
+    registryIds?: number[];
+  };
+  health?: {
+    enabled: boolean;
+    traitIds?: number[];
+  };
+  genetics?: {
+    enabled: boolean;
+    showBreedComposition?: boolean;
+    showHealthGenetics?: boolean;
+    showCoatColor?: boolean;
+    showCOI?: boolean;
+    showPredictedWeight?: boolean;
+  };
+  media?: {
+    enabled: boolean;
+    mediaIds?: number[];
+  };
+  achievements?: {
+    enabled: boolean;
+    titleIds?: number[];
+    competitionIds?: number[];
+  };
+  lineage?: {
+    enabled: boolean;
+    showSire?: boolean;
+    showDam?: boolean;
+  };
+  breeding?: {
+    enabled: boolean;
+    showOffspringCount?: boolean;
+  };
+  documents?: {
+    enabled: boolean;
+    documentIds?: number[];
+  };
+}
+
+/**
+ * Privacy settings for an animal (from AnimalPrivacySettings table)
+ */
+export interface AnimalPrivacySettings {
+  animalId: number;
+  allowCrossTenantMatching: boolean;
+  showName: boolean;
+  showPhoto: boolean;
+  showFullDob: boolean;
+  showRegistryFull: boolean;
+  showBreeder: boolean;
+  enableHealthSharing: boolean;
+  enableGeneticsSharing: boolean;
+  enableDocumentSharing: boolean;
+  enableMediaSharing: boolean;
+  showTitles: boolean;
+  showTitleDetails: boolean;
+  showCompetitions: boolean;
+  showCompetitionDetails: boolean;
+  showBreedingHistory: boolean;
+  allowInfoRequests: boolean;
+  allowDirectContact: boolean;
+}
+
+/**
+ * Health trait eligible for marketplace listing
+ */
+export interface HealthTrait {
+  id: number;
+  key: string;
+  displayName: string;
+  category: string;
+  valueType: string;
+  value: any;
+  status: string | null;
+  performedAt: string | null;
+  verified: boolean;
+}
+
+/**
+ * Title eligible for marketplace listing
+ */
+export interface TitleItem {
+  id: number;
+  name: string;
+  abbreviation: string;
+  organization: string | null;
+  dateEarned: string | null;
+  eventName: string | null;
+  eventLocation: string | null;
+  pointsEarned: number | null;
+  majorWins: number | null;
+  verified: boolean;
+}
+
+/**
+ * Competition entry eligible for marketplace listing
+ */
+export interface CompetitionItem {
+  id: number;
+  eventName: string;
+  eventDate: string | null;
+  organization: string | null;
+  competitionType: string | null;
+  className: string | null;
+  placement: number | null;
+  placementLabel: string | null;
+  pointsEarned: number | null;
+  isMajorWin: boolean;
+}
+
+/**
+ * Media item eligible for marketplace listing
+ */
+export interface MediaItem {
+  id: number;
+  kind: string;
+  filename: string;
+  caption: string | null;
+}
+
+/**
+ * Document eligible for marketplace listing
+ */
+export interface DocumentItem {
+  id: number;
+  kind: string;
+  filename: string;
+}
+
+/**
+ * Registry identifier
+ */
+export interface RegistryItem {
+  id: number;
+  registryId: number | null;
+  registryName: string | null;
+  registryAbbr: string | null;
+  identifier: string;
+}
+
+/**
+ * Genetics data for animal
+ */
+export interface GeneticsData {
+  id: number;
+  testProvider: string | null;
+  testDate: string | null;
+  breedComposition: any;
+  coatColorData: any;
+  healthGeneticsData: any;
+  coatTypeData: any;
+  physicalTraitsData: any;
+  eyeColorData: any;
+  coi: number | null;
+  predictedAdultWeight: number | null;
+}
+
+/**
+ * Parent info for lineage
+ */
+export interface ParentInfo {
+  id: number;
+  name: string;
+  breed: string | null;
+  photoUrl: string | null;
+  titles: string;
+}
+
+/**
+ * Response from GET /api/v2/marketplace/animals/:id/listing-data
+ * Contains all animal data eligible for marketplace listing
+ */
+export interface AnimalListingData {
+  animal: {
+    id: number;
+    name: string;
+    species: string;
+    breed: string | null;
+    sex: string | null;
+    birthDate: string | null;
+    photoUrl: string | null;
+  };
+  privacySettings: AnimalPrivacySettings;
+  registrations: RegistryItem[];
+  health: {
+    enabled: boolean;
+    eligibleTraits: HealthTrait[];
+    allTraits: Array<{ id: number; key: string; displayName: string; marketplaceVisible: boolean | null }>;
+  };
+  genetics: {
+    enabled: boolean;
+    data: GeneticsData | null;
+  };
+  titles: {
+    enabled: boolean;
+    showDetails: boolean;
+    eligibleTitles: TitleItem[];
+    allTitles: Array<{ id: number; abbreviation: string; isPublic: boolean | null }>;
+  };
+  competitions: {
+    enabled: boolean;
+    showDetails: boolean;
+    eligibleCompetitions: CompetitionItem[];
+    allCompetitions: Array<{ id: number; eventName: string; isPublic: boolean | null }>;
+  };
+  media: {
+    enabled: boolean;
+    items: MediaItem[];
+  };
+  documents: {
+    enabled: boolean;
+    items: DocumentItem[];
+  };
+  lineage: {
+    sire: ParentInfo | null;
+    dam: ParentInfo | null;
+  };
+  breeding: {
+    enabled: boolean;
+    offspringCount: number;
+  };
+}
+
+/**
+ * Get comprehensive animal data for Data Drawer
+ * GET /api/v2/marketplace/animals/:id/listing-data
+ */
+export async function getAnimalListingData(
+  tenantId: string,
+  animalId: number
+): Promise<AnimalListingData> {
+  const response = await fetch(joinApi(`/api/v2/marketplace/animals/${animalId}/listing-data`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<AnimalListingData>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", response.status);
+  }
+
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC LISTING - For viewing published listings (no auth required)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface PublicListingResponse {
+  listing: {
+    id: number;
+    slug: string;
+    templateType: string;
+    headline: string | null;
+    title: string | null;
+    summary: string | null;
+    description: string | null;
+    priceModel: string;
+    priceCents: number | null;
+    priceMinCents: number | null;
+    priceMaxCents: number | null;
+    locationCity: string | null;
+    locationRegion: string | null;
+    locationCountry: string | null;
+    publishedAt: string | null;
+    viewCount: number;
+  };
+  breeder: {
+    id: number;
+    slug: string | null;
+    name: string;
+    city: string | null;
+    region: string | null;
+    country: string | null;
+  };
+  animal: {
+    id: number;
+    name: string | null;
+    species: string | null;
+    breed: string | null;
+    sex: string | null;
+    birthDate: string | null;
+    photoUrl: string | null;
+  };
+  data: {
+    registrations?: Array<{
+      id: number;
+      registryName: string;
+      identifier: string;
+    }>;
+    healthTests?: Array<{
+      id: number;
+      key: string;
+      displayName: string;
+      value: string;
+    }>;
+    genetics?: Array<{
+      id: number;
+      key: string;
+      displayName: string;
+      value: string;
+    }>;
+    titles?: Array<{
+      id: number;
+      name: string;
+      abbreviation: string | null;
+      dateEarned: string | null;
+    }>;
+    competitions?: Array<{
+      id: number;
+      eventName: string;
+      placement: string | null;
+      date: string | null;
+    }>;
+    media?: Array<{
+      id: number;
+      type: string;
+      url: string;
+      caption: string | null;
+    }>;
+    documents?: Array<{
+      id: number;
+      kind: string;
+      filename: string;
+      url: string;
+    }>;
+    lineage?: {
+      sire?: {
+        id: number;
+        name: string;
+        birthDate: string | null;
+        photoUrl: string | null;
+      };
+      dam?: {
+        id: number;
+        name: string;
+        birthDate: string | null;
+        photoUrl: string | null;
+      };
+    };
+    breeding?: {
+      offspringCount: number;
+    };
+  };
+}
+
+/**
+ * Fetch a public listing by slug (no authentication required)
+ */
+export async function getPublicListing(slug: string): Promise<PublicListingResponse> {
+  const response = await fetch(joinApi(`/api/v2/marketplace/listings/${slug}`), {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<PublicListingResponse>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse response", response.status);
+  }
+
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKETPLACE ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Daily data point for sparkline charts */
+export interface DailyDataPoint {
+  date: string;
+  value: number;
+}
+
+/** Stats for an individual program */
+export interface ProgramStats {
+  programId: number;
+  programName: string;
+  templateType: string;
+  viewsThisMonth: number;
+  viewsLastMonth: number;
+  viewsThisWeek: number;
+  viewsLastWeek: number;
+  inquiriesThisMonth: number;
+  inquiriesLastMonth: number;
+  inquiriesThisWeek: number;
+  inquiriesLastWeek: number;
+  totalViews: number;
+  totalInquiries: number;
+  viewsTrend7d: DailyDataPoint[];
+  viewsTrend30d: DailyDataPoint[];
+  inquiriesTrend7d: DailyDataPoint[];
+  isTrending: boolean;
+  trendMultiplier?: number;
+}
+
+/** Stats for an individual listing */
+export interface ListingStats {
+  listingId: number;
+  animalName: string;
+  templateType: string;
+  viewsThisMonth: number;
+  viewsLastMonth: number;
+  viewsThisWeek: number;
+  viewsLastWeek: number;
+  inquiriesThisMonth: number;
+  inquiriesLastMonth: number;
+  totalViews: number;
+  totalInquiries: number;
+  viewsTrend7d: DailyDataPoint[];
+  viewsTrend30d: DailyDataPoint[];
+  isTrending: boolean;
+  trendMultiplier?: number;
+}
+
+/** Aggregate summary stats */
+export interface PerformanceSummary {
+  totalViewsThisMonth: number;
+  totalViewsLastMonth: number;
+  totalViewsThisWeek: number;
+  totalViewsLastWeek: number;
+  viewsChangePercent: number;
+  totalInquiriesThisMonth: number;
+  totalInquiriesLastMonth: number;
+  totalInquiriesThisWeek: number;
+  totalInquiriesLastWeek: number;
+  inquiriesChangePercent: number;
+  unansweredInquiries: number;
+  responseRate: number;
+  avgResponseTimeHours: number | null;
+  viewsTrend7d: DailyDataPoint[];
+  viewsTrend30d: DailyDataPoint[];
+  topProgramId?: number;
+  topProgramName?: string;
+  topProgramViews?: number;
+}
+
+/** Insight item for actionable callouts */
+export interface InsightItem {
+  id: string;
+  type: "success" | "warning" | "info" | "trending";
+  icon: string;
+  message: string;
+  actionLabel?: string;
+  actionHref?: string;
+  priority: number;
+}
+
+/** Response from program analytics endpoint */
+export interface ProgramAnalyticsResponse {
+  summary: PerformanceSummary;
+  programStats: ProgramStats[];
+  insights: InsightItem[];
+  generatedAt: string;
+}
+
+/** Response from listing analytics endpoint */
+export interface ListingAnalyticsResponse {
+  summary: PerformanceSummary;
+  listingStats: ListingStats[];
+  insights: InsightItem[];
+  generatedAt: string;
+}
+
+/**
+ * Get analytics for all animal programs
+ * GET /api/v2/marketplace/analytics/programs
+ */
+export async function getProgramAnalytics(
+  tenantId: string,
+  params?: { period?: "week" | "month" }
+): Promise<ProgramAnalyticsResponse> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+  if (params?.period) {
+    qs.append("period", params.period);
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/analytics/programs?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ProgramAnalyticsResponse>(response);
+  if (!data) {
+    // Return empty default response
+    return {
+      summary: {
+        totalViewsThisMonth: 0,
+        totalViewsLastMonth: 0,
+        totalViewsThisWeek: 0,
+        totalViewsLastWeek: 0,
+        viewsChangePercent: 0,
+        totalInquiriesThisMonth: 0,
+        totalInquiriesLastMonth: 0,
+        totalInquiriesThisWeek: 0,
+        totalInquiriesLastWeek: 0,
+        inquiriesChangePercent: 0,
+        unansweredInquiries: 0,
+        responseRate: 100,
+        avgResponseTimeHours: null,
+        viewsTrend7d: [],
+        viewsTrend30d: [],
+      },
+      programStats: [],
+      insights: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+  return data;
+}
+
+/**
+ * Get analytics for direct animal listings
+ * GET /api/v2/marketplace/analytics/listings
+ */
+export async function getListingAnalytics(
+  tenantId: string,
+  params?: { period?: "week" | "month" }
+): Promise<ListingAnalyticsResponse> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+  if (params?.period) {
+    qs.append("period", params.period);
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/analytics/listings?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ListingAnalyticsResponse>(response);
+  if (!data) {
+    return {
+      summary: {
+        totalViewsThisMonth: 0,
+        totalViewsLastMonth: 0,
+        totalViewsThisWeek: 0,
+        totalViewsLastWeek: 0,
+        viewsChangePercent: 0,
+        totalInquiriesThisMonth: 0,
+        totalInquiriesLastMonth: 0,
+        totalInquiriesThisWeek: 0,
+        totalInquiriesLastWeek: 0,
+        inquiriesChangePercent: 0,
+        unansweredInquiries: 0,
+        responseRate: 100,
+        avgResponseTimeHours: null,
+        viewsTrend7d: [],
+        viewsTrend30d: [],
+      },
+      listingStats: [],
+      insights: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SERVICE ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ServiceStats {
+  serviceId: number;
+  serviceName: string;
+  serviceType: string;
+  status: string;
+  viewsThisMonth: number;
+  viewsLastMonth: number;
+  viewsChangePercent: number;
+  inquiriesThisMonth: number;
+  inquiriesLastMonth: number;
+  inquiriesChangePercent: number;
+  viewsTrend7d: DailyDataPoint[];
+  isTrending: boolean;
+  trendMultiplier: number | null;
+  // Compatibility aliases for shared components
+  programId: number;
+  programName: string;
+}
+
+export interface ServiceAnalyticsResponse {
+  summary: PerformanceSummary & {
+    topServiceName: string | null;
+    topServiceViews: number;
+  };
+  serviceStats: ServiceStats[];
+  insights: InsightItem[];
+  generatedAt: string;
+}
+
+/**
+ * Get analytics for breeder service listings
+ * GET /api/v2/marketplace/analytics/services
+ */
+export async function getServiceAnalytics(
+  tenantId: string,
+  params?: { period?: "week" | "month" }
+): Promise<ServiceAnalyticsResponse> {
+  const qs = new URLSearchParams();
+  qs.append("tenantId", tenantId);
+  if (params?.period) {
+    qs.append("period", params.period);
+  }
+
+  const response = await fetch(joinApi(`/api/v2/marketplace/analytics/services?${qs}`), {
+    credentials: "include",
+    headers: { "X-Tenant-ID": tenantId },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceAnalyticsResponse>(response);
+  if (!data) {
+    return {
+      summary: {
+        totalViewsThisMonth: 0,
+        totalViewsLastMonth: 0,
+        totalViewsThisWeek: 0,
+        totalViewsLastWeek: 0,
+        viewsChangePercent: 0,
+        totalInquiriesThisMonth: 0,
+        totalInquiriesLastMonth: 0,
+        totalInquiriesThisWeek: 0,
+        totalInquiriesLastWeek: 0,
+        inquiriesChangePercent: 0,
+        unansweredInquiries: 0,
+        responseRate: 100,
+        avgResponseTimeHours: null,
+        viewsTrend7d: [],
+        viewsTrend30d: [],
+        topServiceName: null,
+        topServiceViews: 0,
+      },
+      serviceStats: [],
+      insights: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+  return data;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

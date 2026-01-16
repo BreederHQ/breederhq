@@ -46,6 +46,10 @@ import PlannerSwitch from "./components/PlannerSwitch";
 import PlanJourney from "./components/PlanJourney";
 import { BreedingPlanCardView } from "./components/BreedingPlanCardView";
 import { BreedingPlanListView } from "./components/BreedingPlanListView";
+import { FoalingMilestoneChecklist } from "./components/FoalingMilestoneChecklist";
+import { FoalingOutcomeTab } from "./components/FoalingOutcomeTab";
+import { FoalingAlertBadge, calculateFoalingAlerts } from "./components/FoalingAlertBadge";
+import type { FoalingTimeline, FoalingOutcome, FoalingOutcomeInput } from "./api";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
@@ -108,6 +112,23 @@ const PLAN_TABS = [
   { key: "finances", label: "Finances" },
   { key: "audit", label: "Audit" },
 ] as const;
+
+// Horse-specific tabs (added conditionally when species is HORSE)
+const HORSE_TABS = [
+  { key: "foaling-checklist", label: "Foaling Checklist" },
+  { key: "foaling-outcome", label: "Foaling Outcome" },
+] as const;
+
+// Helper to get tabs based on species
+function getTabsForSpecies(species: string | null | undefined): { key: string; label: string }[] {
+  const baseTabs = [...PLAN_TABS];
+  if (species?.toUpperCase() === "HORSE") {
+    // Insert horse tabs after "dates" tab
+    const datesIndex = baseTabs.findIndex(t => t.key === "dates");
+    baseTabs.splice(datesIndex + 1, 0, ...HORSE_TABS);
+  }
+  return baseTabs;
+}
 
 
 /* ───────────────────────── Types ───────────────────────── */
@@ -398,6 +419,7 @@ function PlanCardViewWithDetails({
   totalRows,
   start,
   end,
+  foalingAlerts,
 }: {
   rows: PlanCardRow[];
   loading: boolean;
@@ -413,6 +435,7 @@ function PlanCardViewWithDetails({
   totalRows: number;
   start: number;
   end: number;
+  foalingAlerts?: Record<number | string, import("./components/FoalingAlertBadge").FoalingAlertState>;
 }) {
   const { open } = useTableDetails<PlanCardRow>();
 
@@ -423,6 +446,7 @@ function PlanCardViewWithDetails({
         loading={loading}
         error={error}
         onRowClick={(row) => open?.(row)}
+        foalingAlerts={foalingAlerts}
       />
       <TableFooter
         entityLabel="plans"
@@ -4207,6 +4231,9 @@ export default function AppBreeding() {
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  /** Foaling alerts for horse plans, keyed by plan ID */
+  const [foalingAlertsMap, setFoalingAlertsMap] = React.useState<Record<number | string, import("./components/FoalingAlertBadge").FoalingAlertState>>({});
+
 
   /* Search and filters */
   const Q_KEY = "bhq_breeding_q_v2";
@@ -4489,7 +4516,7 @@ export default function AppBreeding() {
       try {
         const resp = await api.listPlans({
           q: qDebounced || undefined,
-          include: "parents,org,program",
+          include: "parents,org,program,milestones",
           archived: showArchived ? "include" : "exclude",
           page: 1,
           limit: 500,
@@ -4504,6 +4531,28 @@ export default function AppBreeding() {
         if (!cancelled) {
           const planRows = items.map(planToRow);
           setRows(planRows);
+
+          // Calculate foaling alerts for horse plans that have milestones
+          const alertsMap: Record<number | string, import("./components/FoalingAlertBadge").FoalingAlertState> = {};
+          for (const item of items) {
+            const isHorse = (item.species || "").toLowerCase() === "horse";
+            const milestones = item.breedingMilestones || [];
+            if (isHorse && milestones.length > 0) {
+              const alert = calculateFoalingAlerts(
+                milestones.map((m: any) => ({
+                  isCompleted: m.isCompleted,
+                  scheduledDate: m.scheduledDate,
+                  type: m.milestoneType,
+                })),
+                item.breedDateActual || null,
+                item.birthDateActual || null
+              );
+              if (alert.hasIssues) {
+                alertsMap[item.id] = alert;
+              }
+            }
+          }
+          setFoalingAlertsMap(alertsMap);
 
           // Fetch tags for each plan
           Promise.all(
@@ -5216,7 +5265,7 @@ export default function AppBreeding() {
     return {
       idParam: "planId",
       getRowId: (r: PlanRow) => r.id,
-      width: 900,
+      width: 960,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: ID) => {
@@ -5791,6 +5840,7 @@ export default function AppBreeding() {
                     totalRows={rows.length}
                     start={start}
                     end={end}
+                    foalingAlerts={foalingAlertsMap}
                   />
                 )}
               </DetailsHost>
@@ -6854,6 +6904,196 @@ function PlanDetailsView(props: {
     };
   }, [activeTab, row.offspringGroupId, api]);
 
+  // ---- Horse-specific: Foaling timeline and outcome state ----
+  const isHorse = row.species?.toUpperCase() === "HORSE";
+  const [foalingTimeline, setFoalingTimeline] = React.useState<FoalingTimeline | null>(null);
+  const [foalingLoading, setFoalingLoading] = React.useState(false);
+  const [foalingError, setFoalingError] = React.useState<string | null>(null);
+
+  // Compute foaling alerts from timeline data
+  const foalingAlerts = React.useMemo(() => {
+    if (!isHorse || !foalingTimeline) return null;
+    return calculateFoalingAlerts(
+      foalingTimeline.milestones,
+      foalingTimeline.actualBreedDate,
+      foalingTimeline.actualBirthDate
+    );
+  }, [isHorse, foalingTimeline]);
+
+  // Compute dynamic tabs based on species, with alert badges for horses
+  const effectiveTabs = React.useMemo(() => {
+    const baseTabs = getTabsForSpecies(row.species);
+
+    // Add badge and red styling to foaling checklist tab if there are alerts
+    if (isHorse && foalingAlerts?.hasIssues) {
+      const hasOverdue = foalingAlerts.overdueCount > 0;
+      return baseTabs.map((tab) => {
+        if (tab.key === "foaling-checklist") {
+          return {
+            ...tab,
+            // When overdue, make the label red
+            label: hasOverdue ? (
+              <span className="text-red-500">{tab.label}</span>
+            ) : tab.label,
+            badge: (
+              <FoalingAlertBadge
+                overdueCount={foalingAlerts.overdueCount}
+                dueSoonCount={foalingAlerts.dueSoonCount}
+                size="sm"
+                dotOnly
+              />
+            ),
+          };
+        }
+        return tab;
+      });
+    }
+    return baseTabs;
+  }, [row.species, isHorse, foalingAlerts]);
+
+  // Fetch foaling timeline when drawer opens for a horse (needed for tab badge/red highlight)
+  React.useEffect(() => {
+    if (!isHorse) return;
+    if (!api || !row.id) return;
+
+    let cancelled = false;
+    setFoalingLoading(true);
+    setFoalingError(null);
+
+    api.foaling.getTimeline(Number(row.id))
+      .then((data) => {
+        if (!cancelled) {
+          setFoalingTimeline(data);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("[Breeding] Failed to load foaling timeline:", err);
+          setFoalingError(err?.message || "Failed to load foaling data");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFoalingLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isHorse, row.id, api]);
+
+  // Handler for creating milestones
+  const handleCreateMilestones = React.useCallback(async () => {
+    if (!api || !row.id) return;
+    setFoalingLoading(true);
+    try {
+      await api.foaling.createMilestones(Number(row.id));
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to create milestones:", err);
+      setFoalingError(err?.message || "Failed to create milestones");
+    } finally {
+      setFoalingLoading(false);
+    }
+  }, [api, row.id]);
+
+  // Handler for completing a milestone
+  const handleCompleteMilestone = React.useCallback(async (milestoneId: number) => {
+    if (!api || !row.id) return;
+    try {
+      await api.foaling.completeMilestone(milestoneId);
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to complete milestone:", err);
+      throw err;
+    }
+  }, [api, row.id]);
+
+  // Handler for uncompleting a milestone (undo)
+  const handleUncompleteMilestone = React.useCallback(async (milestoneId: number) => {
+    if (!api || !row.id) return;
+    try {
+      await api.foaling.uncompleteMilestone(milestoneId);
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to uncomplete milestone:", err);
+      throw err;
+    }
+  }, [api, row.id]);
+
+  // Handler for deleting all milestones and optionally recreating them
+  // If the plan has an actual breed date, automatically recreate after delete
+  const handleDeleteMilestones = React.useCallback(async () => {
+    if (!api || !row.id) return;
+    setFoalingLoading(true);
+    try {
+      await api.foaling.deleteMilestones(Number(row.id));
+
+      // If there's an actual breed date, immediately recreate the milestones
+      // This gives the user a seamless "delete & recreate" experience
+      const hasBreedDate = foalingTimeline?.actualBreedDate || row.breedDateActual;
+      if (hasBreedDate) {
+        try {
+          await api.foaling.createMilestones(Number(row.id));
+        } catch (createErr: any) {
+          // If create fails (e.g., no breed date after all), just show the empty state
+          console.warn("[Breeding] Could not recreate milestones after delete:", createErr);
+        }
+      }
+
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to delete milestones:", err);
+      setFoalingError(err?.message || "Failed to delete milestones");
+    } finally {
+      setFoalingLoading(false);
+    }
+  }, [api, row.id, foalingTimeline?.actualBreedDate, row.breedDateActual]);
+
+  // Handler for recalculating milestone dates from actual breed date
+  const handleRecalculateMilestones = React.useCallback(async () => {
+    if (!api || !row.id) return;
+    setFoalingLoading(true);
+    try {
+      await api.foaling.recalculateMilestones(Number(row.id));
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to recalculate milestones:", err);
+      setFoalingError(err?.message || "Failed to recalculate milestones");
+    } finally {
+      setFoalingLoading(false);
+    }
+  }, [api, row.id]);
+
+  // Handler for saving foaling outcome
+  const handleSaveFoalingOutcome = React.useCallback(async (outcomeData: FoalingOutcomeInput) => {
+    if (!api || !row.id) return;
+    setFoalingLoading(true);
+    try {
+      await api.foaling.addOutcome(Number(row.id), outcomeData);
+      // Refetch timeline
+      const data = await api.foaling.getTimeline(Number(row.id));
+      setFoalingTimeline(data);
+    } catch (err: any) {
+      console.error("[Breeding] Failed to save foaling outcome:", err);
+      setFoalingError(err?.message || "Failed to save outcome");
+      throw err;
+    } finally {
+      setFoalingLoading(false);
+    }
+  }, [api, row.id]);
+
   // Reset persisted snapshot when row.id changes (switching to a different plan)
   React.useEffect(() => {
     setPersistedSnapshot(buildPlanSnapshot(row));
@@ -7161,18 +7401,29 @@ function PlanDetailsView(props: {
       // If nothing to clear, just return
       if (fieldsToClear.length === 0) return;
 
+      // For horses: check if breedDateActual will be cleared (directly or via cascade)
+      // If so, we need to delete all foaling milestones since they're calculated from breed date
+      const breedDateIdx = ACTUAL_FIELD_ORDER.indexOf("breedDateActual");
+      const willClearBreedDate = isHorse && idx <= breedDateIdx;
+      const hasMilestones = willClearBreedDate && foalingTimeline && foalingTimeline.milestones.length > 0;
+
       // Build confirmation message
       const fieldLabels = fieldsToClear.map(k => ACTUAL_FIELD_LABELS[k]).join(", ");
-      const message = fieldsToClear.length === 1
+      let message = fieldsToClear.length === 1
         ? `This will clear: ${fieldLabels}`
         : `This will clear the following actual dates: ${fieldLabels}`;
+
+      // Add foaling milestone warning for horses
+      if (hasMilestones) {
+        message += "\n\nThis will also delete all foaling milestones. You can recreate them after entering a new breeding date.";
+      }
 
       // Confirm with user
       const confirmed = await confirmModal({
         title: "Clear Actual Dates",
         message: (
           <div>
-            <p className="mb-2">{message}</p>
+            <p className="mb-2 whitespace-pre-line">{message}</p>
             <p className="text-sm text-secondary">The plan's phase will be updated based on remaining actual dates.</p>
           </div>
         ),
@@ -7198,10 +7449,27 @@ function PlanDetailsView(props: {
         try {
           await requestSave();
 
+          // For horses: delete milestones if breed date was cleared
+          if (hasMilestones && api) {
+            try {
+              await api.foaling.deleteMilestones(Number(row.id));
+            } catch (err) {
+              console.error("[Breeding] Failed to delete milestones after clearing breed date:", err);
+              // Non-fatal - continue
+            }
+          }
+
           // Fetch fresh data to ensure UI reflects updated status/phase
           if (api && onPlanUpdated) {
             const fresh = await api.getPlan(Number(row.id), "parents,org,program");
             onPlanUpdated(row.id, fresh);
+          }
+
+          // For horses, refetch foaling timeline to reflect cleared state
+          if (isHorse && api) {
+            api.foaling.getTimeline(Number(row.id))
+              .then((data) => setFoalingTimeline(data))
+              .catch((err) => console.error("[Breeding] Failed to refresh foaling timeline:", err));
           }
         } catch (error: any) {
           console.error("[Breeding] Failed to save after clearing dates:", error);
@@ -7219,7 +7487,7 @@ function PlanDetailsView(props: {
         }
       }, 100);
     },
-    [setDraftLive, effective, confirmModal, requestSave, api, onPlanUpdated, row.id, setDraft]
+    [setDraftLive, effective, confirmModal, requestSave, api, onPlanUpdated, row.id, setDraft, isHorse, foalingTimeline]
   );
 
   // Allow editing cycle start actual when in edit mode and committed
@@ -7975,12 +8243,20 @@ function PlanDetailsView(props: {
       setDraft({});
       setPendingSave(false);
       pendingSaveRef.current = false; // Sync update for ref-based checks
+
+      // For horses, refetch foaling timeline in case breed date was updated
+      // This ensures the Foaling Checklist tab shows the updated actualBreedDate
+      if (isHorse && api && row.id) {
+        api.foaling.getTimeline(Number(row.id))
+          .then((data) => setFoalingTimeline(data))
+          .catch((err) => console.error("[Breeding] Failed to refresh foaling timeline:", err));
+      }
     } catch (error) {
       // On error, clear pending but keep isDirty true
       setPendingSave(false);
       throw error;
     }
-  }, [requestSave, setDraft]);
+  }, [requestSave, setDraft, isHorse, api, row.id]);
 
   // Wrap close to check for unsaved changes
   const handleClose = React.useCallback(async () => {
@@ -8013,15 +8289,19 @@ function PlanDetailsView(props: {
   type ViewMode = "list" | "calendar" | "timeline";
   const [view, setView] = React.useState<ViewMode>("list");
 
+  // Hide Edit button on foaling tabs - they have their own interaction patterns
+  const isFoalingTab = activeTab === "foaling-checklist" || activeTab === "foaling-outcome";
+  const showEditButton = editable && !isFoalingTab;
+
   return (
     <DetailsScaffold
       title={row.name}
       subtitle={row.code || ""}
       mode={mode}
-      onEdit={editable ? () => setMode("edit") : undefined}
+      onEdit={showEditButton ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
       onSave={handleSave}
-      tabs={tabs as { key: string; label: string }[]}
+      tabs={effectiveTabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onClose={handleClose}
@@ -9587,9 +9867,15 @@ function PlanDetailsView(props: {
                         disabled={!canEditDates}
                         onClick={async () => {
                           if (!canEditDates) return;
+
+                          // Check if this horse has foaling milestones that will be deleted
+                          const hasMilestones = isHorse && foalingTimeline && foalingTimeline.milestones.length > 0;
+
                           const confirmed = await utils.confirmDialog({
                             title: "Reset Actual Dates",
-                            message: "Reset all actual dates for this plan back to blank?",
+                            message: hasMilestones
+                              ? "Reset all actual dates for this plan back to blank?\n\nThis will also delete all foaling milestones. You can recreate them after entering a new breeding date."
+                              : "Reset all actual dates for this plan back to blank?",
                             confirmText: "Reset",
                             cancelText: "Cancel",
                           });
@@ -9633,10 +9919,27 @@ function PlanDetailsView(props: {
 
                             await api.updatePlan(Number(row.id), payload as any);
 
+                            // For horses with milestones, delete them as part of the reset
+                            if (hasMilestones) {
+                              try {
+                                await api.foaling.deleteMilestones(Number(row.id));
+                              } catch (err) {
+                                console.error("[Breeding] Failed to delete milestones during reset:", err);
+                                // Non-fatal - continue with the reset
+                              }
+                            }
+
                             // Fetch fresh data and update UI
                             const fresh = await api.getPlan(Number(row.id), "parents,org,program");
 
                             onPlanUpdated?.(row.id, fresh);
+
+                            // For horses, refetch foaling timeline to reflect cleared state
+                            if (isHorse) {
+                              api.foaling.getTimeline(Number(row.id))
+                                .then((data) => setFoalingTimeline(data))
+                                .catch((err) => console.error("[Breeding] Failed to refresh foaling timeline:", err));
+                            }
 
                             // Clear local draft state
                             draftRef.current = {};
@@ -10051,6 +10354,64 @@ function PlanDetailsView(props: {
                 </Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* FOALING CHECKLIST TAB - Horse only */}
+        {activeTab === "foaling-checklist" && isHorse && (
+          <div className="space-y-4">
+            {foalingLoading && (
+              <div className="text-center py-8 text-secondary">
+                Loading foaling data...
+              </div>
+            )}
+            {foalingError && (
+              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                {foalingError}
+              </div>
+            )}
+            {!foalingLoading && !foalingError && (
+              <FoalingMilestoneChecklist
+                planId={Number(row.id)}
+                damName={row.damName || null}
+                expectedBirthDate={row.expectedBirthDate || null}
+                actualBreedDate={foalingTimeline?.actualBreedDate || null}
+                actualBirthDate={row.birthDateActual || null}
+                milestones={foalingTimeline?.milestones || []}
+                onCompleteMilestone={handleCompleteMilestone}
+                onUncompleteMilestone={handleUncompleteMilestone}
+                onCreateMilestones={handleCreateMilestones}
+                onRecalculateMilestones={handleRecalculateMilestones}
+                onDeleteMilestones={handleDeleteMilestones}
+                isLoading={foalingLoading}
+              />
+            )}
+          </div>
+        )}
+
+        {/* FOALING OUTCOME TAB - Horse only */}
+        {activeTab === "foaling-outcome" && isHorse && (
+          <div className="space-y-4">
+            {foalingLoading && (
+              <div className="text-center py-8 text-secondary">
+                Loading foaling data...
+              </div>
+            )}
+            {foalingError && (
+              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                {foalingError}
+              </div>
+            )}
+            {!foalingLoading && !foalingError && (
+              <FoalingOutcomeTab
+                planId={Number(row.id)}
+                damName={row.damName || null}
+                birthDate={row.birthDateActual || null}
+                outcome={foalingTimeline?.outcome || null}
+                onSave={handleSaveFoalingOutcome}
+                isLoading={foalingLoading}
+              />
+            )}
           </div>
         )}
       </div>

@@ -307,7 +307,10 @@ export function MarketplaceGate() {
   // Unauthenticated users can browse public routes
   // Protected routes (inquiries, saved, waitlist, etc.) redirect to auth
   if (state.status === "unauthenticated") {
-    if (currentPathIsPublic) {
+    // Check if marketplace requires authentication (for pre-launch deploys)
+    const requireAuth = import.meta.env.VITE_MARKETPLACE_REQUIRE_AUTH === "true";
+
+    if (currentPathIsPublic && !requireAuth) {
       // Allow anonymous browsing of public pages
       return (
         <MarketplaceThemeProvider>
@@ -327,7 +330,10 @@ export function MarketplaceGate() {
 
   // Authenticated but not entitled - allow public browsing, block protected routes
   if (state.status === "not_entitled") {
-    if (currentPathIsPublic) {
+    // Check if marketplace requires authentication (for pre-launch deploys)
+    const requireAuth = import.meta.env.VITE_MARKETPLACE_REQUIRE_AUTH === "true";
+
+    if (currentPathIsPublic && !requireAuth) {
       // Allow browsing even without entitlement
       return (
         <MarketplaceThemeProvider>

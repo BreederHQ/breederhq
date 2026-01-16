@@ -19,6 +19,7 @@ import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
 import AppMarketing from "@bhq/marketing/App-Marketing";
 import AppFinance from "@bhq/finance/App-Finance";
+import AppContracts from "@bhq/contracts/App-Contracts";
 import AdminModule from "@bhq/admin/App-Admin";
 import AppWaitlist from "@bhq/waitlist/App-Waitlist";
 import AppBloodlines from "@bhq/bloodlines/App-Bloodlines";
@@ -34,7 +35,7 @@ import NotificationsDropdown, { type Notification } from "./components/Notificat
 import QuotaWarningBanner from "./components/QuotaWarningBanner";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "bloodlines" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "bloodlines" | "marketing" | "marketplace" | "finance" | "contracts" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -80,6 +81,7 @@ function RouteView() {
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <MarketplaceEmbedded />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
+  if (p === "/contracts" || p.startsWith("/contracts")) return <AppContracts />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   if (p === "/pricing" || p.startsWith("/pricing")) return <PricingPage />;
 
@@ -288,7 +290,7 @@ export default function AppPlatform() {
             type: "waitlist",
             title: `${waitlistPending} Pending Waitlist Request${waitlistPending > 1 ? "s" : ""}`,
             body: "Review new waitlist requests from the marketplace.",
-            href: "/waitlist?tab=pending",
+            href: "/waitlist/pending",
             createdAt: new Date(),
             read: false,
           });
@@ -428,6 +430,7 @@ export default function AppPlatform() {
               { key: "marketing", label: "Marketing", href: "/marketing" },
               { key: "marketplace", label: "Marketplace", href: "/marketplace", icon: "marketplace" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
+              { key: "contracts", label: "Contracts", href: "/contracts", icon: "contracts" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
             orgName={orgName}

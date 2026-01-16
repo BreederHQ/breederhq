@@ -255,7 +255,7 @@ function WaitlistTile({
 
   return (
     <a
-      href="/waitlist"
+      href={hasPending ? "/waitlist/pending" : "/waitlist"}
       className="bhq-tile"
       style={{
         display: "block",

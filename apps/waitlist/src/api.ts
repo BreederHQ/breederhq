@@ -141,6 +141,7 @@ async function withTenantHeaders(init: TenantInit = {}): Promise<TenantInit> {
 
   return {
     ...init,
+    credentials: "include" as RequestCredentials,
     headers,
   };
 }

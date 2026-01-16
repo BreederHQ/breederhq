@@ -19,6 +19,7 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "postcss": "^8.5.6",
+    "tsx": "^4.19.0",
     "typescript": "5.9.3",
     "vite": "5.4.21"
   },
@@ -26,6 +27,9 @@
     "dev": "vite",
     "prebuild": "node scripts/check-no-legacy-imports.cjs",
     "build": "vite build",
+    "postbuild": "npx tsx scripts/generate-sitemap.ts",
+    "sitemap": "npx tsx scripts/generate-sitemap.ts",
+    "sitemap:prod": "SITEMAP_API_URL=https://api.breederhq.com SITEMAP_BASE_URL=https://marketplace.breederhq.com npx tsx scripts/generate-sitemap.ts",
     "preview": "vite preview --port 5178"
   }
 }

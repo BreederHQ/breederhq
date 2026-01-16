@@ -2,6 +2,28 @@
 
 Documentation for how animals are displayed and categorized on the marketplace.
 
+## V2 Features
+
+### Data Drawer (NEW - 2026-01-16)
+
+The **Data Drawer** allows breeders to customize which animal data appears in their marketplace listings with granular control over health tests, titles, media, and more.
+
+**Key Features:**
+- Section-level and item-level data selection
+- Privacy-first architecture with three-layer filtering
+- Live preview of how data will appear to buyers
+- Works with all listing template types
+
+**Documentation:**
+- [Complete Guide](../features/marketplace/data-drawer.md)
+- [Quick Reference](../features/marketplace/data-drawer-quick-reference.md)
+
+**API Endpoints:**
+- `GET /api/v2/marketplace/animals/:id/listing-data` - Fetch eligible data
+- `GET /api/v2/marketplace/listings/:slug` - Public listing view
+
+---
+
 ## Animal Listing Intents
 
 Each animal can have a listing intent that determines how it appears on the marketplace and what actions buyers can take.

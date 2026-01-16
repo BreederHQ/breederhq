@@ -37,6 +37,7 @@ import PortalActivatePage from "./pages/PortalActivatePage";
 import PortalBlockedPage from "./pages/PortalBlockedPage";
 import PortalLogoutPage from "./pages/PortalLogoutPage";
 import PortalTermsPage from "./pages/PortalTermsPage";
+import PortalContractSigningPage from "./pages/PortalContractSigningPage";
 import "./design/tokens.css";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/activate", "/blocked", "/logout", "/terms"];
@@ -59,6 +60,7 @@ type ViewRoute =
   | "diagnostics"
   | "schedule"
   | "schedule-discovery"
+  | "contract-signing"
   | "login"
   | "forgot-password"
   | "activate"
@@ -107,6 +109,7 @@ function getViewFromPath(pathname: string): ViewRoute {
   if (path === "/__diagnostics") return "diagnostics";
   if (path.startsWith("/schedule/group/")) return "schedule-discovery";
   if (path.startsWith("/schedule/")) return "schedule";
+  if (path.startsWith("/contracts/") && path.includes("/sign")) return "contract-signing";
 
   return "dashboard";
 }
@@ -198,6 +201,12 @@ export default function AppPortal() {
               return <PortalScheduleDiscoveryPage />;
             case "schedule":
               return <PortalSchedulePage />;
+            case "contract-signing": {
+              // Extract contract ID from URL like /contracts/123/sign
+              const match = window.location.pathname.match(/\/contracts\/(\d+)\/sign/);
+              const contractId = match ? parseInt(match[1], 10) : 0;
+              return <PortalContractSigningPage contractId={contractId} />;
+            }
             default:
               return <PortalDashboardPage />;
           }
