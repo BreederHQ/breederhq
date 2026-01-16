@@ -361,7 +361,10 @@ function ServiceCard({
   const typeLabel = SERVICE_TYPES.find((t) => t.value === service.listingType)?.label || service.listingType;
 
   return (
-    <div className="bg-portal-card border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors">
+    <div
+      className="bg-portal-card border border-border-subtle rounded-lg p-4 hover:border-border-default transition-colors cursor-pointer"
+      onClick={onEdit}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 text-xs font-medium rounded border ${typeColor}`}>
@@ -373,21 +376,21 @@ function ServiceCard({
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={onToggleStatus}
+            onClick={(e) => { e.stopPropagation(); onToggleStatus(); }}
             className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
             title={isActive ? "Unpublish" : "Publish"}
           >
             {isActive ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
           <button
-            onClick={onEdit}
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
             className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
             title="Edit"
           >
             <Pencil size={14} />
           </button>
           <button
-            onClick={onDelete}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="p-1.5 text-text-secondary hover:text-red-400 transition-colors rounded hover:bg-white/5"
             title="Delete"
           >

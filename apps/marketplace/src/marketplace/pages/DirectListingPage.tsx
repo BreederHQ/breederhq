@@ -14,6 +14,12 @@ export function DirectListingPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
 
+  // Inquiry form state
+  const [showInquiryModal, setShowInquiryModal] = React.useState(false);
+  const [inquiryMessage, setInquiryMessage] = React.useState("");
+  const [inquirySubmitting, setInquirySubmitting] = React.useState(false);
+  const [inquirySuccess, setInquirySuccess] = React.useState(false);
+
   React.useEffect(() => {
     if (!slug) return;
 
@@ -33,6 +39,34 @@ export function DirectListingPage() {
 
     fetchData();
   }, [slug]);
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!data || !inquiryMessage.trim()) return;
+
+    try {
+      setInquirySubmitting(true);
+      // TODO: Implement inquiry submission API
+      // await submitListingInquiry(data.listing.id, inquiryMessage);
+
+      // Simulate API call for now
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setInquirySuccess(true);
+      setInquiryMessage("");
+
+      // Auto-close after 3 seconds
+      setTimeout(() => {
+        setInquirySuccess(false);
+        setShowInquiryModal(false);
+      }, 3000);
+    } catch (err) {
+      console.error("Failed to submit inquiry:", err);
+      alert("Failed to send inquiry. Please try again.");
+    } finally {
+      setInquirySubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -370,7 +404,12 @@ export function DirectListingPage() {
             <div className="sidebar-card">
               <h3>Contact Breeder</h3>
               <p>Interested in this listing? Contact the breeder for more information.</p>
-              <button className="btn btn-primary btn-block">Send Inquiry</button>
+              <button
+                className="btn btn-primary btn-block"
+                onClick={() => setShowInquiryModal(true)}
+              >
+                Send Inquiry
+              </button>
             </div>
 
             {listing.locationCity && listing.locationRegion && (
@@ -396,6 +435,73 @@ export function DirectListingPage() {
           </aside>
         </div>
       </div>
+
+      {/* Inquiry Modal */}
+      {showInquiryModal && (
+        <div
+          className="inquiry-modal-overlay"
+          onClick={() => !inquirySuccess && setShowInquiryModal(false)}
+        >
+          <div className="inquiry-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="inquiry-modal__header">
+              <h3>Contact Breeder</h3>
+              <button
+                className="inquiry-modal__close"
+                onClick={() => setShowInquiryModal(false)}
+                disabled={inquirySubmitting}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="inquiry-modal__body">
+              {inquirySuccess ? (
+                <div className="inquiry-success">
+                  <div className="inquiry-success__icon">✓</div>
+                  <h4>Message Sent!</h4>
+                  <p>The breeder will respond to your inquiry soon.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleInquirySubmit}>
+                  <div className="form-group">
+                    <label htmlFor="inquiry-message">Your Message</label>
+                    <textarea
+                      id="inquiry-message"
+                      value={inquiryMessage}
+                      onChange={(e) => setInquiryMessage(e.target.value)}
+                      rows={6}
+                      placeholder={`Hi, I'm interested in ${animal.name || "this animal"}. Could you provide more details about...`}
+                      required
+                      disabled={inquirySubmitting}
+                    />
+                    <div className="form-help">
+                      {inquiryMessage.length} characters
+                    </div>
+                  </div>
+
+                  <div className="inquiry-modal__actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowInquiryModal(false)}
+                      disabled={inquirySubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={inquirySubmitting || !inquiryMessage.trim()}
+                    >
+                      {inquirySubmitting ? "Sending..." : "Send Message"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

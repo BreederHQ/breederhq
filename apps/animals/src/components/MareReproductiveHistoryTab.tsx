@@ -106,7 +106,6 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
   const [history, setHistory] = React.useState<MareReproductiveHistory | null>(null);
   const [detailedHistory, setDetailedHistory] = React.useState<DetailedFoalingHistory[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isRecalculating, setIsRecalculating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showDetailedHistory, setShowDetailedHistory] = React.useState(false);
 
@@ -127,9 +126,20 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
         const historyData = await api.getMareReproductiveHistory(animal.id);
         setHistory(historyData);
       } catch (err: any) {
-        if (err?.message?.includes("not found")) {
-          // No history yet - not an error
-          setHistory(null);
+        if (err?.message?.includes("not found") || err?.status === 404) {
+          // No history exists yet - try to auto-generate it
+          try {
+            const generated = await api.recalculateMareHistory(animal.id);
+            setHistory(generated);
+          } catch (genErr: any) {
+            // If generation also fails (e.g., no foaling data exists), that's fine
+            if (genErr?.message?.includes("not found") || genErr?.status === 404) {
+              setHistory(null);
+            } else {
+              // Real error during generation
+              setError(genErr?.message || "Failed to load reproductive history");
+            }
+          }
         } else {
           setError(err?.message || "Failed to load reproductive history");
         }
@@ -156,22 +166,6 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
     }
   };
 
-  const handleRecalculate = async () => {
-    if (!api) return;
-
-    try {
-      setIsRecalculating(true);
-      setError(null);
-      const updated = await api.recalculateMareHistory(animal.id);
-      setHistory(updated);
-      // Clear detailed history to force reload
-      setDetailedHistory([]);
-    } catch (err: any) {
-      setError(err?.message || "Failed to recalculate history");
-    } finally {
-      setIsRecalculating(false);
-    }
-  };
 
   if (!isHorse || !isFemale) {
     return (
@@ -258,14 +252,6 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
               </p>
             </div>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRecalculate}
-            disabled={isRecalculating}
-          >
-            {isRecalculating ? "Recalculating..." : "Recalculate"}
-          </Button>
         </div>
       </div>
 

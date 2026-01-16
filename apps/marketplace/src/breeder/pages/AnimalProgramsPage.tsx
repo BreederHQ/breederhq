@@ -354,7 +354,10 @@ function ProgramCard({
   const activeParticipants = program.participants.filter((p) => p.listed).length;
 
   return (
-    <div className="bg-portal-card border border-border-subtle rounded-lg overflow-hidden hover:border-border-default transition-colors">
+    <div
+      className="bg-portal-card border border-border-subtle rounded-lg overflow-hidden hover:border-border-default transition-colors cursor-pointer"
+      onClick={onEdit}
+    >
       {/* Image */}
       <div className="aspect-video bg-portal-surface relative">
         {program.coverImageUrl ? (
@@ -429,21 +432,21 @@ function ProgramCard({
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={onEdit}
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
               title="Edit"
             >
               <Pencil size={14} />
             </button>
             <button
-              onClick={onDelete}
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="p-1.5 text-text-secondary hover:text-red-400 transition-colors rounded hover:bg-white/5"
               title="Delete"
             >
               <Trash2 size={14} />
             </button>
             <button
-              onClick={onEdit}
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="p-1.5 text-text-secondary hover:text-white transition-colors rounded hover:bg-white/5"
               title="View Details"
             >

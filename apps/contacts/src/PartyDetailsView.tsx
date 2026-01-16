@@ -28,6 +28,7 @@ import { EmailComposer } from "./components/EmailComposer";
 import { QuickDMComposer } from "./components/QuickDMComposer";
 import { HeaderQuickActions } from "./components/HeaderQuickActions";
 import { EventsSection } from "./components/EventsSection";
+import { ContractsSection } from "./components/ContractsSection";
 
 type ID = number | string;
 
@@ -1620,9 +1621,7 @@ export function PartyDetailsView({
 
         {activeTab === "documents" && (
           <div className="space-y-3">
-            <SectionCard title={<SectionTitle icon="📄">Documents</SectionTitle>}>
-              <div className="text-sm text-secondary">Coming Soon</div>
-            </SectionCard>
+            <ContractsSection partyId={row.partyId} api={api} />
           </div>
         )}
 

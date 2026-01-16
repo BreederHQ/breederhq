@@ -11,6 +11,7 @@ The e-signatures feature provides:
 - **Tiered Signature Options**: Typed signatures for all, drawn/uploaded for Pro
 - **Audit Trail**: Full IP, timestamp, and user agent logging for legal compliance
 - **PDF Generation**: Signed documents with embedded signatures and audit certificate
+- **Contact Integration**: All contracts automatically link to contacts and appear in their Documents tab
 
 ## Tier Feature Matrix
 
@@ -56,9 +57,12 @@ The e-signatures feature provides:
 
 1. Navigate to `/contracts` in the platform
 2. Click "New Contract"
-3. Select a template
-4. Enter buyer details
-5. Review and send
+3. Select a template from system templates
+4. Search for and select an existing contact (required)
+5. Enter contract title and review buyer information
+6. Send the contract for signature
+
+**Note**: All contracts must be linked to a contact. The 3-step creation wizard ensures proper contact linking.
 
 ### Signing a Contract (Buyer Flow)
 
@@ -101,9 +105,15 @@ breederhq/
 │   │   └── src/
 │   │       ├── App-Contracts.tsx
 │   │       ├── ContractsHome.tsx
-│   │       ├── ContractsListPage.tsx
+│   │       ├── ContractsListPage.tsx    # 3-step creation wizard
 │   │       ├── TemplatesPage.tsx
 │   │       └── api.ts
+│   ├── contacts/                         # Contacts integration
+│   │   └── src/
+│   │       ├── PartyDetailsView.tsx      # Documents tab integration
+│   │       ├── components/
+│   │       │   └── ContractsSection.tsx  # Contracts display component
+│   │       └── api.ts                    # Extended with contracts API
 │   └── portal/
 │       └── src/
 │           ├── components/
@@ -126,6 +136,52 @@ Key models:
 - `SignatureEvent` - Audit trail events
 
 See [architecture.md](./architecture.md) for full schema details.
+
+## Contact Integration
+
+All contracts are automatically linked to contacts through the party system:
+
+### Contract Creation Flow
+
+1. **Step 1: Choose Template** - Select from system or custom templates
+2. **Step 2: Select Contact** - Search for existing contact by name or email (required)
+3. **Step 3: Contract Details** - Enter title and review buyer information
+
+The buyer party is linked via `partyId`, ensuring contracts appear in the contact's record.
+
+### Documents Tab
+
+Contracts appear in the **Documents tab** when viewing a contact's details:
+
+**Features**:
+- Displays all contracts where the contact is a party
+- Shows contract status with color-coded badges
+- Displays creation date, signed date, and expiration date
+- Quick actions: View Details and Download PDF (for signed contracts)
+- Automatic real-time updates
+
+**Status Badges**:
+- Draft (gray) - Contract not yet sent
+- Sent (amber) - Awaiting signature
+- Viewed (blue) - Recipient has opened the contract
+- Signed (green) - Fully executed
+- Declined (red) - Rejected by recipient
+- Voided (gray) - Cancelled by sender
+- Expired (red) - Past expiration date
+
+**Navigation**: Clicking "View Details" navigates to the contract in the Contracts module.
+
+### API Integration
+
+The Contacts API has been extended to include contracts:
+
+```typescript
+// Fetch contracts for a specific contact
+const contracts = await api.contracts.contracts.list({ partyId: contactId });
+
+// Get PDF download URL
+const pdfUrl = api.contracts.contracts.getPdfUrl(contractId);
+```
 
 ## Notification Types
 

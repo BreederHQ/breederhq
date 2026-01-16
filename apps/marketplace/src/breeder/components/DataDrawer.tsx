@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Dialog } from "@bhq/ui";
+import { Eye, EyeOff } from "lucide-react";
 import type {
   AnimalListingData,
   DataDrawerConfig,
@@ -20,6 +21,7 @@ export interface DataDrawerProps {
   animalData: AnimalListingData | null;
   initialConfig?: DataDrawerConfig;
   onSave: (config: DataDrawerConfig) => void;
+  embedded?: boolean; // If true, renders without Dialog wrapper
 }
 
 type SectionKey =
@@ -52,9 +54,9 @@ const SECTIONS: SectionInfo[] = [
   { key: "registry", label: "Registry", icon: "📋", description: "Registration numbers" },
 ];
 
-export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }: DataDrawerProps) {
+export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, embedded }: DataDrawerProps) {
   const [config, setConfig] = React.useState<DataDrawerConfig>(initialConfig || {});
-  const [activeSection, setActiveSection] = React.useState<SectionKey | null>("health");
+  const [activeSection, setActiveSection] = React.useState<SectionKey | null>(null);
 
   // Reset config when animalData changes
   React.useEffect(() => {
@@ -62,6 +64,13 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
       setConfig(initialConfig);
     }
   }, [initialConfig]);
+
+  // In embedded mode, automatically call onSave when config changes
+  React.useEffect(() => {
+    if (embedded && config) {
+      onSave(config);
+    }
+  }, [config, embedded, onSave]);
 
   // Helper to check if section is enabled by privacy
   const isSectionEnabled = (key: SectionKey): boolean => {
@@ -107,7 +116,7 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
       case "breeding":
         return 1; // Offspring count
       case "identity":
-        return 3; // Name, photo, DOB
+        return 2 + (animalData.privacySettings.showFullDob ? 1 : 0); // Name, photo, DOB (if enabled)
       case "lineage":
         return (animalData.lineage.sire ? 1 : 0) + (animalData.lineage.dam ? 1 : 0);
       case "registry":
@@ -117,16 +126,50 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
     }
   };
 
+  // Helper to check if section has partial visibility (some items hidden by per-item flags)
+  const hasPartialVisibility = (key: SectionKey): boolean => {
+    if (!animalData) return false;
+
+    switch (key) {
+      case "health":
+        // Check if some traits are not marketplace visible
+        return animalData.health.allTraits &&
+               animalData.health.allTraits.length > animalData.health.eligibleTraits.length;
+      case "achievements":
+        // Check if some titles/competitions are not public
+        return (animalData.titles.allTitles &&
+                animalData.titles.allTitles.length > animalData.titles.eligibleTitles.length) ||
+               (animalData.competitions.allCompetitions &&
+                animalData.competitions.allCompetitions.length > animalData.competitions.eligibleCompetitions.length);
+      case "documents":
+      case "media":
+        // For documents/media, we'd need total count vs eligible count
+        // This would require updating the API to return total counts
+        // For now, return false - can enhance later
+        return false;
+      default:
+        return false;
+    }
+  };
+
   const handleSave = () => {
     onSave(config);
     onClose();
   };
 
   const toggleSection = (key: SectionKey, enabled: boolean) => {
-    setConfig((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], enabled },
-    }));
+    if (!animalData) return;
+
+    // When enabling a section, auto-select all available items
+    if (enabled) {
+      selectAllInSection(key);
+    } else {
+      // When disabling, just turn off the section
+      setConfig((prev) => ({
+        ...prev,
+        [key]: { ...prev[key], enabled: false },
+      }));
+    }
   };
 
   const selectAllInSection = (key: SectionKey) => {
@@ -236,9 +279,8 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
     return null;
   }
 
-  return (
-    <Dialog open={open} onClose={onClose} title="Customize Listing Data" size="xl">
-      <div className="data-drawer">
+  const drawerContent = (
+    <div className="data-drawer">
         {/* Empty State */}
         {SECTIONS.every((s) => !isSectionEnabled(s.key)) && (
           <div className="data-drawer__empty">
@@ -276,6 +318,8 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
                   const enabled = isSectionEnabled(section.key);
                   const selected = config[section.key]?.enabled ?? false;
                   const count = getSectionCount(section.key);
+                  const partial = enabled && hasPartialVisibility(section.key);
+                  const isEmpty = enabled && count === 0;
 
                   return (
                     <button
@@ -285,21 +329,30 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
                         "data-drawer__section-item",
                         activeSection === section.key ? "active" : "",
                         !enabled ? "disabled" : "",
+                        partial ? "partial" : "",
+                        isEmpty ? "empty" : "",
                       ].join(" ")}
                       onClick={() => enabled && setActiveSection(section.key)}
                       disabled={!enabled}
                     >
-                      <div className="data-drawer__section-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            toggleSection(section.key, e.target.checked);
-                          }}
-                          disabled={!enabled}
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        className={`data-drawer__section-toggle ${
+                          selected
+                            ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                            : "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (enabled) {
+                            toggleSection(section.key, !selected);
+                          }
+                        }}
+                        title={selected ? "Visible in listing" : "Hidden from listing"}
+                        disabled={!enabled}
+                      >
+                        {selected ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
                       <div className="data-drawer__section-info">
                         <div className="data-drawer__section-label">
                           <span className="data-drawer__section-icon">{section.icon}</span>
@@ -320,14 +373,79 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
               </div>
 
               <div className="data-drawer__sections-footer">
-                <p className="text-xs text-muted">
-                  Some sections are disabled based on your Privacy settings.
-                </p>
+                <div className="data-drawer__legend">
+                  <h5 className="data-drawer__legend-title">Legend</h5>
+                  <div className="data-drawer__legend-items">
+                    <div className="data-drawer__legend-item">
+                      <div className="data-drawer__legend-indicator data-drawer__legend-indicator--active"></div>
+                      <span className="text-xs">Fully Available</span>
+                    </div>
+                    <div className="data-drawer__legend-item">
+                      <div className="data-drawer__legend-indicator data-drawer__legend-indicator--empty"></div>
+                      <span className="text-xs">Ready - No Data</span>
+                    </div>
+                    <div className="data-drawer__legend-item">
+                      <div className="data-drawer__legend-indicator data-drawer__legend-indicator--partial"></div>
+                      <span className="text-xs">Mixed Privacy</span>
+                    </div>
+                    <div className="data-drawer__legend-item">
+                      <div className="data-drawer__legend-indicator data-drawer__legend-indicator--locked"></div>
+                      <span className="text-xs">Privacy Locked</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Right: Section Detail + Preview */}
             <div className="data-drawer__detail">
+              {!activeSection && (
+                <div className="data-drawer__instructions">
+                  <div className="data-drawer__instructions-icon">📋</div>
+                  <h3>How to Customize Your Listing Data</h3>
+
+                  <div className="data-drawer__instructions-section">
+                    <h4>1. Choose What to Share</h4>
+                    <p>
+                      Click on any section on the left to see what information you can include in this listing.
+                      Each section (Health, Media, Achievements, etc.) contains different types of data about your animal.
+                    </p>
+                  </div>
+
+                  <div className="data-drawer__instructions-section">
+                    <h4>2. Select Specific Items</h4>
+                    <p>
+                      When you click a section, you'll see all the items available to share. Check the boxes next to the
+                      items you want to include in this particular listing. You can pick and choose exactly what information
+                      to show to potential buyers.
+                    </p>
+                  </div>
+
+                  <div className="data-drawer__instructions-section">
+                    <h4>3. Privacy Settings Control Availability</h4>
+                    <p>
+                      Some sections may be locked (🔒). This means they're disabled in your animal's Privacy Settings.
+                      You can enable them by visiting the Privacy tab in your animal's profile, then come back here to
+                      select what to include.
+                    </p>
+                  </div>
+
+                  <div className="data-drawer__instructions-section">
+                    <h4>4. Different Listings, Different Data</h4>
+                    <p>
+                      You can create multiple listings for the same animal with different information. For example, you might
+                      share full health testing for a breeding listing, but only basic info for a pet listing. Each listing
+                      can be customized separately.
+                    </p>
+                  </div>
+
+                  <div className="data-drawer__instructions-tip">
+                    <strong>💡 Tip:</strong> Start by clicking on the sections you want to include (like Identity or Health),
+                    then choose the specific details to share. When you're done, click "Save Configuration" at the bottom.
+                  </div>
+                </div>
+              )}
+
               {activeSection && (
                 <>
                   <SectionDetail
@@ -345,15 +463,27 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave }:
         )}
 
         {/* Footer Actions */}
-        <div className="data-drawer__footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" className="btn btn-primary" onClick={handleSave}>
-            Save Configuration
-          </button>
-        </div>
+        {!embedded && (
+          <div className="data-drawer__footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={handleSave}>
+              Save Configuration
+            </button>
+          </div>
+        )}
       </div>
+  );
+
+  // In embedded mode, render content directly. Otherwise wrap in Dialog.
+  if (embedded) {
+    return drawerContent;
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Customize Listing Data" size="xl">
+      {drawerContent}
     </Dialog>
   );
 }
@@ -436,7 +566,14 @@ function HealthSection({ animalData, config, setConfig }: Omit<SectionDetailProp
   };
 
   if (animalData.health.eligibleTraits.length === 0) {
-    return <p className="text-muted">No health testing data available for marketplace display.</p>;
+    return (
+      <div className="section-detail__disabled">
+        <p>No health testing data available yet.</p>
+        <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+          This section will automatically appear on your listing once you add health tests to this animal's profile.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -458,7 +595,14 @@ function HealthSection({ animalData, config, setConfig }: Omit<SectionDetailProp
 
 function GeneticsSection({ animalData, config, setConfig }: Omit<SectionDetailProps, "sectionKey" | "onSelectAll" | "onDeselectAll">) {
   if (!animalData.genetics.data) {
-    return <p className="text-muted">No genetics data available.</p>;
+    return (
+      <div className="section-detail__disabled">
+        <p>No genetics data available yet.</p>
+        <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+          This section will automatically appear on your listing once you add genetics test results to this animal's profile.
+        </p>
+      </div>
+    );
   }
 
   const geneticsConfig = config.genetics || {};
@@ -579,7 +723,12 @@ function AchievementsSection({ animalData, config, setConfig }: Omit<SectionDeta
       )}
 
       {animalData.titles.eligibleTitles.length === 0 && animalData.competitions.eligibleCompetitions.length === 0 && (
-        <p className="text-muted">No achievements available for marketplace display.</p>
+        <div className="section-detail__disabled">
+          <p>No achievements available yet.</p>
+          <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+            This section will automatically appear on your listing once you add titles or competition results to this animal's profile.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -600,7 +749,14 @@ function MediaSection({ animalData, config, setConfig }: Omit<SectionDetailProps
   };
 
   if (animalData.media.items.length === 0) {
-    return <p className="text-muted">No media available.</p>;
+    return (
+      <div className="section-detail__disabled">
+        <p>No media available yet.</p>
+        <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+          This section will automatically appear on your listing once you add photos or videos to this animal's profile.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -633,7 +789,14 @@ function DocumentsSection({ animalData, config, setConfig }: Omit<SectionDetailP
   };
 
   if (animalData.documents.items.length === 0) {
-    return <p className="text-muted">No documents available.</p>;
+    return (
+      <div className="section-detail__disabled">
+        <p>No documents available yet.</p>
+        <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+          This section will automatically appear on your listing once you add documents to this animal's profile.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -666,7 +829,14 @@ function RegistrySection({ animalData, config, setConfig }: Omit<SectionDetailPr
   };
 
   if (animalData.registrations.length === 0) {
-    return <p className="text-muted">No registry identifiers available.</p>;
+    return (
+      <div className="section-detail__disabled">
+        <p>No registry identifiers available yet.</p>
+        <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+          This section will automatically appear on your listing once you add registry information to this animal's profile.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -719,7 +889,12 @@ function LineageSection({ animalData, config, setConfig }: Omit<SectionDetailPro
         </label>
       )}
       {!animalData.lineage.sire && !animalData.lineage.dam && (
-        <p className="text-muted">No parent information available.</p>
+        <div className="section-detail__disabled">
+          <p>No parent information available yet.</p>
+          <p className="text-sm text-muted" style={{ marginTop: "0.5rem" }}>
+            This section will automatically appear on your listing once you add sire/dam information to this animal's profile.
+          </p>
+        </div>
       )}
     </div>
   );

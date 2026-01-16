@@ -37,13 +37,18 @@ import {
   saveDirectListing,
   updateDirectListingStatus,
   getListingAnalytics,
+  getAnimalListingData,
   type DirectAnimalListing,
   type DirectAnimalListingCreate,
   type TemplateType,
   type ListingAnalyticsResponse,
   type ListingStats,
   type DirectListingStatus,
+  type DataDrawerConfig,
+  type AnimalListingData,
 } from "../../api/client";
+
+import { DataDrawer } from "../components/DataDrawer";
 
 import { PerformanceSummaryRow } from "../components/analytics/PerformanceSummaryRow";
 import { InsightsCallout } from "../components/analytics/InsightsCallout";
@@ -349,12 +354,13 @@ export function ManageAnimalsPage() {
 // LISTING DETAIL DRAWER
 // ═══════════════════════════════════════════════════════════════════════════
 
-type DrawerTab = "overview" | "content" | "pricing" | "settings" | "preview";
+type DrawerTab = "overview" | "content" | "pricing" | "data" | "settings" | "preview";
 
 const DRAWER_TABS: { id: DrawerTab; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <Eye size={16} /> },
   { id: "content", label: "Content", icon: <FileText size={16} /> },
   { id: "pricing", label: "Pricing", icon: <DollarSign size={16} /> },
+  { id: "data", label: "Data", icon: <FileText size={16} /> },
   { id: "settings", label: "Settings", icon: <Settings size={16} /> },
   { id: "preview", label: "Preview", icon: <Globe size={16} /> },
 ];
@@ -374,6 +380,10 @@ function ListingDetailDrawer({
   const [saving, setSaving] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
 
+  // Data Drawer state
+  const [animalData, setAnimalData] = React.useState<AnimalListingData | null>(null);
+  const [loadingAnimalData, setLoadingAnimalData] = React.useState(false);
+
   // Form state
   const [form, setForm] = React.useState({
     slug: listing.slug,
@@ -390,6 +400,7 @@ function ListingDetailDrawer({
     locationCountry: listing.locationCountry || "USA",
     status: listing.status,
     listed: listing.listed ?? true,
+    dataDrawerConfig: listing.dataDrawerConfig as DataDrawerConfig || {},
   });
 
   // Track changes
@@ -397,6 +408,54 @@ function ListingDetailDrawer({
     setForm((prev) => ({ ...prev, ...updates }));
     setHasChanges(true);
   };
+
+  // Auto-save draft changes every 3 seconds
+  React.useEffect(() => {
+    if (!hasChanges || saving) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const input: DirectAnimalListingCreate = {
+          id: listing.id,
+          animalId: listing.animalId,
+          slug: form.slug.trim(),
+          templateType: listing.templateType,
+          status: form.status as DirectListingStatus,
+          listed: form.listed,
+          headline: form.headline.trim() || undefined,
+          title: form.title.trim() || undefined,
+          summary: form.summary.trim() || undefined,
+          description: form.description.trim() || undefined,
+          priceModel: form.priceModel as "fixed" | "range" | "inquire",
+          priceCents: form.priceModel === "fixed" ? form.priceCents : undefined,
+          priceMinCents: form.priceModel === "range" ? form.priceMinCents : undefined,
+          priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
+          locationCity: form.locationCity.trim() || undefined,
+          locationRegion: form.locationRegion.trim() || undefined,
+          locationCountry: form.locationCountry || undefined,
+          dataDrawerConfig: form.dataDrawerConfig,
+        };
+        await saveDirectListing(tenantId, input);
+        setHasChanges(false);
+      } catch (err: any) {
+        console.error("Auto-save failed:", err);
+        // Silent fail - user can still manually save
+      }
+    }, 3000); // 3 second debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [hasChanges, saving, form, listing, tenantId]);
+
+  // Fetch animal data when data tab is selected
+  React.useEffect(() => {
+    if (activeTab === "data" && !animalData && !loadingAnimalData) {
+      setLoadingAnimalData(true);
+      getAnimalListingData(tenantId, listing.animalId)
+        .then((data) => setAnimalData(data))
+        .catch((err) => console.error("Failed to load animal data:", err))
+        .finally(() => setLoadingAnimalData(false));
+    }
+  }, [activeTab, animalData, loadingAnimalData, tenantId, listing.animalId]);
 
   // Handle escape key
   React.useEffect(() => {
@@ -431,6 +490,7 @@ function ListingDetailDrawer({
         locationCity: form.locationCity.trim() || undefined,
         locationRegion: form.locationRegion.trim() || undefined,
         locationCountry: form.locationCountry || undefined,
+        dataDrawerConfig: form.dataDrawerConfig,
       };
       await saveDirectListing(tenantId, input);
       setHasChanges(false);
@@ -554,6 +614,16 @@ function ListingDetailDrawer({
           {activeTab === "pricing" && (
             <PricingTab form={form} updateForm={updateForm} />
           )}
+          {activeTab === "data" && (
+            <DataTab
+              animalData={animalData}
+              loadingAnimalData={loadingAnimalData}
+              initialConfig={form.dataDrawerConfig}
+              onConfigChange={(config) => updateForm({ dataDrawerConfig: config })}
+              listing={listing}
+              form={form}
+            />
+          )}
           {activeTab === "settings" && (
             <SettingsTab form={form} updateForm={updateForm} />
           )}
@@ -566,18 +636,20 @@ function ListingDetailDrawer({
         <div className="flex items-center justify-between p-6 border-t border-border-subtle bg-portal-surface/50">
           <div className="text-sm text-text-tertiary">
             {hasChanges ? (
-              <span className="text-amber-400">You have unsaved changes</span>
+              <span className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                <span className="text-amber-400">Auto-saving draft...</span>
+              </span>
             ) : (
-              <span>Last updated: {new Date(listing.updatedAt).toLocaleDateString()}</span>
+              <span className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                <span className="text-green-400">All changes saved</span>
+              </span>
             )}
           </div>
           <div className="flex items-center gap-3">
             <Button variant="secondary" onClick={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={handleSave} disabled={!hasChanges || saving}>
-              <Save size={16} className="mr-1.5" />
-              {saving ? "Saving..." : "Save Changes"}
+              Close
             </Button>
           </div>
         </div>
@@ -1013,6 +1085,296 @@ function SettingsTab({ form, updateForm }: { form: any; updateForm: (u: any) => 
           Delete Listing
         </Button>
       </div>
+    </div>
+  );
+}
+
+function DataTab({
+  animalData,
+  loadingAnimalData,
+  initialConfig,
+  onConfigChange,
+  listing,
+  form,
+}: {
+  animalData: AnimalListingData | null;
+  loadingAnimalData: boolean;
+  initialConfig: DataDrawerConfig;
+  onConfigChange: (config: DataDrawerConfig) => void;
+  listing: DirectAnimalListing;
+  form: any;
+}) {
+  const [previewMode, setPreviewMode] = React.useState(false);
+
+  if (loadingAnimalData) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4"></div>
+          <p className="text-text-secondary">Loading animal data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!animalData) {
+    return (
+      <div className="bg-portal-surface border border-border-subtle rounded-lg p-6 text-center">
+        <p className="text-text-secondary">Failed to load animal data. Please try again.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-blue-300">Customize Listing Data</h3>
+          <button
+            type="button"
+            onClick={() => setPreviewMode(!previewMode)}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+              previewMode
+                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                : "bg-portal-card text-text-secondary border border-border-subtle hover:border-blue-500/30"
+            }`}
+          >
+            {previewMode ? <Eye size={14} /> : <EyeOff size={14} />}
+            {previewMode ? "Viewing Preview" : "Show Preview"}
+          </button>
+        </div>
+        <p className="text-xs text-text-secondary">
+          {previewMode
+            ? "Preview how your listing will appear to buyers with the current data selections."
+            : "Select which animal data sections and specific items to include in this marketplace listing. Changes are auto-saved as drafts."}
+        </p>
+      </div>
+
+      {!previewMode ? (
+        /* Embedded Data Drawer (without modal) */
+        <div className="bg-portal-surface border border-border-subtle rounded-lg p-4">
+          <DataDrawer
+            open={true}
+            onClose={() => {}} // No-op since we're embedding
+            animalData={animalData}
+            initialConfig={initialConfig}
+            onSave={onConfigChange}
+            embedded={true}
+          />
+        </div>
+      ) : (
+        /* Live Preview */
+        <div className="bg-portal-surface border border-border-subtle rounded-lg p-6">
+          <DataPreview
+            listing={listing}
+            form={form}
+            animalData={animalData}
+            config={initialConfig}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DataPreview({
+  listing,
+  form,
+  animalData,
+  config,
+}: {
+  listing: DirectAnimalListing;
+  form: any;
+  animalData: AnimalListingData;
+  config: DataDrawerConfig;
+}) {
+  const animal = listing.animal;
+
+  // Helper to check if section is enabled
+  const isSectionEnabled = (sectionKey: string): boolean => {
+    return config[sectionKey as keyof DataDrawerConfig]?.enabled === true;
+  };
+
+  // Count enabled sections
+  const enabledSections = Object.keys(config).filter((key) =>
+    config[key as keyof DataDrawerConfig]?.enabled === true
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-4 border-b border-border-subtle">
+        <h3 className="text-lg font-bold text-white mb-1">Live Preview</h3>
+        <p className="text-sm text-text-secondary">
+          Showing {enabledSections.length} data section{enabledSections.length !== 1 ? 's' : ''} enabled for this listing
+        </p>
+      </div>
+
+      {enabledSections.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-4">📋</div>
+          <h4 className="text-lg font-semibold text-white mb-2">No Data Sections Enabled</h4>
+          <p className="text-sm text-text-secondary max-w-md mx-auto">
+            Toggle some sections on in the Data tab to see how they'll appear in your listing.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Identity Section */}
+          {isSectionEnabled('identity') && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>🪪</span> Identity
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                {config.identity?.showName && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Name</p>
+                    <p className="text-white font-medium">{animal?.name || 'Unknown'}</p>
+                  </div>
+                )}
+                {config.identity?.showPhoto && animal?.photoUrl && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Photo</p>
+                    <img src={animal.photoUrl} alt={animal.name} className="w-20 h-20 rounded-lg object-cover" />
+                  </div>
+                )}
+                {config.identity?.showDob && animal?.birthDate && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Birth Date</p>
+                    <p className="text-white">{new Date(animal.birthDate).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Health Section */}
+          {isSectionEnabled('health') && animalData.health.eligibleTraits.length > 0 && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>❤️</span> Health Testing
+              </h3>
+              <div className="space-y-2">
+                {animalData.health.eligibleTraits
+                  .filter(trait =>
+                    !config.health?.traitIds ||
+                    config.health.traitIds.length === 0 ||
+                    config.health.traitIds.includes(trait.id)
+                  )
+                  .map(trait => (
+                    <div key={trait.id} className="flex justify-between items-center py-2 border-b border-border-subtle last:border-0">
+                      <span className="text-sm text-text-secondary">{trait.displayName}</span>
+                      <span className="text-sm font-medium text-white">{String(trait.value)}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Achievements Section */}
+          {isSectionEnabled('achievements') && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>🏆</span> Achievements
+              </h3>
+              {animalData.titles.eligibleTitles.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-text-secondary mb-2">Titles</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {animalData.titles.eligibleTitles
+                      .filter(title =>
+                        !config.achievements?.titleIds ||
+                        config.achievements.titleIds.length === 0 ||
+                        config.achievements.titleIds.includes(title.id)
+                      )
+                      .map(title => (
+                        <span key={title.id} className="px-3 py-1 bg-blue-500/20 text-blue-300 text-xs font-medium rounded-full">
+                          {title.abbreviation}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+              {animalData.competitions.eligibleCompetitions.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-text-secondary mb-2">Competition Results</h4>
+                  <div className="space-y-2">
+                    {animalData.competitions.eligibleCompetitions
+                      .filter(comp =>
+                        !config.achievements?.competitionIds ||
+                        config.achievements.competitionIds.length === 0 ||
+                        config.achievements.competitionIds.includes(comp.id)
+                      )
+                      .slice(0, 3)
+                      .map(comp => (
+                        <div key={comp.id} className="text-sm">
+                          <span className="text-white font-medium">{comp.eventName}</span>
+                          <span className="text-text-secondary ml-2">• {comp.placementLabel || `#${comp.placement}`}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Lineage Section */}
+          {isSectionEnabled('lineage') && (animalData.lineage.sire || animalData.lineage.dam) && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>🌳</span> Lineage
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                {config.lineage?.showSire && animalData.lineage.sire && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Sire</p>
+                    <p className="text-white font-medium">{animalData.lineage.sire.name}</p>
+                    {animalData.lineage.sire.titles && (
+                      <p className="text-xs text-blue-300 mt-1">{animalData.lineage.sire.titles}</p>
+                    )}
+                  </div>
+                )}
+                {config.lineage?.showDam && animalData.lineage.dam && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Dam</p>
+                    <p className="text-white font-medium">{animalData.lineage.dam.name}</p>
+                    {animalData.lineage.dam.titles && (
+                      <p className="text-xs text-blue-300 mt-1">{animalData.lineage.dam.titles}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Media Section */}
+          {isSectionEnabled('media') && animalData.media.items.length > 0 && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>📸</span> Media
+              </h3>
+              <p className="text-sm text-text-secondary">
+                {config.media?.mediaIds?.length || animalData.media.items.length} photo{(config.media?.mediaIds?.length || animalData.media.items.length) !== 1 ? 's' : ''} will be shown
+              </p>
+            </div>
+          )}
+
+          {/* Breeding Section */}
+          {isSectionEnabled('breeding') && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>🐾</span> Breeding History
+              </h3>
+              {config.breeding?.showOffspringCount && (
+                <div>
+                  <p className="text-xs text-text-tertiary mb-1">Offspring Count</p>
+                  <p className="text-white font-medium">{animalData.breeding.offspringCount || 0}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

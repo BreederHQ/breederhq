@@ -1178,6 +1178,21 @@ export type ProviderServiceType =
   | "PRODUCT"
   | "OTHER_SERVICE";
 
+// Service Tags - marketplace-wide tags for service discovery
+export interface ServiceTag {
+  id: number;
+  name: string;
+  slug: string;
+  usageCount: number;
+  suggested: boolean; // System-suggested vs user-created
+  createdAt: string;
+}
+
+export interface ServiceTagsResponse {
+  items: ServiceTag[];
+  total: number;
+}
+
 export interface ServiceProviderProfile {
   id: number;
   businessName: string;
@@ -1212,6 +1227,8 @@ export interface ProviderListingItem {
   title: string;
   description: string | null;
   customServiceType: string | null; // For OTHER_SERVICE - custom service type name
+  tags: ServiceTag[]; // Associated service tags
+  images: string[]; // Image URLs
   city: string | null;
   state: string | null;
   priceCents: number | null;
@@ -1229,6 +1246,7 @@ export interface ProviderListingCreateInput {
   title: string;
   description?: string;
   customServiceType?: string; // For OTHER_SERVICE category - custom service type name
+  tagIds?: number[]; // Service tag IDs to associate with listing
   contactName?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -1642,6 +1660,7 @@ export interface PublicServiceListing {
   title: string;
   description: string | null;
   customServiceType: string | null; // For OTHER_SERVICE - custom service type name
+  tags: ServiceTag[]; // Associated service tags
   city: string | null;
   state: string | null;
   country: string | null;
@@ -1654,6 +1673,9 @@ export interface PublicServiceListing {
     id?: number;
     slug?: string | null;
     name: string;
+    email?: string | null;
+    phone?: string | null;
+    website?: string | null;
   } | null;
 }
 
@@ -1671,6 +1693,72 @@ export interface GetPublicServicesParams {
   state?: string;
   page?: number;
   limit?: number;
+}
+
+// =============================================================================
+// Service Tags API (marketplace-wide tags for service discovery)
+// =============================================================================
+
+/**
+ * Get all available service tags (marketplace-wide).
+ */
+export async function getServiceTags(params?: {
+  q?: string;
+  suggested?: boolean;
+  limit?: number;
+}): Promise<ServiceTagsResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.q) queryParams.set("q", params.q);
+  if (params?.suggested !== undefined) queryParams.set("suggested", String(params.suggested));
+  if (params?.limit) queryParams.set("limit", String(params.limit));
+
+  const path = `/api/v1/marketplace/service-tags${queryParams.toString() ? `?${queryParams}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceTagsResponse>(response);
+  if (!data) throw new ApiError("Failed to load service tags", 500);
+  return data;
+}
+
+/**
+ * Create a new service tag (user-generated).
+ */
+export async function createServiceTag(name: string): Promise<ServiceTag> {
+  const path = `/api/v1/marketplace/service-tags`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify({ name }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceTag>(response);
+  if (!data) throw new ApiError("Failed to create service tag", 500);
+  return data;
 }
 
 /**
@@ -1693,6 +1781,18 @@ export async function getPublicServices(
 
   devLogFetch(path);
   const { data } = await apiGet<PublicServicesResponse>(path);
+  return data;
+}
+
+/**
+ * Get a single public service by slug or ID
+ * GET /api/v1/marketplace/services/:slugOrId
+ */
+export async function getPublicServiceById(slugOrId: string | number): Promise<PublicServiceListing> {
+  const path = `/api/v1/marketplace/services/${slugOrId}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<PublicServiceListing>(path);
   return data;
 }
 
@@ -4945,4 +5045,496 @@ export async function getBreedingProgramRuleChain(
     chain: Array<{ level: BreedingRuleLevel; id: string | number }>;
   }>(response);
   return data || { chain: [] };
+}
+
+// ============================================================================
+// Verification & 2FA API
+// ============================================================================
+
+export type TwoFactorMethod = "PASSKEY" | "TOTP" | "SMS";
+export type ServiceProviderVerificationTier =
+  | "LISTED"
+  | "IDENTITY_VERIFIED"
+  | "VERIFIED_PROFESSIONAL"
+  | "ACCREDITED_PROVIDER";
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  method: TwoFactorMethod | null;
+  enabledAt: string | null;
+  availableMethods: {
+    passkey: boolean;
+    totp: boolean;
+    sms: boolean;
+  };
+}
+
+export interface VerificationBadges {
+  quickResponder: boolean;
+  established: boolean;
+  topRated: boolean;
+  trusted: boolean;
+  acceptsPayments: boolean;
+}
+
+export interface VerificationPackageStatus {
+  active: boolean;
+  purchasedAt: string | null;
+  approvedAt: string | null;
+  expiresAt: string | null;
+}
+
+export interface VerificationPendingRequest {
+  id: number;
+  packageType: "VERIFIED" | "ACCREDITED";
+  status: "PENDING" | "IN_REVIEW" | "NEEDS_INFO";
+  createdAt: string;
+  infoRequestNote: string | null;
+}
+
+export interface UserVerificationStatus {
+  tier: ServiceProviderVerificationTier;
+  tierAchievedAt: string | null;
+  phoneVerified: boolean;
+  phoneVerifiedAt: string | null;
+  identityVerified: boolean;
+  identityVerifiedAt: string | null;
+  verifiedPackage: VerificationPackageStatus;
+  accreditedPackage: VerificationPackageStatus;
+  badges: VerificationBadges;
+  pendingRequest: VerificationPendingRequest | null;
+}
+
+export interface TOTPSetupResponse {
+  ok: boolean;
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface IdentityVerificationStartResponse {
+  ok: boolean;
+  sessionId: string;
+  clientSecret: string;
+}
+
+/**
+ * Get 2FA status for current user
+ * GET /api/v1/marketplace/2fa/status
+ */
+export async function get2FAStatus(): Promise<TwoFactorStatus> {
+  devLogFetch("/api/v1/marketplace/2fa/status");
+
+  const response = await fetch(joinApi("/api/v1/marketplace/2fa/status"), {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<TwoFactorStatus>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse 2FA status response", 500);
+  }
+  return data;
+}
+
+/**
+ * Setup TOTP (Authenticator App)
+ * POST /api/v1/marketplace/2fa/totp/setup
+ */
+export async function setupTOTP(): Promise<TOTPSetupResponse> {
+  const response = await fetch(joinApi("/api/v1/marketplace/2fa/totp/setup"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<TOTPSetupResponse>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse TOTP setup response", 500);
+  }
+  return data;
+}
+
+/**
+ * Verify TOTP code and enable 2FA
+ * POST /api/v1/marketplace/2fa/totp/verify
+ */
+export async function verifyTOTP(code: string): Promise<{ ok: boolean; method: TwoFactorMethod }> {
+  const response = await fetch(joinApi("/api/v1/marketplace/2fa/totp/verify"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify({ code }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean; method: TwoFactorMethod }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse TOTP verify response", 500);
+  }
+  return data;
+}
+
+/**
+ * Get user verification status
+ * GET /api/v1/marketplace/verification/users/status
+ */
+export async function getUserVerificationStatus(): Promise<UserVerificationStatus> {
+  devLogFetch("/api/v1/marketplace/verification/users/status");
+
+  const response = await fetch(joinApi("/api/v1/marketplace/verification/users/status"), {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string }>(response);
+    throw new ApiError(
+      body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<UserVerificationStatus>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse verification status response", 500);
+  }
+  return data;
+}
+
+/**
+ * Start identity verification (Stripe Identity)
+ * POST /api/v1/marketplace/verification/users/identity/start
+ */
+export async function startIdentityVerification(): Promise<IdentityVerificationStartResponse> {
+  const response = await fetch(joinApi("/api/v1/marketplace/verification/users/identity/start"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<IdentityVerificationStartResponse>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse identity verification response", 500);
+  }
+  return data;
+}
+
+/**
+ * Purchase verification package
+ * POST /api/v1/marketplace/verification/users/package/purchase
+ */
+export async function purchaseVerificationPackage(
+  packageType: "VERIFIED" | "ACCREDITED",
+  submittedInfo: Record<string, any>
+): Promise<{
+  ok: boolean;
+  requestId: number;
+  status: string;
+  packageType: string;
+  amountPaidCents: number;
+}> {
+  const response = await fetch(joinApi("/api/v1/marketplace/verification/users/package/purchase"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify({ packageType, submittedInfo }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{
+    ok: boolean;
+    requestId: number;
+    status: string;
+    packageType: string;
+    amountPaidCents: number;
+  }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse purchase response", 500);
+  }
+  return data;
+}
+
+// ============================================================================
+// Abuse Reporting API
+// ============================================================================
+
+export interface ListingReportInput {
+  listingId: number;
+  reason: string;
+  description: string;
+}
+
+/**
+ * Report a service listing for abuse/fraud
+ * POST /api/v1/marketplace/listings/report
+ */
+export async function reportServiceListing(
+  listingId: number,
+  reason: string,
+  description: string
+): Promise<{ ok: boolean; reportId: number }> {
+  const response = await fetch(joinApi("/api/v1/marketplace/listings/report"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify({ listingId, reason, description }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean; reportId: number }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse report response", 500);
+  }
+  return data;
+}
+
+// ============================================================================
+// Admin Moderation API
+// ============================================================================
+
+export interface ListingReport {
+  id: number;
+  listingId: number;
+  listingTitle: string;
+  listingSlug: string | null;
+  reason: "FRAUD" | "SPAM" | "INAPPROPRIATE" | "MISLEADING" | "PROHIBITED" | "COPYRIGHT" | "OTHER";
+  description: string;
+  status: "PENDING" | "REVIEWED" | "ACTIONED" | "DISMISSED";
+  reporterEmail: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewNotes: string | null;
+}
+
+export interface ListingReportsResponse {
+  reports: ListingReport[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Get listing reports for moderation (admin only)
+ * GET /api/v1/marketplace/admin/listing-reports
+ */
+export async function getListingReports(
+  status?: "PENDING" | "REVIEWED" | "ACTIONED" | "DISMISSED",
+  limit: number = 25,
+  offset: number = 0
+): Promise<ListingReportsResponse> {
+  const params = new URLSearchParams();
+  if (status) params.append("status", status);
+  params.append("limit", limit.toString());
+  params.append("offset", offset.toString());
+
+  const path = `/api/v1/marketplace/admin/listing-reports?${params.toString()}`;
+  devLogFetch(path);
+
+  const response = await fetch(joinApi(path), {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ListingReportsResponse>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse reports response", 500);
+  }
+  return data;
+}
+
+/**
+ * Update report status (admin only)
+ * PUT /api/v1/marketplace/admin/listing-reports/:reportId
+ */
+export async function updateReportStatus(
+  reportId: number,
+  status: "PENDING" | "REVIEWED" | "ACTIONED" | "DISMISSED",
+  reviewNotes: string
+): Promise<{ ok: boolean }> {
+  const response = await fetch(joinApi(`/api/v1/marketplace/admin/listing-reports/${reportId}`), {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify({ status, reviewNotes }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean }>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse update response", 500);
+  }
+  return data;
+}
+
+// ============================================================================
+// S3 Image Upload API
+// ============================================================================
+
+export interface PresignedUploadResponse {
+  uploadUrl: string;
+  cdnUrl: string;
+  key: string;
+  expiresIn: number;
+}
+
+/**
+ * Get presigned S3 URL for image upload
+ * POST /api/v1/marketplace/images/upload-url
+ */
+export async function getPresignedUploadUrl(
+  filename: string,
+  contentType: string,
+  context: "service_listing" | "profile_photo" | "breeding_animal" = "service_listing"
+): Promise<PresignedUploadResponse> {
+  const response = await fetch(joinApi("/api/v1/marketplace/images/upload-url"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+    body: JSON.stringify({ filename, contentType, context }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<PresignedUploadResponse>(response);
+  if (!data) {
+    throw new ApiError("Failed to parse presigned URL response", 500);
+  }
+  return data;
+}
+
+/**
+ * Upload image directly to S3 using presigned URL
+ */
+export async function uploadImageToS3(
+  presignedUrl: string,
+  file: File
+): Promise<void> {
+  const response = await fetch(presignedUrl, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "Content-Type": file.type,
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(`S3 upload failed with status ${response.status}`, response.status);
+  }
+}
+
+/**
+ * Delete image from S3
+ * DELETE /api/v1/marketplace/images/:key
+ */
+export async function deleteImageFromS3(key: string): Promise<{ ok: boolean }> {
+  // Encode the key for URL
+  const encodedKey = encodeURIComponent(key);
+
+  const response = await fetch(joinApi(`/api/v1/marketplace/images/${encodedKey}`), {
+    method: "DELETE",
+    credentials: "include",
+    headers: {
+      "X-CSRF-Token": getCsrfToken() || "",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ error?: string; message?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ ok: boolean }>(response);
+  return data || { ok: true };
 }

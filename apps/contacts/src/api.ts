@@ -691,6 +691,42 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     },
   };
 
+  /* -------------------------------- CONTRACTS -------------------------------- */
+  const contracts = {
+    contracts: {
+      async list(params?: {
+        status?: string;
+        partyId?: number;
+        offspringId?: number;
+        animalId?: number;
+        limit?: number;
+        offset?: number;
+      }) {
+        const p = new URLSearchParams();
+        if (params) {
+          Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== "") {
+              p.set(k, String(v));
+            }
+          });
+        }
+        const url = joinUrl(v1, "contracts") + (p.toString() ? `?${p.toString()}` : "");
+        const res = await fetchJson<{ items?: any[]; total?: number }>(url, { method: "GET" }, withAuth());
+        return {
+          items: res?.items || [],
+          total: res?.total ?? 0,
+        };
+      },
+      async get(id: number) {
+        const url = joinUrl(v1, "contracts", String(id));
+        return fetchJson<any>(url, { method: "GET" }, withAuth());
+      },
+      getPdfUrl(id: number): string {
+        return joinUrl(v1, "contracts", String(id), "pdf");
+      },
+    },
+  };
+
   /* --------------------------------- FINANCE --------------------------------- */
   const finance = {
     parties: {
@@ -814,6 +850,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     portalAccess,
     partyCrm,
     messages,
+    contracts,
   };
 }
 

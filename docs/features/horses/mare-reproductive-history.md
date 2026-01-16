@@ -9,6 +9,17 @@
 
 The Mare Reproductive History feature automatically aggregates and maintains lifetime reproductive history for mares (female horses) based on completed breeding plans and foaling outcomes. This provides breeders with critical historical context when planning future breedings, identifying high-risk mares, and understanding reproductive patterns.
 
+### Automatic Operation (Zero Manual Intervention)
+
+This system is designed to be **completely automatic** with no user intervention required:
+
+1. **Auto-updates on Save:** When a foaling outcome is saved, the mare's history automatically recalculates
+2. **Auto-generates on View:** When a user opens the Breeding History tab for the first time, history automatically generates from existing data
+3. **Self-healing:** If an update fails during outcome save, the system automatically regenerates history when the tab is viewed
+4. **No Manual Buttons:** Users never see or need to click "refresh" or "recalculate"
+
+**Design Philosophy:** Users should never have to think about data synchronization. The system handles everything automatically behind the scenes.
+
 ## Business Value
 
 ### For Breeders
@@ -226,9 +237,11 @@ export async function addFoalingOutcome(params) {
 ```
 
 **Key Design Decisions:**
-- Non-blocking: History update failures don't prevent outcome save
-- Automatic: No manual intervention required
-- Idempotent: Can be run multiple times safely
+- **Non-blocking:** History update failures don't prevent outcome save
+- **Automatic Updates:** History recalculates on every outcome save
+- **Auto-generation on View:** If no history exists when viewing the tab, automatically generates from existing data
+- **Idempotent:** Can be run multiple times safely
+- **No Manual Intervention:** Users never need to click "refresh" or "recalculate"
 
 ## User Interface
 
@@ -251,7 +264,6 @@ if (species === "HORSE" && sex === "FEMALE") {
 ##### 1. Summary Header
 - Total lifetime foalings count
 - Last update source (breeding year)
-- "Recalculate" button for manual refresh
 
 ##### 2. Lifetime Statistics
 Grid displaying:
@@ -347,21 +359,29 @@ const mareReproductiveHistory = {
 8. User views updated history in Animals app "Breeding History" tab
 ```
 
-### Manual Recalculation Flow
+### Automatic Generation Flow (First View)
 
 ```
-1. User clicks "Recalculate" button in Animals app
+1. User opens Breeding History tab in Animals app
    ↓
-2. POST /breeding/mares/:mareId/reproductive-history/recalculate
+2. GET /breeding/mares/:mareId/reproductive-history
    ↓
-3. recalculateMareHistory() finds latest breeding plan
+3. Returns 404 (no history exists yet)
    ↓
-4. Calls updateMareReproductiveHistory()
+4. Frontend automatically calls POST /breeding/mares/:mareId/reproductive-history/recalculate
    ↓
-5. Fresh aggregation of all data
+5. recalculateMareHistory() finds latest breeding plan
    ↓
-6. Returns updated history to UI
+6. Calls updateMareReproductiveHistory()
+   ↓
+7. Fresh aggregation of all data
+   ↓
+8. Returns generated history to UI
+   ↓
+9. User sees complete history (no manual action required)
 ```
+
+**Key Point:** Users never need to manually trigger recalculation - it happens automatically on first view.
 
 ## Risk Scoring Algorithm
 
@@ -453,24 +473,20 @@ describe('updateMareReproductiveHistory', () => {
 
 1. **Database Migration:** Run schema migration to create table
 2. **Deploy Service Layer:** Release service functions and API endpoints
-3. **Backfill Existing Data:**
-   ```sql
-   SELECT DISTINCT damId
-   FROM BreedingPlan
-   WHERE species = 'HORSE'
-     AND damId IS NOT NULL
-     AND birthDateActual IS NOT NULL;
-   ```
-   For each mareId, call `POST /breeding/mares/:mareId/reproductive-history/recalculate`
-
-4. **Deploy UI:** Release Animals app with new tab
+3. **Deploy UI:** Release Animals app with new tab
+4. **Automatic Backfill:** No manual backfill needed! History automatically generates when users open the Breeding History tab for each mare
 5. **Monitor:** Track automatic updates on new foaling outcomes
 
-### Backfill Script
+**Why No Manual Backfill?** The system auto-generates history on first view, so users naturally backfill data as they use the feature. This eliminates the need for a one-time migration script.
+
+### Optional Backfill Script (For Admin Use Only)
+
+If you need to pre-generate history for all mares (e.g., for testing or reporting), you can use this script. **However, this is optional** - the system will auto-generate history as users view each mare's tab.
 
 ```javascript
-// Example backfill for existing mares
-async function backfillMareHistory() {
+// Optional: Pre-generate history for all mares with foaling data
+// Note: This is NOT required - system auto-generates on first view
+async function backfillAllMareHistory() {
   const mares = await prisma.breedingPlan.findMany({
     where: {
       species: 'HORSE',
@@ -481,9 +497,13 @@ async function backfillMareHistory() {
     distinct: ['damId'],
   });
 
+  console.log(`Pre-generating history for ${mares.length} mares...`);
+
   for (const { damId, tenantId } of mares) {
     await recalculateMareHistory(damId, tenantId);
   }
+
+  console.log('Done! (But users would have gotten this automatically anyway)');
 }
 ```
 
@@ -529,12 +549,14 @@ async function backfillMareHistory() {
 **History not updating after foaling outcome saved:**
 - Check console logs for "[Foaling] Failed to update mare reproductive history"
 - Verify breeding plan has species = 'HORSE' and damId is set
-- Try manual recalculate via API or UI button
+- If update failed, history will auto-regenerate when user views the Breeding History tab
+- No manual intervention needed - system is self-healing
 
 **Risk score seems incorrect:**
 - Review risk scoring algorithm above
 - Check that all foaling outcomes have been recorded
-- Consider running recalculate to refresh data
+- Close and reopen the Breeding History tab to refresh data
+- System automatically recalculates on each outcome save
 
 **Tab not appearing for mare:**
 - Verify animal.species === "HORSE"
