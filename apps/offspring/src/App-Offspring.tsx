@@ -3,7 +3,7 @@
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, List, Table as TableIcon, CheckCircle, Bookmark, Receipt, DollarSign, PawPrint, Bird, Cat, Dog, Rabbit, Squirrel, Calendar, Baby, Home } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, List, Table as TableIcon, CheckCircle, Bookmark, Receipt, DollarSign, PawPrint, Bird, Cat, Dog, Rabbit, Squirrel, Calendar, Baby, Home, Heart } from "lucide-react";
 import { NavLink, useInRouterContext } from "react-router-dom";
 import {
   PageHeader,
@@ -4327,9 +4327,16 @@ function OffspringGroupsTab(
 
                         const phases = [
                           {
+                            key: "bred",
+                            label: "Bred",
+                            date: row.plan?.breedDateActual || tblRow.expectedBreedDate,
+                            icon: Heart,
+                            color: "pink",
+                          },
+                          {
                             key: "birth",
                             label: getBirthProcess(tblRow.species, true),
-                            date: tblRow.expectedBirth,
+                            date: row.plan?.birthDateActual || tblRow.expectedBirth,
                             icon: Baby,
                             color: "amber",
                           },
@@ -4357,17 +4364,17 @@ function OffspringGroupsTab(
                         ];
 
                         // Determine current phase based on status
-                        // For offspring groups, we start at birth (index 0) since breeding is handled in breeding plans
+                        // Index 0 = Bred, 1 = Birth, 2 = Weaned, 3 = Placement, 4 = Complete
                         const statusToPhaseIdx: Record<string, number> = {
                           PLANNING: 0,
                           COMMITTED: 0,
-                          BRED: 0,
-                          BIRTHED: 1,
-                          WEANED: 2,
-                          PLACEMENT: 2,
-                          PLACEMENT_STARTED: 2,
-                          PLACEMENT_COMPLETED: 3,
-                          COMPLETE: 4,
+                          BRED: 1,
+                          BIRTHED: 2,
+                          WEANED: 3,
+                          PLACEMENT: 3,
+                          PLACEMENT_STARTED: 3,
+                          PLACEMENT_COMPLETED: 4,
+                          COMPLETE: 5,
                         };
                         const currentIdx = statusToPhaseIdx[tblRow.status || "PLANNING"] ?? 0;
 

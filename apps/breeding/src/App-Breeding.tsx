@@ -6774,8 +6774,8 @@ function PlanDetailsView(props: {
   const [draftTick, setDraftTick] = React.useState(0);
   const [actualDatesWarning, setActualDatesWarning] = React.useState<string | null>(null);
 
-  // Guidance card collapsed/expanded state
-  const [guidanceCollapsed, setGuidanceCollapsed] = React.useState(false);
+  // Guidance card collapsed/expanded state - start collapsed by default
+  const [guidanceCollapsed, setGuidanceCollapsed] = React.useState(true);
 
   // Unsaved changes tracking
   const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
