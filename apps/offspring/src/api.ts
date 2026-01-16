@@ -28,10 +28,20 @@ export type OffspringPlanLite = {
   breedText: string | null;
   dam: { id: number; name: string } | null;
   sire: { id: number; name: string } | null;
+  program?: { id: number; name: string } | null;
+  programId?: number | null;
   expectedPlacementStart: string | null;
   expectedPlacementCompleted: string | null;
   placementStartDateActual?: string | null;
   placementCompletedDateActual?: string | null;
+  // Birth date fields for offspring group UI
+  status?: BreedingPlanStatus | null;
+  birthDateActual?: string | null;
+  breedDateActual?: string | null;
+  // Dates for computing expected timeline
+  lockedCycleStart?: string | null;
+  expectedBirthDate?: string | null;
+  expectedWeaned?: string | null;
   [key: string]: any;
 };
 
@@ -98,6 +108,7 @@ export type AnimalLite = {
   species: Species | null;
   sex: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   registryNumber?: string | null;
   microchip?: string | null;
   birthDate?: string | null;
@@ -200,6 +211,7 @@ export type CreateOffspringIndividualBody = {
   species?: Species | null;
   sex?: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   birthDate?: string | null;
   notes?: string | null;
   placementState?: string | null;
@@ -233,6 +245,7 @@ export type CreateOffspringAnimalBody = {
   species?: Species | null;
   sex?: Sex | null;
   color?: string | null;
+  pattern?: string | null;
   birthDate?: string | null;
   notes?: string | null;
   [key: string]: any;
@@ -742,6 +755,12 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
     remove: (id: number, opts?: TenantInit): Promise<{ ok: true }> =>
       raw.del<{ ok: true }>(`/offspring/individuals/${id}`, opts),
 
+    archive: (id: number, reason?: string, opts?: TenantInit): Promise<{ ok: true }> =>
+      raw.post<{ ok: true }>(`/offspring/individuals/${id}/archive`, { reason }, opts),
+
+    restore: (id: number, opts?: TenantInit): Promise<{ ok: true }> =>
+      raw.post<{ ok: true }>(`/offspring/individuals/${id}/restore`, {}, opts),
+
     addHealthEvent: (id: number, body: HealthEventInput, opts?: TenantInit): Promise<OffspringDetail> =>
       raw.post<OffspringDetail>(`/offspring/individuals/${id}/health-events`, body, opts),
 
@@ -840,6 +859,14 @@ export type OffspringApi = {
 
   /* Tags from unified @bhq/api */
   tags: TagsResource;
+
+  /* Breeding namespace for recording birth date from offspring group */
+  breeding: {
+    recordFoaling(
+      planId: number,
+      body: { actualBirthDate: string; foals?: Array<{ sex: "MALE" | "FEMALE"; color?: string }> }
+    ): Promise<{ plan: any; offspringGroup: any; offspring: any[] }>;
+  };
 };
 
 export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
@@ -1053,5 +1080,17 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
 
     // Wire up unified tags from @bhq/api
     tags: makeTags(createHttp(normBase(typeof opts === "string" ? opts : opts?.baseUrl))),
+
+    // Breeding namespace for recording birth date from offspring group
+    breeding: {
+      recordFoaling: (
+        planId: number,
+        body: { actualBirthDate: string; foals?: Array<{ sex: "MALE" | "FEMALE"; color?: string }> }
+      ) => core.raw.post<{ plan: any; offspringGroup: any; offspring: any[] }>(
+        `/breeding/plans/${planId}/record-foaling`,
+        body,
+        {}
+      ),
+    },
   };
 }

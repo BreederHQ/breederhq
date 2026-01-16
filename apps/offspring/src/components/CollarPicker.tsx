@@ -2,12 +2,26 @@
 // Reusable whelping collar picker component that uses tenant settings
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
-import { hooks } from "@bhq/ui";
+import ReactDOM from "react-dom";
+import { ChevronDown, Check, X } from "lucide-react";
+import { hooks, useSpeciesTerminology, speciesUsesCollars } from "@bhq/ui";
 import type { CollarColorOption, CollarPattern } from "@bhq/api";
 import { COLLAR_PATTERNS } from "@bhq/api";
 
 const { useCollarOptions } = hooks;
+
+/**
+ * Determine if a hex color is light (for contrast calculation)
+ */
+function isLightColor(hex: string): boolean {
+  const color = hex.replace("#", "");
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  // Using relative luminance formula
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5;
+}
 
 /**
  * Get CSS background style for a collar pattern swatch.
@@ -56,6 +70,8 @@ export type CollarPickerProps = {
   value: string | null | undefined;
   /** Called when collar is selected */
   onChange: (colorId: string, pattern?: CollarPattern) => void;
+  /** Species code - if provided, collar picker only shows for species that use collars */
+  species?: string | null;
   /** Optional placeholder text */
   placeholder?: string;
   /** Additional CSS classes */
@@ -65,16 +81,23 @@ export type CollarPickerProps = {
 };
 
 /**
- * Dropdown picker for whelping collar colors.
+ * Dropdown picker for identification collar colors.
  * Fetches available colors from tenant settings automatically.
+ * Returns null for species that don't use collars (horses, cattle, chickens).
  */
 export function CollarPicker({
   value,
   onChange,
+  species,
   placeholder = "Select collar color",
   className = "",
   disabled = false,
 }: CollarPickerProps) {
+  // Hide collar picker for species that don't use collars
+  if (species && !speciesUsesCollars(species)) {
+    return null;
+  }
+
   const { colors, loading, resolveColor } = useCollarOptions();
   const [showPalette, setShowPalette] = React.useState(false);
   const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
@@ -155,59 +178,118 @@ export function CollarPicker({
       <button
         type="button"
         disabled={disabled}
-        className={`${inputClass} flex items-center justify-between text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={`${inputClass} flex items-center justify-between text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group transition-all duration-150 hover:border-white/30`}
         onClick={handleToggle}
       >
-        <span className="flex items-center gap-2">
-          {currentColor && (
+        <span className="flex items-center gap-2.5">
+          {currentColor ? (
             <span
-              className="h-3 w-3 rounded-full border border-border flex-shrink-0"
-              style={getPatternStyle(currentColor)}
+              className="h-5 w-5 rounded-full border-2 border-white/30 flex-shrink-0 transition-transform duration-150 group-hover:scale-110"
+              style={{
+                ...getPatternStyle(currentColor),
+                boxShadow: `0 2px 6px ${currentColor.hex}40`,
+              }}
             />
+          ) : (
+            <span className="h-5 w-5 rounded-full border-2 border-dashed border-white/20 flex-shrink-0" />
           )}
-          <span className={!currentColor ? "text-secondary" : ""}>
+          <span className={!currentColor ? "text-secondary" : "font-medium"}>
             {displayLabel}
           </span>
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 ${showPalette ? "rotate-180" : ""}`} />
       </button>
 
-      {showPalette && (
+      {showPalette && ReactDOM.createPortal(
         <div
           ref={dropdownRef}
-          className="z-50 rounded-md border border-border bg-surface shadow-lg"
-          style={dropdownStyle}
+          className="rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl shadow-black/50 overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+          style={{ ...dropdownStyle, zIndex: 2147485100, minWidth: 240 }}
         >
-          {/* Color list */}
-          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-            {colors.map((color) => (
-              <li key={color.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                  onClick={(e) => handleSelect(color, e)}
-                >
-                  <span
-                    className="h-3 w-3 rounded-full border border-border flex-shrink-0"
-                    style={getPatternStyle(color)}
-                  />
-                  <span className="flex-1">{color.label}</span>
-                  {color.pattern !== "solid" && (
-                    <span className="text-secondary text-[10px]">
-                      ({COLLAR_PATTERNS.find((p) => p.value === color.pattern)?.label})
+          {/* Header */}
+          <div className="px-3 py-2.5 border-b border-white/10 bg-white/[0.02]">
+            <div className="text-xs font-medium text-white/70 uppercase tracking-wider">
+              Select Color
+            </div>
+          </div>
+
+          {/* Color grid */}
+          <div className="p-3 max-h-64 overflow-y-auto">
+            <div className="grid grid-cols-4 gap-2">
+              {colors.map((color) => {
+                const isSelected = currentColor?.id === color.id;
+                return (
+                  <button
+                    key={color.id}
+                    type="button"
+                    className={`
+                      group relative flex flex-col items-center gap-1.5 p-2 rounded-lg
+                      transition-all duration-150 ease-out
+                      hover:bg-white/10 hover:scale-105
+                      focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:ring-offset-1 focus:ring-offset-[#1a1a1a]
+                      ${isSelected ? "bg-white/10 ring-2 ring-[hsl(var(--brand-orange))]" : ""}
+                    `}
+                    onClick={(e) => handleSelect(color, e)}
+                    title={color.pattern !== "solid"
+                      ? `${color.label} (${COLLAR_PATTERNS.find((p) => p.value === color.pattern)?.label})`
+                      : color.label
+                    }
+                  >
+                    {/* Color swatch with glow effect */}
+                    <div className="relative">
+                      <span
+                        className={`
+                          block w-8 h-8 rounded-full border-2
+                          transition-all duration-150
+                          ${isSelected
+                            ? "border-[hsl(var(--brand-orange))] shadow-lg"
+                            : "border-white/20 group-hover:border-white/40"
+                          }
+                        `}
+                        style={{
+                          ...getPatternStyle(color),
+                          boxShadow: isSelected
+                            ? `0 0 12px 2px ${color.hex}60`
+                            : `0 2px 8px ${color.hex}30`,
+                        }}
+                      />
+                      {/* Selection checkmark */}
+                      {isSelected && (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <Check
+                            className="w-4 h-4 drop-shadow-lg"
+                            style={{
+                              color: isLightColor(color.hex) ? "#000" : "#fff",
+                              strokeWidth: 3,
+                            }}
+                          />
+                        </span>
+                      )}
+                    </div>
+                    {/* Color label */}
+                    <span className={`
+                      text-[10px] font-medium leading-tight text-center
+                      transition-colors duration-150
+                      ${isSelected ? "text-white" : "text-white/60 group-hover:text-white/90"}
+                    `}>
+                      {color.label}
                     </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
+                    {/* Pattern indicator */}
+                    {color.pattern !== "solid" && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[hsl(var(--brand-orange))]" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Clear option */}
           {value && (
-            <div className="border-t border-border">
+            <div className="border-t border-white/10 p-2 bg-white/[0.02]">
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs text-secondary hover:bg-muted"
+                className="flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 hover:bg-white/10 transition-all duration-150"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -215,11 +297,13 @@ export function CollarPicker({
                   setShowPalette(false);
                 }}
               >
+                <X className="w-3.5 h-3.5" />
                 Clear selection
               </button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

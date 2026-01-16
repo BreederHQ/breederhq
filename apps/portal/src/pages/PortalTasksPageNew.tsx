@@ -347,7 +347,7 @@ function TaskGroup({ title, tasks, collapsible = false, defaultCollapsed = false
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyTasks({ animalName }: { animalName: string }) {
+function EmptyTasks() {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -393,7 +393,7 @@ function EmptyTasks({ animalName }: { animalName: string }) {
             maxWidth: "320px",
           }}
         >
-          No pending tasks for {animalName}'s journey. We'll notify you when something needs your attention.
+          No pending tasks. We'll notify you when something needs your attention.
         </p>
       </div>
     </PortalCard>
@@ -512,8 +512,8 @@ export default function PortalTasksPageNew() {
   const { tasks, loading, error } = usePortalTasks();
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -576,26 +576,28 @@ export default function PortalTasksPageNew() {
         <PortalHero
           variant="page"
           title="Tasks"
-          subtitle={`What needs your attention for ${animalName}`}
-          animalContext={animalName}
+          subtitle={animalName ? `What needs your attention for ${animalName}` : "What needs your attention"}
+          animalContext={animalName ?? undefined}
           status={actionCount > 0 ? "action" : "success"}
           statusLabel={actionCount > 0 ? `${actionCount} need attention` : "All caught up"}
           actionCount={actionCount > 0 ? actionCount : undefined}
           actionLabel={actionCount === 1 ? "task needs attention" : "tasks need attention"}
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={actionCount > 0 ? `${actionCount} pending` : "All complete"}
-          statusVariant={actionCount > 0 ? "action" : "success"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={actionCount > 0 ? `${actionCount} pending` : "All complete"}
+            statusVariant={actionCount > 0 ? "action" : "success"}
+          />
+        )}
 
         {/* Task Groups */}
         {tasks.length === 0 ? (
-          <EmptyTasks animalName={animalName} />
+          <EmptyTasks />
         ) : (
           <>
             <TaskGroup title="Action Required" tasks={actionRequired} />

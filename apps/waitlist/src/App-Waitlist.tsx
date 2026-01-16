@@ -12,7 +12,9 @@ import {
   hooks,
   SearchBar,
   Button,
+  useViewMode,
 } from "@bhq/ui";
+import { LayoutGrid, List, Table as TableIcon } from "lucide-react";
 import { ToastViewport, toast } from "@bhq/ui/atoms/Toast";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { DetailsHost } from "@bhq/ui/components/Drawer/DetailsHost";
@@ -24,9 +26,46 @@ import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeWaitlistApiClient, WaitlistApi, type BlockedUserInfo, type WaitlistInvoiceSummary } from "./api";
 import { PaymentStatusBadge } from "@bhq/ui/components/Finance/PaymentStatusBadge";
 import { GenerateInvoiceModal } from "./components/GenerateInvoiceModal";
+import { NavLink, useInRouterContext } from "react-router-dom";
 
 // Import the WaitlistTab component (which is the core content for Approved)
 import WaitlistTab from "./pages/WaitlistTab";
+import { PendingCardView } from "./components/PendingCardView";
+import { PendingListView } from "./components/PendingListView";
+import { RejectedCardView } from "./components/RejectedCardView";
+import { RejectedListView } from "./components/RejectedListView";
+import { BlockedCardView } from "./components/BlockedCardView";
+import { BlockedListView } from "./components/BlockedListView";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * SafeNavLink - works with or without React Router context
+ * ───────────────────────────────────────────────────────────────────────────── */
+function SafeNavLink({
+  to,
+  className,
+  children,
+}: {
+  to: string;
+  className: string | ((props: { isActive: boolean }) => string);
+  children: React.ReactNode;
+}) {
+  const inRouter = useInRouterContext();
+  if (inRouter) {
+    return (
+      <NavLink to={to} className={className}>
+        {children}
+      </NavLink>
+    );
+  }
+  // Fallback for standalone mode
+  const isActive = typeof window !== "undefined" && window.location.pathname === to;
+  const cls = typeof className === "function" ? className({ isActive }) : className;
+  return (
+    <a href={to} className={cls}>
+      {children}
+    </a>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Waitlist Shell with Approved/Pending/Rejected tabs
@@ -61,34 +100,69 @@ export default function AppWaitlist() {
     };
   }, [tenantId]);
 
-  // Tab state - read from URL query param or default to approved
-  const [activeView, setActiveView] = React.useState<WaitlistView>(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get("tab");
-      if (tab === "pending" || tab === "rejected" || tab === "approved" || tab === "blocked") {
-        return tab;
-      }
-    } catch {
-      // Ignore
-    }
+  /* ───────── View routing (approved | pending | rejected | blocked) ───────── */
+  const getBasePath = React.useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const p = window.location.pathname || "/";
+    const clean = p.replace(/\/+$/, "");
+    // Strip any sub-paths to get the base waitlist path
+    if (clean.endsWith("/pending")) return clean.slice(0, -"/pending".length) || "/";
+    if (clean.endsWith("/rejected")) return clean.slice(0, -"/rejected".length) || "/";
+    if (clean.endsWith("/blocked")) return clean.slice(0, -"/blocked".length) || "/";
+    return clean || "/";
+  }, []);
+
+  const getViewFromLocation = (): WaitlistView => {
+    if (typeof window === "undefined") return "approved";
+    const p = window.location.pathname || "/";
+    if (p.endsWith("/pending") || p.includes("/pending/")) return "pending";
+    if (p.endsWith("/rejected") || p.includes("/rejected/")) return "rejected";
+    if (p.endsWith("/blocked") || p.includes("/blocked/")) return "blocked";
     return "approved";
-  });
+  };
+
+  const [currentView, setCurrentView] = React.useState<WaitlistView>(getViewFromLocation());
+
+  // Update view when URL changes (back/forward navigation)
+  React.useEffect(() => {
+    const handlePopState = () => setCurrentView(getViewFromLocation());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const basePath = getBasePath();
+
+  // Nav link styling function
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    [
+      "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+      isActive
+        ? "text-primary border-[hsl(var(--brand-orange))]"
+        : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+    ].join(" ");
 
   return (
     <div className="bhq-waitlist-app">
       <div className="p-4 space-y-4">
         <div className="relative">
           <PageHeader
-            title="Waitlist"
+            title={
+              currentView === "pending"
+                ? "Waitlist - Pending"
+                : currentView === "rejected"
+                ? "Waitlist - Rejected"
+                : currentView === "blocked"
+                ? "Waitlist - Blocked"
+                : "Waitlist - Approved"
+            }
             subtitle={
-              activeView === "approved"
-                ? "Manage your approved waitlist entries"
-                : activeView === "pending"
-                ? "Review pending waitlist requests"
-                : activeView === "rejected"
+              currentView === "pending"
+                ? "Review and approve pending waitlist requests"
+                : currentView === "rejected"
                 ? "View rejected waitlist requests"
-                : "Manage blocked marketplace users"
+                : currentView === "blocked"
+                ? "Manage blocked marketplace users"
+                : "Manage your approved waitlist entries"
             }
             rightSlot={null}
           />
@@ -97,32 +171,24 @@ export default function AppWaitlist() {
           <div className="absolute right-0 top-0 h-full flex items-center">
             <nav className="flex items-center gap-1" role="tablist" aria-label="Waitlist views">
               {([
-                { key: "approved", label: "Approved", emoji: "✅" },
-                { key: "pending", label: "Pending", emoji: "⏳" },
-                { key: "rejected", label: "Rejected", emoji: "🚫" },
-                { key: "blocked", label: "Blocked", emoji: "🛑" },
+                { key: "approved", path: basePath, label: "Approved", emoji: "✅" },
+                { key: "pending", path: `${basePath}/pending`, label: "Pending", emoji: "⏳" },
+                { key: "rejected", path: `${basePath}/rejected`, label: "Rejected", emoji: "🚫" },
+                { key: "blocked", path: `${basePath}/blocked`, label: "Blocked", emoji: "🛑" },
               ] as const).map((tab) => {
-                const isActive = activeView === tab.key;
+                const isActive = currentView === tab.key;
                 return (
-                  <button
+                  <SafeNavLink
                     key={tab.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setActiveView(tab.key)}
-                    className={[
-                      "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
-                      isActive
-                        ? "text-primary border-[hsl(var(--brand-orange))]"
-                        : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
-                    ].join(" ")}
+                    to={tab.path}
+                    className={navLinkClass}
                   >
                     {isActive && (
                       <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
                     )}
                     <span className="relative z-10">{tab.emoji}</span>
                     <span className="relative z-10">{tab.label}</span>
-                  </button>
+                  </SafeNavLink>
                 );
               })}
             </nav>
@@ -130,19 +196,19 @@ export default function AppWaitlist() {
         </div>
 
         {/* Tab content */}
-        {activeView === "approved" ? (
+        {currentView === "approved" ? (
           <WaitlistTab
             api={api}
             tenantId={tenantId}
             readOnlyGlobal={readOnlyGlobal}
           />
-        ) : activeView === "pending" ? (
+        ) : currentView === "pending" ? (
           <PendingWaitlistTab
             api={api}
             tenantId={tenantId}
             readOnlyGlobal={readOnlyGlobal}
           />
-        ) : activeView === "rejected" ? (
+        ) : currentView === "rejected" ? (
           <RejectedWaitlistTab
             api={api}
             tenantId={tenantId}
@@ -301,6 +367,12 @@ function PendingWaitlistTable({
   const [error, setError] = React.useState<string | null>(null);
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
 
+  // View mode: cards | list | table
+  const { viewMode, setViewMode } = useViewMode({
+    storageKey: "bhq_waitlist_pending_view",
+    defaultMode: "table",
+  });
+
   const onToggleSort = (key: string) => {
     setSorts((prev) => {
       const f = prev.find((s) => s.key === key);
@@ -352,99 +424,152 @@ function PendingWaitlistTable({
     <Card>
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+          {/* View mode toggle */}
+          <div className="flex items-center border border-hairline rounded-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              title="Card view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              title="List view"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+              title="Table view"
+            >
+              <TableIcon className="w-4 h-4" />
+            </button>
+          </div>
           <span className="text-xs text-secondary">{rows.length} pending</span>
         </div>
 
-        <Table
-          columns={PENDING_COLS}
-          columnState={cols.map}
-          onColumnStateChange={cols.setAll}
-          getRowId={(r: PendingTableRow) => r.id}
-          pageSize={25}
-          renderStickyRight={() => (
-            <ColumnsPopover
-              columns={cols.map}
-              onToggle={cols.toggle}
-              onSet={cols.setAll}
-              allColumns={PENDING_COLS}
-              triggerClassName="bhq-columns-trigger"
-            />
-          )}
-          stickyRightWidthPx={40}
-        >
-          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search pending..." widthPx={520} />
-            <div />
+        {/* Search bar - shown for all view modes */}
+        <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+          <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search pending..." widthPx={520} />
+          <div className="flex items-center gap-2">
+            {viewMode === "table" && (
+              <ColumnsPopover
+                columns={cols.map}
+                onToggle={cols.toggle}
+                onSet={cols.setAll}
+                allColumns={PENDING_COLS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
           </div>
+        </div>
 
-          <table className="min-w-max w-full text-sm">
-            <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-            <tbody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-secondary">Loading pending entries...</div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && error && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && !error && rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-secondary">No pending entries.</div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                !error &&
-                rows.length > 0 &&
-                rows.map((r) => {
-                  const isDepositPaid = r.status === "DEPOSIT_PAID";
-                  return (
-                    <TableRow
-                      key={r.id}
-                      onClick={() => onRowClick?.(r.id)}
-                      className={[
-                        onRowClick ? "cursor-pointer hover:bg-surface-strong" : "",
-                        isDepositPaid ? "bg-green-500/5 border-l-2 border-l-green-500" : "",
-                      ].filter(Boolean).join(" ")}
-                    >
-                      {visibleSafe.map((c) => {
-                        let v: any = (r as any)[c.key];
-                        if (c.key === "createdAt") v = fmtDateTime(v);
-                        // Truncate notes for display
-                        if (c.key === "notes" && v && v.length > 100) {
-                          v = v.substring(0, 100) + "...";
-                        }
-                        // Render PaymentStatusBadge for invoice column with action indicator
-                        if (c.key === "invoice") {
-                          return (
-                            <TableCell key={c.key}>
-                              <div className="flex items-center gap-2">
-                                <PaymentStatusBadge invoice={r.invoice} />
-                                {isDepositPaid && (
-                                  <span className="text-xs font-medium text-green-600 dark:text-green-400">
-                                    Action Required
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                      })}
-                    </TableRow>
-                  );
-                })}
-            </tbody>
-          </table>
-        </Table>
+        {/* Card View */}
+        {viewMode === "cards" && (
+          <PendingCardView
+            rows={rows}
+            loading={loading}
+            error={error}
+            onRowClick={(r) => onRowClick?.(r.id)}
+          />
+        )}
+
+        {/* List View */}
+        {viewMode === "list" && (
+          <PendingListView
+            rows={rows}
+            loading={loading}
+            error={error}
+            onRowClick={(r) => onRowClick?.(r.id)}
+            visibleColumns={visibleSafe}
+          />
+        )}
+
+        {/* Table View */}
+        {viewMode === "table" && (
+          <Table
+            columns={PENDING_COLS}
+            columnState={cols.map}
+            onColumnStateChange={cols.setAll}
+            getRowId={(r: PendingTableRow) => r.id}
+            pageSize={25}
+            stickyRightWidthPx={40}
+          >
+            <table className="min-w-max w-full text-sm">
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <tbody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">Loading pending entries...</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && error && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && !error && rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">No pending entries.</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading &&
+                  !error &&
+                  rows.length > 0 &&
+                  rows.map((r) => {
+                    const isDepositPaid = r.status === "DEPOSIT_PAID";
+                    return (
+                      <TableRow
+                        key={r.id}
+                        onClick={() => onRowClick?.(r.id)}
+                        className={[
+                          onRowClick ? "cursor-pointer hover:bg-surface-strong" : "",
+                          isDepositPaid ? "bg-green-500/5 border-l-2 border-l-green-500" : "",
+                        ].filter(Boolean).join(" ")}
+                      >
+                        {visibleSafe.map((c) => {
+                          let v: any = (r as any)[c.key];
+                          if (c.key === "createdAt") v = fmtDateTime(v);
+                          // Truncate notes for display
+                          if (c.key === "notes" && v && v.length > 100) {
+                            v = v.substring(0, 100) + "...";
+                          }
+                          // Render PaymentStatusBadge for invoice column with action indicator
+                          if (c.key === "invoice") {
+                            return (
+                              <TableCell key={c.key}>
+                                <div className="flex items-center gap-2">
+                                  <PaymentStatusBadge invoice={r.invoice} />
+                                  {isDepositPaid && (
+                                    <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                                      Action Required
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            );
+                          }
+                          return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </Table>
+        )}
       </div>
     </Card>
   );
@@ -1718,6 +1843,12 @@ function RejectedWaitlistTab({
   const [error, setError] = React.useState<string | null>(null);
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
 
+  // View mode: cards | list | table
+  const { viewMode, setViewMode } = useViewMode({
+    storageKey: "bhq_waitlist_rejected_view",
+    defaultMode: "table",
+  });
+
   // Block modal state
   const [blockTarget, setBlockTarget] = React.useState<{ userId: string; userName: string } | null>(null);
   const [blockLoading, setBlockLoading] = React.useState(false);
@@ -1800,93 +1931,146 @@ function RejectedWaitlistTab({
       <Card>
         <div className="relative">
           <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+            {/* View mode toggle */}
+            <div className="flex items-center border border-hairline rounded-md overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+              </button>
+            </div>
             <span className="text-xs text-secondary">{rows.length} rejected</span>
           </div>
 
-          <Table
-            columns={REJECTED_COLS}
-            columnState={cols.map}
-            onColumnStateChange={cols.setAll}
-            getRowId={(r: RejectedTableRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={cols.map}
-                onToggle={cols.toggle}
-                onSet={cols.setAll}
-                allColumns={REJECTED_COLS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search rejected..." widthPx={520} />
-              <div />
+          {/* Search bar - shown for all view modes */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search rejected..." widthPx={520} />
+            <div className="flex items-center gap-2">
+              {viewMode === "table" && (
+                <ColumnsPopover
+                  columns={cols.map}
+                  onToggle={cols.toggle}
+                  onSet={cols.setAll}
+                  allColumns={REJECTED_COLS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              )}
             </div>
+          </div>
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe.filter((c) => c.key !== "actions")} sorts={sorts} onToggleSort={onToggleSort} />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading rejected entries...</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && !error && rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No rejected entries.</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading &&
-                  !error &&
-                  rows.length > 0 &&
-                  rows.map((r) => (
-                    <TableRow key={r.id}>
-                      {visibleSafe.map((c) => {
-                        // Render block action button
-                        if (c.key === "actions") {
-                          // Only show block button if entry has a marketplace user ID
-                          if (!r.marketplaceUserId) {
-                            return <TableCell key={c.key}></TableCell>;
-                          }
-                          return (
-                            <TableCell key={c.key}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setBlockTarget({ userId: r.marketplaceUserId!, userName: r.userName || "this user" })}
-                                className="text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                              >
-                                Block
-                              </Button>
-                            </TableCell>
-                          );
-                        }
-                        let v: any = (r as any)[c.key];
-                        if (c.key === "rejectedAt") v = fmtDateTime(v);
-                        // Truncate reason for display
-                        if (c.key === "rejectedReason" && v && v.length > 100) {
-                          v = v.substring(0, 100) + "...";
-                        }
-                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                      })}
+          {/* Card View */}
+          {viewMode === "cards" && (
+            <RejectedCardView
+              rows={rows}
+              loading={loading}
+              error={error}
+              onBlockUser={(r) => r.marketplaceUserId && setBlockTarget({ userId: r.marketplaceUserId, userName: r.userName || "this user" })}
+            />
+          )}
+
+          {/* List View */}
+          {viewMode === "list" && (
+            <RejectedListView
+              rows={rows}
+              loading={loading}
+              error={error}
+              visibleColumns={visibleSafe.filter((c) => c.key !== "actions")}
+              onBlockUser={(r) => r.marketplaceUserId && setBlockTarget({ userId: r.marketplaceUserId, userName: r.userName || "this user" })}
+            />
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
+            <Table
+              columns={REJECTED_COLS}
+              columnState={cols.map}
+              onColumnStateChange={cols.setAll}
+              getRowId={(r: RejectedTableRow) => r.id}
+              pageSize={25}
+              stickyRightWidthPx={40}
+            >
+              <table className="min-w-max w-full text-sm">
+                <TableHeader columns={visibleSafe.filter((c) => c.key !== "actions")} sorts={sorts} onToggleSort={onToggleSort} />
+                <tbody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">Loading rejected entries...</div>
+                      </TableCell>
                     </TableRow>
-                  ))}
-              </tbody>
-            </table>
-          </Table>
+                  )}
+                  {!loading && error && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && !error && rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">No rejected entries.</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading &&
+                    !error &&
+                    rows.length > 0 &&
+                    rows.map((r) => (
+                      <TableRow key={r.id}>
+                        {visibleSafe.map((c) => {
+                          // Render block action button
+                          if (c.key === "actions") {
+                            // Only show block button if entry has a marketplace user ID
+                            if (!r.marketplaceUserId) {
+                              return <TableCell key={c.key}></TableCell>;
+                            }
+                            return (
+                              <TableCell key={c.key}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setBlockTarget({ userId: r.marketplaceUserId!, userName: r.userName || "this user" })}
+                                  className="text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                                >
+                                  Block
+                                </Button>
+                              </TableCell>
+                            );
+                          }
+                          let v: any = (r as any)[c.key];
+                          if (c.key === "rejectedAt") v = fmtDateTime(v);
+                          // Truncate reason for display
+                          if (c.key === "rejectedReason" && v && v.length > 100) {
+                            v = v.substring(0, 100) + "...";
+                          }
+                          return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    ))}
+                </tbody>
+              </table>
+            </Table>
+          )}
         </div>
       </Card>
 
@@ -1937,6 +2121,12 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
   const [error, setError] = React.useState<string | null>(null);
   const [unblockingId, setUnblockingId] = React.useState<string | null>(null);
 
+  // View mode toggle
+  const { viewMode, setViewMode } = useViewMode({
+    storageKey: "bhq_waitlist_blocked_view",
+    defaultMode: "table",
+  });
+
   const load = React.useCallback(async () => {
     if (!api) return;
     setLoading(true);
@@ -1956,11 +2146,11 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
     load();
   }, [load]);
 
-  const handleUnblock = async (userId: string) => {
+  const handleUnblock = async (row: BlockedUserInfo) => {
     if (!api) return;
-    setUnblockingId(userId);
+    setUnblockingId(row.userId);
     try {
-      await api.marketplaceBlocks.unblock(userId);
+      await api.marketplaceBlocks.unblock(row.userId);
       toast.success("User unblocked successfully");
       load();
     } catch (e: any) {
@@ -1971,6 +2161,16 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
 
   const cols = hooks.useColumns(BLOCKED_COLS, BLOCKED_USERS_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : BLOCKED_COLS;
+
+  // Columns for list view
+  const listViewColumns = [
+    { key: "name", label: "Name" },
+    { key: "email", label: "Email" },
+    { key: "level", label: "Level" },
+    { key: "reason", label: "Reason" },
+    { key: "blockedAt", label: "Blocked" },
+    { key: "actions", label: "Actions" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -1984,119 +2184,172 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
 
       <Card>
         <div className="relative">
+          {/* View mode toggle + count */}
           <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
             <span className="text-xs text-secondary">{rows.length} blocked</span>
+            <div className="flex items-center border border-hairline rounded overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary"}`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <Table
-            columns={BLOCKED_COLS}
-            columnState={cols.map}
-            onColumnStateChange={cols.setAll}
-            getRowId={(r: BlockedUserInfo) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={cols.map}
-                onToggle={cols.toggle}
-                onSet={cols.setAll}
-                allColumns={BLOCKED_COLS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <div className="text-sm text-secondary">
-                {loading ? "Loading..." : `${rows.length} blocked user${rows.length === 1 ? "" : "s"}`}
-              </div>
-              <div />
-            </div>
+          {/* Card View */}
+          {viewMode === "cards" && (
+            <BlockedCardView
+              rows={rows}
+              loading={loading}
+              error={error}
+              onUnblock={handleUnblock}
+              unblockingId={unblockingId}
+            />
+          )}
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader
-                columns={visibleSafe.filter((c) => c.key !== "actions")}
-                sorts={[]}
-                onToggleSort={() => {}}
-              />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading blocked users...</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && !error && rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No blocked users.</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading &&
-                  !error &&
-                  rows.length > 0 &&
-                  rows.map((r) => (
-                    <TableRow key={r.id}>
-                      {visibleSafe.map((c) => {
-                        if (c.key === "name") {
-                          const name = r.user.name || `${r.user.firstName} ${r.user.lastName}`.trim() || "Unknown";
-                          return <TableCell key={c.key}>{name}</TableCell>;
-                        }
-                        if (c.key === "email") {
-                          return <TableCell key={c.key}>{r.user.email}</TableCell>;
-                        }
-                        if (c.key === "level") {
-                          return (
-                            <TableCell key={c.key}>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getLevelBadgeClass(r.level)}`}>
-                                {r.level}
-                              </span>
-                            </TableCell>
-                          );
-                        }
-                        if (c.key === "reason") {
-                          const reason = r.reason || "—";
-                          return (
-                            <TableCell key={c.key}>
-                              <span className="text-secondary" title={r.reason || undefined}>
-                                {reason.length > 50 ? reason.substring(0, 50) + "..." : reason}
-                              </span>
-                            </TableCell>
-                          );
-                        }
-                        if (c.key === "createdAt") {
-                          return <TableCell key={c.key}>{fmtDateTime(r.createdAt)}</TableCell>;
-                        }
-                        if (c.key === "actions") {
-                          return (
-                            <TableCell key={c.key}>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleUnblock(r.userId)}
-                                disabled={unblockingId === r.userId}
-                                className="text-xs"
-                              >
-                                {unblockingId === r.userId ? "Unblocking..." : "Unblock"}
-                              </Button>
-                            </TableCell>
-                          );
-                        }
-                        return <TableCell key={c.key}>{(r as any)[c.key] ?? ""}</TableCell>;
-                      })}
+          {/* List View */}
+          {viewMode === "list" && (
+            <BlockedListView
+              rows={rows}
+              loading={loading}
+              error={error}
+              onUnblock={handleUnblock}
+              unblockingId={unblockingId}
+              visibleColumns={listViewColumns}
+            />
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
+            <Table
+              columns={BLOCKED_COLS}
+              columnState={cols.map}
+              onColumnStateChange={cols.setAll}
+              getRowId={(r: BlockedUserInfo) => r.id}
+              pageSize={25}
+              renderStickyRight={() => (
+                <ColumnsPopover
+                  columns={cols.map}
+                  onToggle={cols.toggle}
+                  onSet={cols.setAll}
+                  allColumns={BLOCKED_COLS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              )}
+              stickyRightWidthPx={40}
+            >
+              <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+                <div className="text-sm text-secondary">
+                  {loading ? "Loading..." : `${rows.length} blocked user${rows.length === 1 ? "" : "s"}`}
+                </div>
+                <div />
+              </div>
+
+              <table className="min-w-max w-full text-sm">
+                <TableHeader
+                  columns={visibleSafe.filter((c) => c.key !== "actions")}
+                  sorts={[]}
+                  onToggleSort={() => {}}
+                />
+                <tbody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">Loading blocked users...</div>
+                      </TableCell>
                     </TableRow>
-                  ))}
-              </tbody>
-            </table>
-          </Table>
+                  )}
+                  {!loading && error && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && !error && rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">No blocked users.</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading &&
+                    !error &&
+                    rows.length > 0 &&
+                    rows.map((r) => (
+                      <TableRow key={r.id}>
+                        {visibleSafe.map((c) => {
+                          if (c.key === "name") {
+                            const name = r.user.name || `${r.user.firstName} ${r.user.lastName}`.trim() || "Unknown";
+                            return <TableCell key={c.key}>{name}</TableCell>;
+                          }
+                          if (c.key === "email") {
+                            return <TableCell key={c.key}>{r.user.email}</TableCell>;
+                          }
+                          if (c.key === "level") {
+                            return (
+                              <TableCell key={c.key}>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getLevelBadgeClass(r.level)}`}>
+                                  {r.level}
+                                </span>
+                              </TableCell>
+                            );
+                          }
+                          if (c.key === "reason") {
+                            const reason = r.reason || "—";
+                            return (
+                              <TableCell key={c.key}>
+                                <span className="text-secondary" title={r.reason || undefined}>
+                                  {reason.length > 50 ? reason.substring(0, 50) + "..." : reason}
+                                </span>
+                              </TableCell>
+                            );
+                          }
+                          if (c.key === "createdAt") {
+                            return <TableCell key={c.key}>{fmtDateTime(r.createdAt)}</TableCell>;
+                          }
+                          if (c.key === "actions") {
+                            return (
+                              <TableCell key={c.key}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleUnblock(r)}
+                                  disabled={unblockingId === r.userId}
+                                  className="text-xs"
+                                >
+                                  {unblockingId === r.userId ? "Unblocking..." : "Unblock"}
+                                </Button>
+                              </TableCell>
+                            );
+                          }
+                          return <TableCell key={c.key}>{(r as any)[c.key] ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    ))}
+                </tbody>
+              </table>
+            </Table>
+          )}
         </div>
       </Card>
     </div>

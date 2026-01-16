@@ -1,3 +1,32 @@
-# BreederHQ Marketplace - no indexing
+# Robots.txt for BreederHQ Marketplace
+# Allow indexing of public browse pages, block protected user areas
+
 User-agent: *
-Disallow: /
+
+# Allow public marketplace pages
+Allow: /
+Allow: /animals
+Allow: /animals/*
+Allow: /breeders
+Allow: /breeders/*
+Allow: /services
+Allow: /services/*
+Allow: /programs/*
+Allow: /breeding-programs
+Allow: /breeding-programs/*
+
+# Block protected user areas (require login)
+Disallow: /dashboard
+Disallow: /inquiries
+Disallow: /saved
+Disallow: /waitlist
+Disallow: /updates
+Disallow: /manage/
+Disallow: /provider/
+Disallow: /me/
+
+# Block auth pages (no SEO value)
+Disallow: /auth/
+
+# Sitemap location
+Sitemap: https://marketplace.breederhq.com/sitemap.xml

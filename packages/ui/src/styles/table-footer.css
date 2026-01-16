@@ -57,9 +57,14 @@
   height: 28px;
   padding: 0 .4rem;
   border: 1px solid var(--border-hairline, rgba(120,120,120,.25));
-  background: var(--bg-surface, transparent);
+  background: var(--bg-surface, #1a1a1a);
   color: inherit;
   border-radius: .375rem;
+}
+
+.bhq-table-footer__pagesize select option {
+  background: var(--bg-surface, #1a1a1a);
+  color: var(--text-primary, #e5e7eb);
 }
 
 .bhq-table-footer__pager {

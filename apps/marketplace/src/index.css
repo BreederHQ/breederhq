@@ -5,13 +5,368 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Basic dark background for body */
+/* ─────────────────────────────────────────────────────────────
+   Brand Design Tokens
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Brand orange - vibrant theme orange #f97316 */
+  --brand-orange: 25 95% 53%;
+
+  /* Brand blue - from logo #005dc2 (primary) in HSL */
+  --brand-blue: 212 100% 38%;
+
+  /* Brand teal - from logo #01a7c3 (secondary) in HSL */
+  --brand-teal: 187 99% 39%;
+
+  /* Core palette - Light theme */
+  --page: 0 0% 100%;
+  --surface: 0 0% 98%;
+  --surface-2: 0 0% 96%;
+  --surface-strong: 0 0% 94%;
+  --primary: 0 0% 10%;
+  --secondary: 0 0% 40%;
+  --hairline: 0 0% 88%;
+
+  /* Aliases */
+  --background: var(--page);
+  --foreground: var(--primary);
+  --accent: var(--brand-orange);
+}
+
+/* Base body styles - no background color set here, let theme classes handle it */
 html, body {
   min-height: 100%;
-  background-color: #0a0a0f;
-  color: #fff;
 }
 
 #marketplace-root, #root, #app {
   min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Accessibility: Focus Indicators (WCAG 2.4.7)
+   ───────────────────────────────────────────────────────────── */
+/* Global focus-visible styles for all interactive elements */
+:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 2px;
+}
+
+/* Remove default focus outline when not using keyboard navigation */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Enhanced focus for buttons and links */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Focus styles for form elements */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 1px;
+  border-color: hsl(var(--brand-orange)) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Browse Pages Light Theme Overrides
+   SCOPED to .marketplace-browse class - only affects public browse pages
+   Does NOT affect seller management pages (/manage/*, /provider/*)
+   ───────────────────────────────────────────────────────────── */
+
+/* Page background - override portal dark backgrounds */
+.marketplace-browse .bg-portal-base,
+.marketplace-browse .bg-portal-page,
+.marketplace-browse.bg-portal-base,
+.marketplace-browse.bg-portal-page {
+  background-color: #f9fafb !important;
+}
+
+/* Card backgrounds - white with shadow and border for depth */
+.marketplace-browse .bg-portal-card,
+.marketplace-browse .bg-portal-elevated {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Surface backgrounds (filter panels, sidebars) - slightly tinted for contrast */
+.marketplace-browse .bg-portal-surface {
+  background-color: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Border colors - stronger for better definition */
+.marketplace-browse .border-border-subtle {
+  border-color: #d1d5db !important;
+}
+
+.marketplace-browse .border-border-default {
+  border-color: #9ca3af !important;
+}
+
+.marketplace-browse .bg-border-subtle,
+.marketplace-browse .bg-border-default {
+  background-color: #e5e7eb !important;
+}
+
+/* Text colors - convert white/light text to dark */
+.marketplace-browse .text-text-primary,
+.marketplace-browse .text-white {
+  color: #111827 !important;
+}
+
+.marketplace-browse .text-text-secondary {
+  color: #6b7280 !important;
+}
+
+.marketplace-browse .text-text-tertiary {
+  color: #9ca3af !important;
+}
+
+.marketplace-browse .text-text-muted {
+  color: #9ca3af !important;
+}
+
+/* Placeholder text */
+.marketplace-browse .placeholder-text-muted::placeholder,
+.marketplace-browse input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Preserve orange accent text */
+.marketplace-browse .text-accent,
+.marketplace-browse .text-\[hsl\(var\(--brand-orange\)\)\] {
+  color: hsl(var(--brand-orange)) !important;
+}
+
+/* Filter section headers and labels */
+.marketplace-browse .text-sm.font-medium.text-text-primary,
+.marketplace-browse .text-xs.font-medium.text-text-secondary {
+  color: #374151 !important;
+}
+
+/* Input and select styling for light theme - stronger borders */
+.marketplace-browse input[type="text"],
+.marketplace-browse input[type="search"],
+.marketplace-browse input[type="number"],
+.marketplace-browse select {
+  background-color: #ffffff !important;
+  border: 1px solid #9ca3af !important;
+  color: #111827 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.marketplace-browse input[type="text"]:focus,
+.marketplace-browse input[type="search"]:focus,
+.marketplace-browse input[type="number"]:focus,
+.marketplace-browse select:focus {
+  border-color: hsl(var(--brand-orange)) !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15) !important;
+}
+
+/* Override bg-border-default specifically on form elements */
+.marketplace-browse select.bg-border-default,
+.marketplace-browse input.bg-border-default {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #9ca3af !important;
+}
+
+/* Select option styling */
+.marketplace-browse select option {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+/* Force text color on selects with text-white class */
+.marketplace-browse select.text-white,
+.marketplace-browse input.text-white {
+  color: #111827 !important;
+}
+
+/* Placeholder text for filter inputs */
+.marketplace-browse input.placeholder-text-tertiary::placeholder,
+.marketplace-browse .placeholder-text-tertiary::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Icons inside filter inputs */
+.marketplace-browse .text-text-tertiary {
+  color: #9ca3af !important;
+}
+
+/* Checkbox and radio styling */
+.marketplace-browse input[type="checkbox"],
+.marketplace-browse input[type="radio"] {
+  border-color: #d1d5db !important;
+  background-color: #ffffff !important;
+}
+
+.marketplace-browse input[type="checkbox"]:checked,
+.marketplace-browse input[type="radio"]:checked {
+  background-color: hsl(var(--brand-orange)) !important;
+  border-color: hsl(var(--brand-orange)) !important;
+}
+
+/* Button styling for light theme */
+.marketplace-browse .bg-portal-surface button,
+.marketplace-browse .bg-portal-card button {
+  color: #374151;
+}
+
+/* Primary/accent buttons should keep their colors */
+.marketplace-browse button.bg-accent,
+.marketplace-browse button.bg-\[hsl\(var\(--brand-orange\)\)\],
+.marketplace-browse a.bg-\[hsl\(var\(--brand-orange\)\)\] {
+  background-color: hsl(var(--brand-orange)) !important;
+  color: #ffffff !important;
+}
+
+/* Secondary/outline buttons */
+.marketplace-browse button.border-border-default {
+  border-color: #d1d5db !important;
+  color: #374151 !important;
+}
+
+.marketplace-browse button.border-border-default:hover {
+  background-color: #f3f4f6 !important;
+}
+
+/* Pagination styling */
+.marketplace-browse button {
+  color: #374151;
+}
+
+/* Active page indicator */
+.marketplace-browse button.bg-accent,
+.marketplace-browse button[aria-current="page"] {
+  background-color: hsl(var(--brand-orange)) !important;
+  color: #ffffff !important;
+}
+
+/* Hover states for cards and interactive elements - more pronounced */
+.marketplace-browse .hover\:bg-portal-elevated:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.marketplace-browse .hover\:bg-portal-card-hover:hover {
+  background-color: #f1f5f9 !important;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+.marketplace-browse .hover\:border-border-default:hover {
+  border-color: #9ca3af !important;
+}
+
+/* Card specific overrides - hover lift effect */
+.marketplace-browse .bg-portal-card-hover {
+  background-color: #f8fafc !important;
+}
+
+/* Card hover enhancement */
+.marketplace-browse .group:hover .bg-portal-card,
+.marketplace-browse a:hover .bg-portal-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Hover text color fix - keep dark text on hover instead of white */
+.marketplace-browse .hover\:text-white:hover {
+  color: #111827 !important;
+}
+
+.marketplace-browse .group:hover .group-hover\:text-white {
+  color: #111827 !important;
+}
+
+/* Portal background for badge overlays */
+.marketplace-browse .bg-portal-bg,
+.marketplace-browse .bg-portal-bg\/80 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #111827 !important;
+}
+
+.marketplace-browse .bg-portal-bg\/80 .text-white {
+  color: #111827 !important;
+}
+
+/* Badge and tag styling - more visible */
+.marketplace-browse .bg-portal-surface.rounded-full,
+.marketplace-browse span.bg-portal-surface {
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Dividers */
+.marketplace-browse hr.border-border-subtle,
+.marketplace-browse .divide-border-subtle > * {
+  border-color: #e5e7eb !important;
+}
+
+/* Search input container */
+.marketplace-browse .bg-portal-surface input {
+  background-color: #ffffff !important;
+}
+
+/* Filter panel specific overrides - more distinct */
+.marketplace-browse aside.bg-portal-surface,
+.marketplace-browse div.bg-portal-surface,
+.marketplace-browse aside,
+.marketplace-browse .rounded-xl.border.border-border-subtle {
+  background-color: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Collapsible filter section styling */
+.marketplace-browse details summary {
+  color: #111827 !important;
+}
+
+.marketplace-browse details[open] summary {
+  border-bottom-color: #e5e7eb !important;
+}
+
+/* Loading skeleton styling */
+.marketplace-browse .animate-pulse .bg-portal-surface,
+.marketplace-browse .animate-pulse .bg-border-default {
+  background-color: #e5e7eb !important;
+}
+
+/* Empty state styling */
+.marketplace-browse .text-text-secondary.text-center {
+  color: #6b7280 !important;
+}
+
+/* Mobile filter drawer - needs to work outside .marketplace-browse scope */
+body:has(.marketplace-browse) .fixed.inset-0 .bg-portal-card {
+  background-color: #ffffff !important;
+}
+
+body:has(.marketplace-browse) .fixed.inset-0 .text-white {
+  color: #111827 !important;
+}
+
+body:has(.marketplace-browse) .fixed.inset-0 .text-text-secondary {
+  color: #6b7280 !important;
+}
+
+body:has(.marketplace-browse) .fixed.inset-0 .border-border-subtle {
+  border-color: #e5e7eb !important;
+}
+
+/* Ring colors for focus states */
+.marketplace-browse .ring-border-subtle {
+  --tw-ring-color: #e5e7eb !important;
+}
+
+.marketplace-browse .focus\:ring-accent:focus {
+  --tw-ring-color: hsl(var(--brand-orange)) !important;
 }

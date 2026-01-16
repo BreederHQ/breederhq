@@ -52,6 +52,16 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Screenshots (Playwright, debug, etc)
+screenshot*.png
+*.screenshot.png
+docs/marketplace/audit/screenshots/
+
+# Cookie files (sensitive session data)
+cookies.txt
+*.cookies.txt
+*-cookies.txt
+
 # Other files
 /.claude
 repo-structure-output.txt
@@ -62,3 +72,6 @@ CLAUDE.md
 .eslintcache
 *.nul
 /nul
+
+# Claude Code temporary files
+tmpclaude-*-cwd

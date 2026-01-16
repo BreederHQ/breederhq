@@ -1,6 +1,7 @@
 // apps/breeding/src/components/CoatColorPreview.tsx
 import * as React from "react";
 import { Tooltip } from "@bhq/ui";
+import { ChevronDown, ChevronUp, Info } from "lucide-react";
 
 /**
  * Color definitions for different species and coat color genetics.
@@ -23,7 +24,7 @@ const BASE_COLORS: Record<string, ColorDefinition> = {
     name: "Black",
     description: "Solid black pigmentation",
     css: "linear-gradient(135deg, #1a1a1a 0%, #333333 50%, #1a1a1a 100%)",
-    genotypes: ["E/E K/K", "E/e K/K", "E/E K/k"],
+    genotypes: ["E/E K/K", "E/e K/K", "E/E K/k", "B/B", "E/E", "E/e"],
   },
   liver: {
     name: "Liver/Chocolate",
@@ -35,7 +36,7 @@ const BASE_COLORS: Record<string, ColorDefinition> = {
     name: "Blue/Gray",
     description: "Diluted black pigmentation",
     css: "linear-gradient(135deg, #4a5568 0%, #718096 50%, #4a5568 100%)",
-    genotypes: ["d/d B/-"],
+    genotypes: ["d/d B/-", "d/d"],
   },
   isabella: {
     name: "Isabella/Lilac",
@@ -60,7 +61,7 @@ const BASE_COLORS: Record<string, ColorDefinition> = {
     name: "Fawn",
     description: "Light tan/beige color",
     css: "linear-gradient(135deg, #d4a574 0%, #e8c89e 50%, #d4a574 100%)",
-    genotypes: ["A/at", "A/a"],
+    genotypes: ["A/at", "A/a", "Ay/Ay", "Ay/a"],
   },
   // White
   white: {
@@ -77,6 +78,7 @@ const PATTERNS: Record<string, ColorDefinition> = {
     name: "Solid",
     description: "Uniform color without markings",
     css: "linear-gradient(135deg, #2d2d2d 0%, #4a4a4a 50%, #2d2d2d 100%)",
+    genotypes: ["K/K", "K/k"],
   },
   brindle: {
     name: "Brindle",
@@ -88,7 +90,7 @@ const PATTERNS: Record<string, ColorDefinition> = {
       #1a1a1a 4px,
       #1a1a1a 8px
     )`,
-    genotypes: ["k(br)/k(br)", "k(br)/k"],
+    genotypes: ["k(br)/k(br)", "k(br)/k", "kbr/kbr", "kbr/k"],
   },
   merle: {
     name: "Merle",
@@ -125,7 +127,7 @@ const PATTERNS: Record<string, ColorDefinition> = {
           #c4763c 50%,
           #e8a060 80%,
           #c4763c 100%)`,
-    genotypes: ["A/A", "A/at", "A/a"],
+    genotypes: ["A/A", "A/at", "A/a", "Ay/Ay", "Ay/at"],
   },
   agouti: {
     name: "Agouti/Wolf Gray",
@@ -322,68 +324,460 @@ const CAT_PATTERNS: Record<string, ColorDefinition> = {
   },
 };
 
-interface ColorSwatchProps {
-  color: ColorDefinition;
-  size?: "sm" | "md" | "lg";
-  showGenotypes?: boolean;
-  className?: string;
+/** Parsed prediction outcome */
+interface PredictionOutcome {
+  percentage: number;
+  genotype: string;
+  phenotype?: string;
 }
 
-function ColorSwatch({ color, size = "md", showGenotypes = false, className = "" }: ColorSwatchProps) {
-  const sizeClasses = {
-    sm: "w-8 h-8",
-    md: "w-12 h-12",
-    lg: "w-20 h-20",
-  };
-
-  return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      <Tooltip content={color.description}>
-        <div
-          className={`${sizeClasses[size]} rounded-lg border border-hairline shadow-sm`}
-          style={{ background: color.css }}
-        />
-      </Tooltip>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm truncate">{color.name}</div>
-        {showGenotypes && color.genotypes && (
-          <div className="text-xs text-secondary truncate">
-            {color.genotypes.slice(0, 2).join(", ")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+/** Coat color prediction from pairing calculation */
+interface CoatColorPrediction {
+  trait: string;
+  damGenotype: string;
+  sireGenotype: string;
+  prediction: string;
+  breedSpecific?: string | null;
 }
 
 interface CoatColorPreviewProps {
   /** The species to show colors for */
   species: Species;
-  /** Selected genotype to highlight (optional) */
-  selectedGenotype?: string;
-  /** Callback when a color is selected */
-  onSelectColor?: (color: ColorDefinition) => void;
-  /** Whether to show the full grid or compact list */
-  variant?: "grid" | "compact";
+  /** Coat color predictions from the pairing calculation */
+  predictions?: CoatColorPrediction[];
+  /** Dam's name for display */
+  damName?: string;
+  /** Sire's name for display */
+  sireName?: string;
   /** Additional CSS classes */
   className?: string;
 }
 
-export default function CoatColorPreview({
+/**
+ * Parse prediction string into structured outcomes
+ * e.g., "25% E/E, 50% E/e, 25% e/e" -> [{percentage: 25, genotype: "E/E"}, ...]
+ */
+function parsePrediction(prediction: string): PredictionOutcome[] {
+  const outcomes: PredictionOutcome[] = [];
+  const parts = prediction.split(",").map((p) => p.trim());
+
+  for (const part of parts) {
+    const match = part.match(/^(\d+)%\s+(.+)$/);
+    if (match) {
+      outcomes.push({
+        percentage: parseInt(match[1], 10),
+        genotype: match[2],
+      });
+    }
+  }
+
+  return outcomes.sort((a, b) => b.percentage - a.percentage);
+}
+
+/**
+ * Extract locus name from trait string
+ * e.g., "E Locus (Extension)" -> "E"
+ */
+function extractLocus(trait: string): string {
+  const match = trait.match(/^([A-Za-z]+)\s+Locus/);
+  return match ? match[1].toUpperCase() : trait;
+}
+
+/**
+ * Get color definition that matches a genotype
+ */
+function getColorForGenotype(
+  genotype: string,
+  species: Species
+): ColorDefinition | null {
+  const allColors = [
+    ...Object.values(BASE_COLORS),
+    ...Object.values(PATTERNS),
+    ...(species === "HORSE" ? Object.values(HORSE_PATTERNS) : []),
+    ...(species === "CAT" ? Object.values(CAT_PATTERNS) : []),
+  ];
+
+  const normalizedGenotype = genotype.toLowerCase().replace(/\s+/g, "");
+
+  for (const color of allColors) {
+    if (color.genotypes) {
+      for (const g of color.genotypes) {
+        const normalizedG = g.toLowerCase().replace(/\s+/g, "");
+        if (
+          normalizedG.includes(normalizedGenotype) ||
+          normalizedGenotype.includes(normalizedG)
+        ) {
+          return color;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get color for a specific locus and genotype combination
+ * This provides more intelligent color matching based on locus context
+ */
+function getColorForLocusGenotype(
+  locus: string,
+  genotype: string,
+  species: Species
+): ColorDefinition | null {
+  const l = locus.toUpperCase();
+  const g = genotype.replace(/\s+/g, "");
+  const gLower = g.toLowerCase();
+
+  // Helper to check if genotype has mixed case (heterozygous indicator)
+  const hasMixedCase = (str: string, letter: string) => {
+    return str.includes(letter.toUpperCase()) && str.includes(letter.toLowerCase());
+  };
+
+  // Helper to check if all same case (homozygous indicator)
+  const isHomozygousDominant = (str: string, letter: string) => {
+    const upper = letter.toUpperCase();
+    return str.includes(upper) && !str.includes(letter.toLowerCase());
+  };
+
+  const isHomozygousRecessive = (str: string, letter: string) => {
+    const lower = letter.toLowerCase();
+    return str.includes(lower) && !str.includes(letter.toUpperCase());
+  };
+
+  // E Locus (Extension) - determines if black pigment can be produced
+  if (l === "E") {
+    // Homozygous recessive - e/e (red/yellow only)
+    if (isHomozygousRecessive(g, "e")) {
+      return BASE_COLORS.red;
+    }
+    // Heterozygous - E/e (carries red)
+    if (hasMixedCase(g, "e")) {
+      return {
+        name: "Normal (carries cream/red)",
+        description: "Can produce black pigment, carries red gene",
+        css: `linear-gradient(135deg, #1a1a1a 0%, #333333 40%, #c4763c 60%, #333333 100%)`,
+      };
+    }
+    // Homozygous dominant - E/E
+    if (isHomozygousDominant(g, "e")) {
+      return BASE_COLORS.black;
+    }
+    // Fallback for E locus - any genotype at this locus
+    return BASE_COLORS.black;
+  }
+
+  // B Locus (Brown/Chocolate)
+  if (l === "B") {
+    // Homozygous recessive - b/b (chocolate/liver)
+    if (isHomozygousRecessive(g, "b")) {
+      return BASE_COLORS.liver;
+    }
+    // Heterozygous - B/b (carries chocolate)
+    if (hasMixedCase(g, "b")) {
+      return {
+        name: "Black pigment (carries brown)",
+        description: "Black pigment, carries chocolate gene",
+        css: `linear-gradient(135deg, #1a1a1a 0%, #333333 40%, #5c3d2e 60%, #333333 100%)`,
+      };
+    }
+    // Homozygous dominant - B/B
+    if (isHomozygousDominant(g, "b")) {
+      return BASE_COLORS.black;
+    }
+    // Fallback for B locus
+    return BASE_COLORS.black;
+  }
+
+  // D Locus (Dilution)
+  if (l === "D") {
+    // Homozygous recessive - d/d (dilute)
+    if (isHomozygousRecessive(g, "d")) {
+      return BASE_COLORS.blue;
+    }
+    // Heterozygous - D/d (carries dilute)
+    if (hasMixedCase(g, "d")) {
+      return {
+        name: "Full color (carries dilute)",
+        description: "Full color intensity, carries dilute gene",
+        css: `linear-gradient(135deg, #1a1a1a 0%, #333333 40%, #4a5568 60%, #333333 100%)`,
+      };
+    }
+    // Homozygous dominant - D/D
+    if (isHomozygousDominant(g, "d")) {
+      return {
+        name: "Full color",
+        description: "Full color intensity, no dilution",
+        css: "linear-gradient(135deg, #1a1a1a 0%, #333333 50%, #1a1a1a 100%)",
+      };
+    }
+    // Fallback for D locus
+    return {
+      name: "Full color",
+      description: "Full color intensity, no dilution",
+      css: "linear-gradient(135deg, #1a1a1a 0%, #333333 50%, #1a1a1a 100%)",
+    };
+  }
+
+  // A Locus (Agouti)
+  if (l === "A") {
+    // Sable - Ay (dominant)
+    if (gLower.includes("ay")) {
+      return PATTERNS.sable;
+    }
+    // Agouti/Wolf - Aw
+    if (gLower.includes("aw")) {
+      return PATTERNS.agouti;
+    }
+    // Tan points - at/at, at/a
+    if (gLower.includes("at")) {
+      return PATTERNS.tanPoints;
+    }
+    // Recessive black - a/a
+    if (gLower === "a/a") {
+      return BASE_COLORS.black;
+    }
+    // Fallback for A locus - tan points is most common
+    return PATTERNS.tanPoints;
+  }
+
+  // K Locus (Dominant Black)
+  if (l === "K") {
+    // Brindle - kbr (check first as it's more specific)
+    if (gLower.includes("kbr") || gLower.includes("brindle")) {
+      return PATTERNS.brindle;
+    }
+    // Dominant black - KB
+    if (gLower.includes("kb")) {
+      return {
+        name: "Solid",
+        description: "Solid color expression",
+        css: "linear-gradient(135deg, #2d2d2d 0%, #4a4a4a 50%, #2d2d2d 100%)",
+      };
+    }
+    // Wild type - ky/ky (allows agouti)
+    if (gLower.includes("ky")) {
+      return PATTERNS.agouti;
+    }
+    // Fallback for K locus
+    return PATTERNS.agouti;
+  }
+
+  // M Locus (Merle)
+  if (l === "M") {
+    // Double merle - M/M (both uppercase)
+    if (g === "M/M") {
+      return PATTERNS.doubleMerle;
+    }
+    // Non-merle - m/m (both lowercase)
+    if (g === "m/m") {
+      return PATTERNS.solid;
+    }
+    // Merle - M/m or m/M (mixed case)
+    if (hasMixedCase(g, "m")) {
+      return PATTERNS.merle;
+    }
+    // Fallback for M locus
+    return PATTERNS.solid;
+  }
+
+  // S Locus (White Spotting)
+  if (l === "S") {
+    // Piebald - s/s or sp/sp
+    if (isHomozygousRecessive(g, "s") || gLower.includes("sp")) {
+      return PATTERNS.piebald;
+    }
+    // Irish/parti carrier - S/s
+    if (hasMixedCase(g, "s")) {
+      return PATTERNS.tuxedo;
+    }
+    // Solid - S/S
+    if (isHomozygousDominant(g, "s")) {
+      return PATTERNS.solid;
+    }
+    // Fallback for S locus
+    return PATTERNS.solid;
+  }
+
+  // Try generic matching as fallback
+  return getColorForGenotype(genotype, species);
+}
+
+/**
+ * Get phenotype description for a genotype at a specific locus
+ */
+function getPhenotypeForLocus(
+  locus: string,
+  genotype: string
+): string {
+  const l = locus.toUpperCase();
+  const g = genotype.toUpperCase();
+
+  // E Locus (Extension)
+  if (l === "E") {
+    if (g === "E/E" || g === "E/E") return "Can produce black pigment";
+    if (g === "E/E" || g === "E/E") return "Can produce black pigment (carrier)";
+    if (g === "E/E") return "Red/Yellow only (no black pigment)";
+  }
+
+  // B Locus (Brown)
+  if (l === "B") {
+    if (g.includes("B/B")) return "Black pigment";
+    if (g.includes("B/B") || g.includes("B/B")) return "Black (chocolate carrier)";
+    if (g === "B/B") return "Chocolate/Liver";
+  }
+
+  // D Locus (Dilution)
+  if (l === "D") {
+    if (g.includes("D/D")) return "Full color intensity";
+    if (g.includes("D/D")) return "Full color (dilute carrier)";
+    if (g === "D/D") return "Diluted color (blue/isabella)";
+  }
+
+  // K Locus (Dominant Black)
+  if (l === "K") {
+    if (g.includes("K/K") || g.includes("KB")) return "Solid color";
+    if (g.includes("KBR") || g.includes("K(BR)")) return "Brindle";
+    if (g === "K/K" || g === "KY/KY") return "Allows agouti expression";
+  }
+
+  // A Locus (Agouti)
+  if (l === "A") {
+    if (g.includes("AY")) return "Sable/Fawn";
+    if (g.includes("AW")) return "Agouti/Wolf gray";
+    if (g.includes("AT")) return "Tan points";
+    if (g === "A/A") return "Recessive black";
+  }
+
+  // M Locus (Merle)
+  if (l === "M") {
+    if (g === "M/M") return "Double merle (health risk)";
+    if (g.includes("M/M")) return "Merle pattern";
+    if (g === "M/M") return "Non-merle";
+  }
+
+  // S Locus (White Spotting)
+  if (l === "S") {
+    if (g === "S/S") return "Solid (no white)";
+    if (g === "S/S") return "Irish spotting/Parti carrier";
+    if (g === "S/S" || g.includes("SP")) return "Parti/Piebald";
+  }
+
+  return genotype;
+}
+
+/**
+ * Prediction card for a single locus
+ */
+function LocusPredictionCard({
+  prediction,
   species,
-  selectedGenotype,
-  onSelectColor,
-  variant = "grid",
-  className = "",
-}: CoatColorPreviewProps) {
-  // Get colors for the species
+  damName,
+  sireName,
+}: {
+  prediction: CoatColorPrediction;
+  species: Species;
+  damName?: string;
+  sireName?: string;
+}) {
+  const locus = extractLocus(prediction.trait);
+  const outcomes = parsePrediction(prediction.prediction);
+  const locusNameMatch = prediction.trait.match(/\(([^)]+)\)/);
+  const locusFullName = locusNameMatch ? locusNameMatch[1] : prediction.trait;
+
+  return (
+    <div className="rounded-xl border border-hairline bg-surface p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h4 className="font-semibold text-base">{locus} Locus</h4>
+          <p className="text-xs text-secondary">{locusFullName}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-secondary">
+          <span className="px-2 py-1 rounded bg-pink-500/10 text-pink-400">
+            {damName || "Dam"}: {prediction.damGenotype}
+          </span>
+          <span>×</span>
+          <span className="px-2 py-1 rounded bg-blue-500/10 text-blue-400">
+            {sireName || "Sire"}: {prediction.sireGenotype}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {outcomes.map((outcome, idx) => {
+          const color = getColorForLocusGenotype(locus, outcome.genotype, species);
+          const phenotype = getPhenotypeForLocus(locus, outcome.genotype);
+
+          return (
+            <div
+              key={idx}
+              className="p-3 rounded-lg bg-surface-alt space-y-2"
+            >
+              {/* Top row: phenotype, genotype, percentage */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-sm">
+                    {phenotype}
+                  </span>
+                  {color && (
+                    <span className="text-xs text-secondary px-1.5 py-0.5 rounded bg-surface whitespace-nowrap">
+                      {color.name}
+                    </span>
+                  )}
+                  <span className="text-xs text-secondary font-mono">
+                    {outcome.genotype}
+                  </span>
+                </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  <div className="w-16 h-2 rounded-full bg-hairline overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        outcome.percentage >= 50
+                          ? "bg-green-500"
+                          : outcome.percentage >= 25
+                          ? "bg-yellow-500"
+                          : "bg-orange-500"
+                      }`}
+                      style={{ width: `${outcome.percentage}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-semibold w-10 text-right">
+                    {outcome.percentage}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Color swatch - wide bar matching reference guide */}
+              {color ? (
+                <Tooltip content={color.description}>
+                  <div
+                    className="w-[320px] h-10 rounded-md border border-hairline shadow-sm"
+                    style={{ background: color.css }}
+                  />
+                </Tooltip>
+              ) : (
+                <div className="w-[320px] h-10 rounded-md border border-hairline bg-surface flex items-center justify-center">
+                  <span className="text-xs text-secondary">?</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Reference grid showing all colors for a species
+ */
+function ColorReferenceGrid({ species }: { species: Species }) {
   const colors = React.useMemo(() => {
     const allColors: Record<string, ColorDefinition[]> = {
       "Base Colors": Object.values(BASE_COLORS),
-      "Patterns": Object.values(PATTERNS),
+      Patterns: Object.values(PATTERNS),
     };
 
-    // Add species-specific patterns
     if (species === "HORSE") {
       allColors["Horse Patterns"] = Object.values(HORSE_PATTERNS);
     }
@@ -394,118 +788,146 @@ export default function CoatColorPreview({
     return allColors;
   }, [species]);
 
-  // Find colors matching selected genotype
-  const matchingColors = React.useMemo(() => {
-    if (!selectedGenotype) return [];
-
-    const matches: ColorDefinition[] = [];
-    const normalizedGenotype = selectedGenotype.toLowerCase().replace(/\s+/g, "");
-
-    for (const category of Object.values(colors)) {
-      for (const color of category) {
-        if (color.genotypes) {
-          for (const g of color.genotypes) {
-            if (g.toLowerCase().replace(/\s+/g, "").includes(normalizedGenotype) ||
-                normalizedGenotype.includes(g.toLowerCase().replace(/\s+/g, ""))) {
-              matches.push(color);
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    return matches;
-  }, [colors, selectedGenotype]);
-
-  if (variant === "compact") {
-    return (
-      <div className={`space-y-2 ${className}`}>
-        {matchingColors.length > 0 ? (
-          <>
-            <div className="text-xs font-medium text-secondary">Possible Appearance:</div>
-            <div className="flex flex-wrap gap-2">
-              {matchingColors.map((color, idx) => (
-                <ColorSwatch key={idx} color={color} size="sm" />
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="text-xs text-secondary">
-            Select a genotype to see color preview
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className={`rounded-xl border border-hairline bg-surface p-4 ${className}`}>
-      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <span className="text-2xl">🎨</span>
-        Coat Color Reference
-      </h3>
-
-      {/* Selected genotype preview */}
-      {selectedGenotype && (
-        <div className="mb-4 p-3 bg-accent/5 rounded-lg border border-accent/20">
-          <div className="text-xs font-medium text-secondary mb-2">
-            Colors matching <span className="font-mono">{selectedGenotype}</span>:
-          </div>
-          {matchingColors.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {matchingColors.map((color, idx) => (
-                <ColorSwatch key={idx} color={color} size="md" showGenotypes />
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-secondary">
-              No specific color match found for this genotype
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Color categories */}
-      <div className="space-y-4">
-        {Object.entries(colors).map(([category, categoryColors]) => (
-          <div key={category}>
-            <h4 className="text-sm font-semibold text-secondary mb-2">{category}</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {categoryColors.map((color, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onSelectColor?.(color)}
-                  className={`
-                    p-2 rounded-lg border transition-all hover:shadow-md
-                    ${onSelectColor ? "cursor-pointer hover:border-accent" : "cursor-default"}
-                    border-hairline bg-surface-alt
-                  `}
-                >
+    <div className="space-y-4">
+      {Object.entries(colors).map(([category, categoryColors]) => (
+        <div key={category}>
+          <h4 className="text-sm font-semibold text-secondary mb-2">
+            {category}
+          </h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {categoryColors.map((color, idx) => (
+              <div
+                key={idx}
+                className="p-2 rounded-lg border border-hairline bg-surface-alt"
+              >
+                <Tooltip content={color.description}>
                   <div
                     className="w-full h-10 rounded-md border border-hairline mb-2"
                     style={{ background: color.css }}
                   />
-                  <div className="text-xs font-medium truncate">{color.name}</div>
-                </button>
-              ))}
+                </Tooltip>
+                <div className="text-xs font-medium truncate">{color.name}</div>
+                {color.genotypes && (
+                  <div className="text-[10px] text-secondary truncate">
+                    {color.genotypes[0]}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function CoatColorPreview({
+  species,
+  predictions,
+  damName,
+  sireName,
+  className = "",
+}: CoatColorPreviewProps) {
+  const [showReference, setShowReference] = React.useState(false);
+
+  const hasPredictions = predictions && predictions.length > 0;
+
+  return (
+    <div className={`space-y-4 ${className}`}>
+      {/* Pairing Predictions - Primary View */}
+      {hasPredictions ? (
+        <div className="rounded-xl border border-hairline bg-surface p-4">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl">🎨</span>
+            <div>
+              <h3 className="text-lg font-bold">
+                Predicted Offspring Coat Colors
+              </h3>
+              <p className="text-sm text-secondary">
+                Based on genetic analysis of {damName || "Dam"} ×{" "}
+                {sireName || "Sire"}
+              </p>
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Educational note */}
-      <div className="mt-4 pt-4 border-t border-hairline">
-        <div className="flex items-start gap-2 text-xs text-secondary">
-          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p>
-            <strong>Note:</strong> Actual coat colors may vary due to modifier genes,
-            environmental factors, and polygenic traits not represented here.
-            These previews are approximations for educational purposes.
+          <div className="space-y-4">
+            {predictions.map((pred, idx) => (
+              <LocusPredictionCard
+                key={idx}
+                prediction={pred}
+                species={species}
+                damName={damName}
+                sireName={sireName}
+              />
+            ))}
+          </div>
+
+          {/* Educational note */}
+          <div className="mt-4 pt-4 border-t border-hairline">
+            <div className="flex items-start gap-2 text-xs text-secondary">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>
+                <strong>Note:</strong> These are predicted probabilities based
+                on Mendelian genetics. Actual offspring colors may vary due to
+                modifier genes, epistasis, and other genetic factors.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-hairline bg-surface p-6 text-center">
+          <div className="text-4xl mb-3">🎨</div>
+          <h3 className="font-semibold mb-2">No Coat Color Data Available</h3>
+          <p className="text-sm text-secondary max-w-md mx-auto">
+            Add coat color genetic markers to both animals to see predicted
+            offspring color probabilities.
           </p>
         </div>
+      )}
+
+      {/* Reference Toggle */}
+      <div className="rounded-xl border border-hairline bg-surface overflow-hidden">
+        <button
+          onClick={() => setShowReference(!showReference)}
+          className="w-full p-4 flex items-center justify-between hover:bg-surface-alt transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">📚</span>
+            <div className="text-left">
+              <h4 className="font-semibold">
+                {species.charAt(0) + species.slice(1).toLowerCase()} Color
+                Reference Guide
+              </h4>
+              <p className="text-xs text-secondary">
+                View all possible coat colors and patterns for this species
+              </p>
+            </div>
+          </div>
+          {showReference ? (
+            <ChevronUp className="w-5 h-5 text-secondary" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-secondary" />
+          )}
+        </button>
+
+        {showReference && (
+          <div className="p-4 border-t border-hairline">
+            <ColorReferenceGrid species={species} />
+
+            <div className="mt-4 pt-4 border-t border-hairline">
+              <div className="flex items-start gap-2 text-xs text-secondary">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Note:</strong> Actual coat colors may vary due to
+                  modifier genes, environmental factors, and polygenic traits
+                  not represented here. These previews are approximations for
+                  educational purposes.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -514,30 +936,14 @@ export default function CoatColorPreview({
 /**
  * Mini color preview for inline display
  */
-export function MiniColorPreview({ genotype, species = "DOG" }: { genotype: string; species?: Species }) {
-  const color = React.useMemo(() => {
-    const allColors = [
-      ...Object.values(BASE_COLORS),
-      ...Object.values(PATTERNS),
-      ...(species === "HORSE" ? Object.values(HORSE_PATTERNS) : []),
-      ...(species === "CAT" ? Object.values(CAT_PATTERNS) : []),
-    ];
-
-    const normalizedGenotype = genotype.toLowerCase().replace(/\s+/g, "");
-
-    for (const c of allColors) {
-      if (c.genotypes) {
-        for (const g of c.genotypes) {
-          if (g.toLowerCase().replace(/\s+/g, "").includes(normalizedGenotype) ||
-              normalizedGenotype.includes(g.toLowerCase().replace(/\s+/g, ""))) {
-            return c;
-          }
-        }
-      }
-    }
-
-    return null;
-  }, [genotype, species]);
+export function MiniColorPreview({
+  genotype,
+  species = "DOG",
+}: {
+  genotype: string;
+  species?: Species;
+}) {
+  const color = getColorForGenotype(genotype, species);
 
   if (!color) return null;
 

@@ -1,15 +1,12 @@
 // apps/portal/src/pages/PortalDashboardPage.tsx
-// Overview archetype - calm, operational, species-aware
+// Premium Dashboard - Relationship-first, proactive transparency
 import * as React from "react";
-import { PageScaffold, SectionHeader } from "../design/PageScaffold";
-import { PortalCard } from "../design/PortalCard";
+import { PageScaffold } from "../design/PageScaffold";
 import { Button } from "../design/Button";
-import { usePortalTasks } from "../tasks/taskSources";
-import { usePortalNotifications } from "../notifications/notificationSources";
 import { usePortalContext } from "../hooks/usePortalContext";
 import { getSpeciesAccent } from "../ui/speciesTokens";
-import { SubjectHeader, StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData, type DemoActivityEvent } from "../demo/portalDemoData";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Utilities
@@ -31,86 +28,228 @@ function getDaysUntil(dateStr: string): number {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
-type PlacementStatus = "reserved" | "active" | "placed" | "pending";
+function formatRelativeTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-function getStatusLabel(status: string): { label: string; variant: "action" | "success" | "warning" | "neutral" } {
-  switch (status) {
-    case "reserved":
-      return { label: "Reserved", variant: "action" };
-    case "placed":
-      return { label: "Placed", variant: "success" };
-    case "active":
-      return { label: "Active", variant: "action" };
-    case "pending":
-      return { label: "Pending", variant: "warning" };
-    default:
-      return { label: status, variant: "neutral" };
-  }
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return `${Math.floor(diffDays / 30)} months ago`;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Primary Context Strip - The main status area with species awareness
+ * Animal Status Card Hero - Large photo carousel with recent update
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface ContextStripProps {
+interface AnimalStatusCardProps {
   name: string;
-  species: string | null;
-  breed: string | null;
-  status: PlacementStatus;
-  nextAction: string;
-  ctaLabel: string;
-  ctaPath: string;
+  species: string;
+  breed: string;
+  status: string;
+  lastUpdate: {
+    text: string;
+    timestamp: string;
+  } | null;
+  photos: string[];
   onNavigate: (path: string) => void;
 }
 
-function ContextStrip({
+function AnimalStatusCard({
   name,
   species,
   breed,
   status,
-  nextAction,
-  ctaLabel,
-  ctaPath,
+  lastUpdate,
+  photos,
   onNavigate,
-}: ContextStripProps) {
-  const statusInfo = getStatusLabel(status);
+}: AnimalStatusCardProps) {
+  const [currentPhotoIndex, setCurrentPhotoIndex] = React.useState(0);
   const accent = getSpeciesAccent(species);
 
-  // Build species line: "Species · Breed" or just "Species"
-  const speciesLine = breed ? `${species || "Unknown"} · ${breed}` : species || null;
+  // Auto-advance photos every 5 seconds
+  React.useEffect(() => {
+    if (photos.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [photos.length]);
+
+  const handlePrevPhoto = () => {
+    setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length);
+  };
+
+  const handleNextPhoto = () => {
+    setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
+  };
 
   return (
     <div
       style={{
         background: "var(--portal-bg-card)",
         border: "1px solid var(--portal-border-subtle)",
-        borderLeft: `3px solid ${accent}`,
         borderRadius: "var(--portal-radius-lg)",
-        padding: "var(--portal-space-4)",
+        overflow: "hidden",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--portal-space-4)",
-          flexWrap: "wrap",
-        }}
-      >
-        {/* Left: Name + Species + Status */}
-        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+      {/* Photo Carousel */}
+      {photos.length > 0 && (
+        <div style={{ position: "relative", width: "100%", height: "300px", background: "#000" }}>
+          <img
+            src={photos[currentPhotoIndex]}
+            alt={`${name} - photo ${currentPhotoIndex + 1}`}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+
+          {/* Photo navigation */}
+          {photos.length > 1 && (
+            <>
+              <button
+                onClick={handlePrevPhoto}
+                style={{
+                  position: "absolute",
+                  left: "16px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "rgba(0, 0, 0, 0.6)",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "40px",
+                  height: "40px",
+                  color: "white",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.8)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.6)";
+                }}
+              >
+                ‹
+              </button>
+              <button
+                onClick={handleNextPhoto}
+                style={{
+                  position: "absolute",
+                  right: "16px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "rgba(0, 0, 0, 0.6)",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "40px",
+                  height: "40px",
+                  color: "white",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.8)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.6)";
+                }}
+              >
+                ›
+              </button>
+
+              {/* Photo indicators */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "16px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  gap: "8px",
+                }}
+              >
+                {photos.map((_, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      background: idx === currentPhotoIndex ? "white" : "rgba(255, 255, 255, 0.5)",
+                      transition: "background 0.2s",
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{ padding: "var(--portal-space-4)" }}>
+        {/* Header */}
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)", marginBottom: "4px" }}>
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-xl)",
+                fontWeight: "var(--portal-font-weight-bold)",
+                color: "var(--portal-text-primary)",
+                margin: 0,
+              }}
+            >
+              {name}
+            </h2>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "4px 12px",
+                background: `${accent}15`,
+                color: accent,
+                fontSize: "var(--portal-font-size-xs)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                borderRadius: "var(--portal-radius-full)",
+                textTransform: "capitalize",
+              }}
+            >
+              {status}
+            </span>
+          </div>
           <div
             style={{
-              fontSize: "var(--portal-font-size-lg)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              marginBottom: "2px",
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-tertiary)",
             }}
           >
-            {name}
+            {breed} · {species.charAt(0).toUpperCase() + species.slice(1)}
           </div>
-          {speciesLine && (
+        </div>
+
+        {/* Last Update */}
+        {lastUpdate && (
+          <div
+            style={{
+              padding: "var(--portal-space-3)",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-md)",
+              marginBottom: "var(--portal-space-3)",
+            }}
+          >
             <div
               style={{
                 fontSize: "var(--portal-font-size-xs)",
@@ -118,28 +257,27 @@ function ContextStrip({
                 marginBottom: "var(--portal-space-2)",
               }}
             >
-              {speciesLine}
+              Last Update: {formatRelativeTime(lastUpdate.timestamp)}
             </div>
-          )}
-          <StatusBadge label={statusInfo.label} variant={statusInfo.variant as StatusVariant} speciesAccent={accent} />
-        </div>
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-sm)",
+                color: "var(--portal-text-secondary)",
+                lineHeight: "1.5",
+              }}
+            >
+              {lastUpdate.text}
+            </div>
+          </div>
+        )}
 
-        {/* Center: Next action */}
-        <div
-          style={{
-            flex: "1 1 150px",
-            textAlign: "center",
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-secondary)",
-          }}
-        >
-          {nextAction}
-        </div>
-
-        {/* Right: CTA */}
-        <div style={{ flexShrink: 0 }}>
-          <Button variant="primary" onClick={() => onNavigate(ctaPath)}>
-            {ctaLabel}
+        {/* Actions */}
+        <div style={{ display: "flex", gap: "var(--portal-space-2)", flexWrap: "wrap" }}>
+          <Button variant="primary" onClick={() => onNavigate("/offspring")}>
+            View Full Updates
+          </Button>
+          <Button variant="secondary" onClick={() => onNavigate("/messages")}>
+            Message About {name}
           </Button>
         </div>
       </div>
@@ -148,207 +286,445 @@ function ContextStrip({
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Attention Card - Flat, count-focused
+ * Action Required Section - Prominent urgent actions
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface AttentionCardProps {
-  label: string;
-  count: number;
-  onClick: () => void;
-}
-
-function AttentionCard({ label, count, onClick }: AttentionCardProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        all: "unset",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "var(--portal-space-3) var(--portal-space-4)",
-        background: "var(--portal-bg-card)",
-        border: "1px solid var(--portal-border-subtle)",
-        borderRadius: "var(--portal-radius-lg)",
-        cursor: "pointer",
-        transition: "border-color var(--portal-transition)",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--portal-border)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "var(--portal-border-subtle)";
-      }}
-    >
-      <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>{label}</span>
-      <span
-        style={{
-          fontSize: "var(--portal-font-size-lg)",
-          fontWeight: "var(--portal-font-weight-bold)",
-          color: "var(--portal-text-primary)",
-        }}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Financial Due Card - Shows balance when due
- * ──────────────────────────────────────────────────────────────────────────── */
-
-interface FinancialDueCardProps {
-  amount: number;
-  isOverdue: boolean;
-  dueInDays: number | null;
-  onClick: () => void;
-}
-
-function FinancialDueCard({ amount, isOverdue, dueInDays, onClick }: FinancialDueCardProps) {
-  const dueText = isOverdue
-    ? "Overdue"
-    : dueInDays === 0
-      ? "Due today"
-      : dueInDays !== null
-        ? `Due in ${dueInDays} days`
-        : "Balance";
-
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        all: "unset",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "var(--portal-space-3) var(--portal-space-4)",
-        background: "var(--portal-bg-card)",
-        border: `1px solid ${isOverdue ? "rgba(239, 68, 68, 0.3)" : "var(--portal-border-subtle)"}`,
-        borderRadius: "var(--portal-radius-lg)",
-        cursor: "pointer",
-        transition: "border-color var(--portal-transition)",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = isOverdue ? "rgba(239, 68, 68, 0.5)" : "var(--portal-border)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = isOverdue ? "rgba(239, 68, 68, 0.3)" : "var(--portal-border-subtle)";
-      }}
-    >
-      <div>
-        <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
-          Payment due
-        </div>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            color: isOverdue ? "var(--portal-error)" : "var(--portal-text-tertiary)",
-          }}
-        >
-          {dueText}
-        </div>
-      </div>
-      <span
-        style={{
-          fontSize: "var(--portal-font-size-lg)",
-          fontWeight: "var(--portal-font-weight-bold)",
-          color: isOverdue ? "var(--portal-error)" : "var(--portal-accent)",
-        }}
-      >
-        {formatCurrency(amount)}
-      </span>
-    </button>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Secondary Links - Text-only navigation
- * ──────────────────────────────────────────────────────────────────────────── */
-
-interface SecondaryLinksProps {
+interface ActionRequiredProps {
+  overdueAmount: number;
+  nextPaymentAmount: number;
+  nextPaymentDueAt: string | null;
+  pendingAgreements: number;
   onNavigate: (path: string) => void;
 }
 
-function SecondaryLinks({ onNavigate }: SecondaryLinksProps) {
-  const links = [
-    { label: "Documents", path: "/documents" },
-    { label: "Agreements", path: "/agreements" },
-    { label: "Profile", path: "/profile" },
-    { label: "Offspring", path: "/offspring" },
-  ];
+function ActionRequiredSection({
+  overdueAmount,
+  nextPaymentAmount,
+  nextPaymentDueAt,
+  pendingAgreements,
+  onNavigate,
+}: ActionRequiredProps) {
+  const hasOverdue = overdueAmount > 0;
+  const hasDue = nextPaymentAmount > 0 && nextPaymentDueAt;
+  const hasAgreements = pendingAgreements > 0;
+
+  if (!hasOverdue && !hasDue && !hasAgreements) {
+    return null;
+  }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--portal-space-4)",
-        flexWrap: "wrap",
-      }}
-    >
-      {links.map((link) => (
-        <button
-          key={link.path}
-          onClick={() => onNavigate(link.path)}
-          style={{
-            all: "unset",
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-tertiary)",
-            cursor: "pointer",
-            transition: "color var(--portal-transition)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--portal-text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--portal-text-tertiary)";
-          }}
-        >
-          {link.label}
-        </button>
-      ))}
+    <div>
+      <h3
+        style={{
+          fontSize: "var(--portal-font-size-lg)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+          marginBottom: "var(--portal-space-3)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--portal-space-2)",
+        }}
+      >
+        <span style={{ fontSize: "20px" }}>⚠️</span>
+        Action Required
+      </h3>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-2)" }}>
+        {/* Overdue payment */}
+        {hasOverdue && (
+          <div
+            style={{
+              padding: "var(--portal-space-4)",
+              background: "var(--portal-bg-card)",
+              border: "2px solid rgba(239, 68, 68, 0.4)",
+              borderRadius: "var(--portal-radius-lg)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--portal-space-3)" }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-lg)",
+                    fontWeight: "var(--portal-font-weight-semibold)",
+                    color: "var(--portal-error)",
+                    marginBottom: "4px",
+                  }}
+                >
+                  💰 Payment Overdue
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-sm)",
+                    color: "var(--portal-text-secondary)",
+                  }}
+                >
+                  {formatCurrency(overdueAmount)} overdue
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "var(--portal-space-2)" }}>
+                <Button variant="primary" onClick={() => onNavigate("/financials")}>
+                  Pay Now
+                </Button>
+                <Button variant="secondary" onClick={() => onNavigate("/financials")}>
+                  View Invoice
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Due payment */}
+        {hasDue && !hasOverdue && nextPaymentDueAt && (
+          <div
+            style={{
+              padding: "var(--portal-space-4)",
+              background: "var(--portal-bg-card)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--portal-space-3)" }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-lg)",
+                    fontWeight: "var(--portal-font-weight-semibold)",
+                    color: "var(--portal-text-primary)",
+                    marginBottom: "4px",
+                  }}
+                >
+                  💰 Payment Due
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-sm)",
+                    color: "var(--portal-text-secondary)",
+                  }}
+                >
+                  {formatCurrency(nextPaymentAmount)} due in {getDaysUntil(nextPaymentDueAt)} days
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "var(--portal-space-2)" }}>
+                <Button variant="primary" onClick={() => onNavigate("/financials")}>
+                  Pay Now
+                </Button>
+                <Button variant="secondary" onClick={() => onNavigate("/financials")}>
+                  View Invoice
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pending agreements */}
+        {hasAgreements && (
+          <div
+            style={{
+              padding: "var(--portal-space-4)",
+              background: "var(--portal-bg-card)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--portal-space-3)" }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-lg)",
+                    fontWeight: "var(--portal-font-weight-semibold)",
+                    color: "var(--portal-text-primary)",
+                    marginBottom: "4px",
+                  }}
+                >
+                  ✍️ Agreement Pending Signature
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-sm)",
+                    color: "var(--portal-text-secondary)",
+                  }}
+                >
+                  {pendingAgreements} agreement{pendingAgreements > 1 ? "s" : ""} waiting for your signature
+                </div>
+              </div>
+              <Button variant="primary" onClick={() => onNavigate("/agreements")}>
+                Sign Agreement
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Empty State - When no reservation yet
+ * Activity Timeline - Recent activity feed
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ActivityTimelineProps {
+  events: DemoActivityEvent[];
+  onNavigate: (path: string) => void;
+}
+
+function ActivityTimeline({ events, onNavigate }: ActivityTimelineProps) {
+  if (events.length === 0) return null;
+
+  const getEventIcon = (type: string) => {
+    switch (type) {
+      case "message": return "💬";
+      case "document": return "📄";
+      case "payment": return "💰";
+      case "update": return "📝";
+      case "agreement": return "✍️";
+      default: return "•";
+    }
+  };
+
+  return (
+    <div>
+      <h3
+        style={{
+          fontSize: "var(--portal-font-size-lg)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+          marginBottom: "var(--portal-space-3)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--portal-space-2)",
+        }}
+      >
+        <span style={{ fontSize: "20px" }}>📬</span>
+        Recent Activity
+      </h3>
+
+      <div
+        style={{
+          background: "var(--portal-bg-card)",
+          border: "1px solid var(--portal-border-subtle)",
+          borderRadius: "var(--portal-radius-lg)",
+          padding: "var(--portal-space-4)",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+          {events.map((event) => (
+            <button
+              key={event.id}
+              onClick={() => event.relatedPath && onNavigate(event.relatedPath)}
+              style={{
+                all: "unset",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "var(--portal-space-3)",
+                cursor: event.relatedPath ? "pointer" : "default",
+                transition: "opacity 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (event.relatedPath) e.currentTarget.style.opacity = "0.7";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = "1";
+              }}
+            >
+              <span style={{ fontSize: "20px", flexShrink: 0 }}>{getEventIcon(event.type)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-sm)",
+                    color: "var(--portal-text-primary)",
+                    marginBottom: "2px",
+                  }}
+                >
+                  {event.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--portal-font-size-xs)",
+                    color: "var(--portal-text-tertiary)",
+                  }}
+                >
+                  {formatRelativeTime(event.timestamp)}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Financial Progress Bar - Visual progress toward total
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface FinancialSnapshotProps {
+  totalPaid: number;
+  totalAmount: number;
+  nextPaymentAmount: number;
+  nextPaymentDueAt: string | null;
+  onNavigate: (path: string) => void;
+}
+
+function FinancialSnapshot({
+  totalPaid,
+  totalAmount,
+  nextPaymentAmount,
+  nextPaymentDueAt,
+  onNavigate,
+}: FinancialSnapshotProps) {
+  const progress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+
+  return (
+    <div>
+      <h3
+        style={{
+          fontSize: "var(--portal-font-size-lg)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+          marginBottom: "var(--portal-space-3)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--portal-space-2)",
+        }}
+      >
+        <span style={{ fontSize: "20px" }}>📊</span>
+        Financial Snapshot
+      </h3>
+
+      <div
+        style={{
+          background: "var(--portal-bg-card)",
+          border: "1px solid var(--portal-border-subtle)",
+          borderRadius: "var(--portal-radius-lg)",
+          padding: "var(--portal-space-4)",
+        }}
+      >
+        {/* Progress Bar */}
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: "var(--portal-space-2)",
+            }}
+          >
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              Total Paid
+            </span>
+            <span style={{ fontSize: "var(--portal-font-size-sm)", fontWeight: "var(--portal-font-weight-semibold)", color: "var(--portal-text-primary)" }}>
+              {formatCurrency(totalPaid)} of {formatCurrency(totalAmount)}
+            </span>
+          </div>
+          <div
+            style={{
+              width: "100%",
+              height: "8px",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-full)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(progress, 100)}%`,
+                height: "100%",
+                background: "var(--portal-accent)",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Next Payment */}
+        {nextPaymentAmount > 0 && nextPaymentDueAt && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingTop: "var(--portal-space-3)",
+              borderTop: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                Next Payment
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-lg)", fontWeight: "var(--portal-font-weight-bold)", color: "var(--portal-text-primary)" }}>
+                {formatCurrency(nextPaymentAmount)}
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-xs)", color: "var(--portal-text-tertiary)" }}>
+                Due in {getDaysUntil(nextPaymentDueAt)} days
+              </div>
+            </div>
+            <Button variant="secondary" onClick={() => onNavigate("/financials")}>
+              View Financials →
+            </Button>
+          </div>
+        )}
+
+        {/* No next payment */}
+        {nextPaymentAmount === 0 && (
+          <div
+            style={{
+              paddingTop: "var(--portal-space-3)",
+              borderTop: "1px solid var(--portal-border-subtle)",
+              textAlign: "center",
+            }}
+          >
+            <Button variant="secondary" onClick={() => onNavigate("/financials")}>
+              View Financials →
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
 function EmptyState() {
   return (
-    <PortalCard variant="flat">
-      <div style={{ textAlign: "center", padding: "var(--portal-space-4)" }}>
-        <h2
-          style={{
-            fontSize: "var(--portal-font-size-lg)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-text-primary)",
-            margin: 0,
-            marginBottom: "var(--portal-space-2)",
-          }}
-        >
-          Welcome
-        </h2>
-        <p
-          style={{
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-secondary)",
-            margin: 0,
-            maxWidth: "400px",
-            marginLeft: "auto",
-            marginRight: "auto",
-          }}
-        >
-          Your private portal for messages, documents, agreements, and updates.
-        </p>
-      </div>
-    </PortalCard>
+    <div
+      style={{
+        background: "var(--portal-bg-card)",
+        border: "1px solid var(--portal-border-subtle)",
+        borderRadius: "var(--portal-radius-lg)",
+        padding: "var(--portal-space-6)",
+        textAlign: "center",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+          marginBottom: "var(--portal-space-2)",
+        }}
+      >
+        Welcome to Your Portal
+      </h2>
+      <p
+        style={{
+          fontSize: "var(--portal-font-size-sm)",
+          color: "var(--portal-text-secondary)",
+          margin: 0,
+          maxWidth: "400px",
+          marginLeft: "auto",
+          marginRight: "auto",
+        }}
+      >
+        Your private portal for messages, documents, agreements, and updates about your animal.
+      </p>
+    </div>
   );
 }
 
@@ -358,32 +734,28 @@ function EmptyState() {
 
 function LoadingState() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
       <div
         style={{
-          height: "100px",
+          height: "400px",
           background: "var(--portal-bg-elevated)",
           borderRadius: "var(--portal-radius-lg)",
         }}
       />
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: "var(--portal-space-2)",
+          height: "200px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
         }}
-      >
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            style={{
-              height: "60px",
-              background: "var(--portal-bg-elevated)",
-              borderRadius: "var(--portal-radius-lg)",
-            }}
-          />
-        ))}
-      </div>
+      />
+      <div
+        style={{
+          height: "200px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
+        }}
+      />
     </div>
   );
 }
@@ -394,18 +766,16 @@ function LoadingState() {
 
 export default function PortalDashboardPage() {
   const { tenantSlug, isReady } = useTenantContext();
-  const { tasks, loading: tasksLoading } = usePortalTasks();
-  const { notifications, loading: notificationsLoading } = usePortalNotifications();
-  const { orgName, userEmail } = usePortalContext();
+  const { userEmail } = usePortalContext();
 
-  // State for real API data
+  // State for data
   const [placements, setPlacements] = React.useState<any[]>([]);
   const [financialSummary, setFinancialSummary] = React.useState<any>(null);
   const [agreements, setAgreements] = React.useState<any[]>([]);
-  const [unreadMessagesCount, setUnreadMessagesCount] = React.useState(0);
+  const [activityEvents, setActivityEvents] = React.useState<DemoActivityEvent[]>([]);
   const [dataLoading, setDataLoading] = React.useState(true);
 
-  // Fetch real data from API - wait for tenant context
+  // Fetch data
   React.useEffect(() => {
     if (!isReady) return;
 
@@ -414,13 +784,26 @@ export default function PortalDashboardPage() {
 
     async function loadDashboardData() {
       setDataLoading(true);
+
+      // Check if demo mode is active
+      if (isDemoMode()) {
+        const demoData = generateDemoData();
+        if (!cancelled) {
+          setPlacements(demoData.placements);
+          setFinancialSummary(demoData.financialSummary);
+          setAgreements(demoData.agreements);
+          setActivityEvents(demoData.activityEvents);
+          setDataLoading(false);
+        }
+        return;
+      }
+
+      // Normal API fetch
       try {
-        // Fetch placements, financials, and agreements in parallel
-        const [placementsData, financialsData, agreementsData, threadsData] = await Promise.all([
+        const [placementsData, financialsData, agreementsData] = await Promise.all([
           portalFetch<{ placements: any[] }>("/portal/placements").catch(() => null),
           portalFetch<any>("/portal/financials").catch(() => null),
           portalFetch<{ agreements: any[] }>("/portal/agreements").catch(() => null),
-          portalFetch<{ threads: any[] }>("/portal/threads").catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -437,11 +820,8 @@ export default function PortalDashboardPage() {
           setAgreements(agreementsData.agreements || []);
         }
 
-        if (threadsData) {
-          const threads = threadsData.threads || [];
-          const unread = threads.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
-          setUnreadMessagesCount(unread);
-        }
+        // TODO: Fetch real activity events from API
+        setActivityEvents([]);
       } catch (err) {
         if (cancelled) return;
         console.error("[PortalDashboard] Failed to load data:", err);
@@ -451,187 +831,70 @@ export default function PortalDashboardPage() {
     }
 
     loadDashboardData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [tenantSlug, isReady]);
 
-  // Derive user's first name from email (before @ or +)
+  // Derive user's first name from email
   const getUserFirstName = (): string | null => {
     if (!userEmail) return null;
     const localPart = userEmail.split("@")[0];
-    // Handle email+tag format
     const name = localPart.split("+")[0];
-    // Capitalize first letter
     return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
   };
 
   const firstName = getUserFirstName();
-  const pageTitle = firstName ? `Welcome, ${firstName}` : "Welcome";
+  const pageTitle = firstName ? `Welcome back, ${firstName}` : "Welcome back";
 
   const handleNavigate = (path: string) => {
     window.history.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  // Calculate counts
-  const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
-  const notificationsCount = notifications.filter((n) => !n.read).length;
-  const messagesCount = unreadMessagesCount;
-
-  const isLoading = tasksLoading || notificationsLoading || dataLoading;
-
-  // Get primary placement (offspring data includes species/breed)
+  // Get primary placement
   const primaryPlacement = placements[0];
-
-  // Derive species and breed from placement data
-  const species = primaryPlacement?.species || null;
-  const breed = primaryPlacement?.breed || null;
-
-  // Get pending agreements
   const pendingAgreements = agreements.filter((a: any) => a.status === "sent");
 
-  // Determine next action and CTA using domain-neutral language
-  const getNextActionAndCTA = (placement: any, financial: any, pendingAgreements: any[]) => {
-    if (!placement) {
-      return { nextAction: "Getting started", ctaLabel: "View", ctaPath: "/" };
-    }
-
-    // Check for overdue payments first
-    if (financial?.overdueAmount > 0) {
-      return {
-        nextAction: "Payment overdue",
-        ctaLabel: "Pay now",
-        ctaPath: "/financials",
-      };
-    }
-
-    // Check for pending agreements
-    if (pendingAgreements.length > 0) {
-      return {
-        nextAction: "Agreement awaiting signature",
-        ctaLabel: "Review",
-        ctaPath: "/agreements",
-      };
-    }
-
-    // Check for due payments
-    if (financial?.totalDue > 0 && financial?.nextPaymentDueAt) {
-      const days = getDaysUntil(financial.nextPaymentDueAt);
-      return {
-        nextAction: `Payment due ${days <= 0 ? "today" : `in ${days} days`}`,
-        ctaLabel: "Pay now",
-        ctaPath: "/financials",
-      };
-    }
-
-    // Check for go-home scheduling (paid in full but no pickup date)
-    if (placement.paidInFullAt && !placement.pickupAt) {
-      return {
-        nextAction: "Ready to schedule go-home",
-        ctaLabel: "Schedule",
-        ctaPath: "/tasks",
-      };
-    }
-
-    // Placed = handoff complete
-    if (placement.placementStatus === "placed") {
-      return {
-        nextAction: "Placement complete",
-        ctaLabel: "View details",
-        ctaPath: "/offspring",
-      };
-    }
-
-    // Default = reservation confirmed
-    return {
-      nextAction: "Reservation confirmed",
-      ctaLabel: "View details",
-      ctaPath: "/offspring",
-    };
-  };
-
-  const { nextAction, ctaLabel, ctaPath } = getNextActionAndCTA(
-    primaryPlacement,
-    financialSummary,
-    pendingAgreements
-  );
-
-  // Determine page status
-  const hasOverdue = (financialSummary?.overdueAmount ?? 0) > 0;
-  const hasDue = (financialSummary?.totalDue ?? 0) > 0;
-  const pageStatus = hasOverdue ? "error" : actionRequiredCount > 0 ? "action" : hasDue ? "warning" : undefined;
-  const pageStatusLabel = hasOverdue
-    ? "Action needed"
-    : actionRequiredCount > 0
-      ? `${actionRequiredCount} pending`
-      : undefined;
-
   return (
-    <PageScaffold title={pageTitle} status={pageStatus} statusLabel={pageStatusLabel}>
-      {isLoading && <LoadingState />}
+    <PageScaffold title={pageTitle}>
+      {dataLoading && <LoadingState />}
 
-      {!isLoading && !primaryPlacement && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-          <EmptyState />
-          <SecondaryLinks onNavigate={handleNavigate} />
-        </div>
-      )}
+      {!dataLoading && !primaryPlacement && <EmptyState />}
 
-      {!isLoading && primaryPlacement && (
+      {!dataLoading && primaryPlacement && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-          {/* Primary Context Strip with species awareness */}
-          <ContextStrip
-            name={primaryPlacement.offspring?.name || "Your reservation"}
-            species={species}
-            breed={breed}
-            status={primaryPlacement.placementStatus as PlacementStatus}
-            nextAction={nextAction}
-            ctaLabel={ctaLabel}
-            ctaPath={ctaPath}
+          {/* Animal Status Card Hero */}
+          <AnimalStatusCard
+            name={primaryPlacement.offspring?.name || "Your animal"}
+            species={primaryPlacement.species || "dog"}
+            breed={primaryPlacement.breed || ""}
+            status={primaryPlacement.placementStatus || "active"}
+            lastUpdate={primaryPlacement.lastUpdate || null}
+            photos={primaryPlacement.photos || []}
             onNavigate={handleNavigate}
           />
 
-          {/* Attention Cards - only show if counts > 0 */}
-          {(actionRequiredCount > 0 || notificationsCount > 0 || messagesCount > 0 || hasDue) && (
-            <div>
-              <SectionHeader title="Needs attention" />
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                  gap: "var(--portal-space-2)",
-                }}
-              >
-                {actionRequiredCount > 0 && (
-                  <AttentionCard label="Tasks" count={actionRequiredCount} onClick={() => handleNavigate("/tasks")} />
-                )}
-                {messagesCount > 0 && (
-                  <AttentionCard label="Messages" count={messagesCount} onClick={() => handleNavigate("/messages")} />
-                )}
-                {notificationsCount > 0 && (
-                  <AttentionCard
-                    label="Notifications"
-                    count={notificationsCount}
-                    onClick={() => handleNavigate("/notifications")}
-                  />
-                )}
-                {hasDue && financialSummary && (
-                  <FinancialDueCard
-                    amount={hasOverdue ? financialSummary.overdueAmount : financialSummary.totalDue}
-                    isOverdue={hasOverdue}
-                    dueInDays={
-                      financialSummary.nextPaymentDueAt ? getDaysUntil(financialSummary.nextPaymentDueAt) : null
-                    }
-                    onClick={() => handleNavigate("/financials")}
-                  />
-                )}
-              </div>
-            </div>
-          )}
+          {/* Action Required Section */}
+          <ActionRequiredSection
+            overdueAmount={financialSummary?.overdueAmount || 0}
+            nextPaymentAmount={financialSummary?.totalDue || 0}
+            nextPaymentDueAt={financialSummary?.nextPaymentDueAt || null}
+            pendingAgreements={pendingAgreements.length}
+            onNavigate={handleNavigate}
+          />
 
-          {/* Secondary Links */}
-          <div style={{ paddingTop: "var(--portal-space-2)" }}>
-            <SecondaryLinks onNavigate={handleNavigate} />
-          </div>
+          {/* Activity Timeline */}
+          <ActivityTimeline events={activityEvents} onNavigate={handleNavigate} />
+
+          {/* Financial Snapshot */}
+          <FinancialSnapshot
+            totalPaid={financialSummary?.totalPaid || 0}
+            totalAmount={financialSummary?.totalAmount || 0}
+            nextPaymentAmount={financialSummary?.totalDue || 0}
+            nextPaymentDueAt={financialSummary?.nextPaymentDueAt || null}
+            onNavigate={handleNavigate}
+          />
         </div>
       )}
     </PageScaffold>

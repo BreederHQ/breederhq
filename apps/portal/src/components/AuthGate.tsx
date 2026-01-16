@@ -154,7 +154,7 @@ function LoadingSkeleton() {
 }
 
 // How often to re-check session validity (in ms)
-const SESSION_CHECK_INTERVAL = 30000; // 30 seconds
+const SESSION_CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
 
 export function AuthGate({ children, publicPaths = [] }: AuthGateProps) {
   const [sessionState, setSessionState] = React.useState<SessionCheckResult>({

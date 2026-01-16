@@ -4,6 +4,7 @@ import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard } from "../design/PortalCard";
 import { createPortalFetch, useTenantContext, buildApiPath } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 // Types for financial data
 interface Invoice {
   id: number;
@@ -1363,6 +1364,11 @@ function InvoicesList({ invoices, onSelectInvoice, onPayInvoice }: InvoicesListP
   const dueInvoices = invoices.filter((inv) => inv.status === "due");
   const paidInvoices = invoices.filter((inv) => inv.status === "paid");
 
+  // Paid section should be collapsed by default if overdue or due invoices exist
+  const [paidCollapsed, setPaidCollapsed] = React.useState(
+    (overdueInvoices.length > 0 || dueInvoices.length > 0) && paidInvoices.length > 0
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-5)" }}>
       {overdueInvoices.length > 0 && (
@@ -1423,24 +1429,57 @@ function InvoicesList({ invoices, onSelectInvoice, onPayInvoice }: InvoicesListP
 
       {paidInvoices.length > 0 && (
         <div>
-          <h2
+          <button
+            onClick={() => setPaidCollapsed(!paidCollapsed)}
             style={{
-              fontSize: "var(--portal-font-size-sm)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              textTransform: "uppercase",
-              letterSpacing: "var(--portal-letter-spacing-wide)",
-              color: "var(--portal-text-tertiary)",
-              margin: 0,
+              all: "unset",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-2)",
+              width: "100%",
+              cursor: "pointer",
               marginBottom: "var(--portal-space-3)",
             }}
           >
-            Paid
-          </h2>
-          <PortalCard variant="elevated" padding="none">
-            {paidInvoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} onClick={() => onSelectInvoice(invoice.id)} />
-            ))}
-          </PortalCard>
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-sm)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                textTransform: "uppercase",
+                letterSpacing: "var(--portal-letter-spacing-wide)",
+                color: "var(--portal-text-tertiary)",
+                margin: 0,
+              }}
+            >
+              Paid
+            </h2>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                background: "var(--portal-bg-elevated)",
+                padding: "2px 8px",
+                borderRadius: "var(--portal-radius-full)",
+              }}
+            >
+              {paidInvoices.length}
+            </span>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              {paidCollapsed ? "▸" : "▾"}
+            </span>
+          </button>
+          {!paidCollapsed && (
+            <PortalCard variant="elevated" padding="none">
+              {paidInvoices.map((invoice) => (
+                <InvoiceRow key={invoice.id} invoice={invoice} onClick={() => onSelectInvoice(invoice.id)} />
+              ))}
+            </PortalCard>
+          )}
         </div>
       )}
     </div>
@@ -1480,46 +1519,6 @@ function RecentTransactions({ transactions }: { transactions: Transaction[] }) {
   );
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
- * View Toggle
- * ──────────────────────────────────────────────────────────────────────────── */
-
-type ViewMode = "overview" | "invoices";
-
-function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        background: "var(--portal-bg-elevated)",
-        borderRadius: "var(--portal-radius-md)",
-        padding: "4px",
-        gap: "4px",
-      }}
-    >
-      {(["overview", "invoices"] as ViewMode[]).map((m) => (
-        <button
-          key={m}
-          onClick={() => onChange(m)}
-          style={{
-            all: "unset",
-            padding: "var(--portal-space-2) var(--portal-space-3)",
-            fontSize: "var(--portal-font-size-sm)",
-            fontWeight: "var(--portal-font-weight-medium)",
-            color: mode === m ? "var(--portal-text-primary)" : "var(--portal-text-tertiary)",
-            background: mode === m ? "var(--portal-bg-card)" : "transparent",
-            borderRadius: "var(--portal-radius-sm)",
-            cursor: "pointer",
-            transition: "all var(--portal-transition)",
-            textTransform: "capitalize",
-          }}
-        >
-          {m}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Empty State
@@ -1612,7 +1611,6 @@ function LoadingState() {
 
 export default function PortalFinancialsPage() {
   const { tenantSlug, isReady } = useTenantContext();
-  const [viewMode, setViewMode] = React.useState<ViewMode>("overview");
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [successModal, setSuccessModal] = React.useState<Invoice | null>(null);
@@ -1632,8 +1630,8 @@ export default function PortalFinancialsPage() {
     [tenantSlug]
   );
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -1663,6 +1661,39 @@ export default function PortalFinancialsPage() {
 
     async function loadFinancialData() {
       setLoading(true);
+
+      // Check if demo mode is active
+      if (isDemoMode()) {
+        const demoData = generateDemoData();
+        if (!cancelled) {
+          setInvoices(demoData.invoices);
+          setTransactions(demoData.transactions);
+          setPrimaryAnimal(demoData.placements[0]);
+          // Calculate summary from demo invoices
+          const totalPaid = demoData.invoices
+            .filter((inv: any) => inv.status === "paid")
+            .reduce((sum: number, inv: any) => sum + inv.total, 0);
+          const totalDue = demoData.invoices
+            .filter((inv: any) => inv.status !== "paid")
+            .reduce((sum: number, inv: any) => sum + inv.amountDue, 0);
+          const overdueAmount = demoData.invoices
+            .filter((inv: any) => inv.status === "overdue")
+            .reduce((sum: number, inv: any) => sum + inv.amountDue, 0);
+
+          setSummary({
+            totalPaid,
+            totalDue,
+            overdueAmount,
+            nextPaymentAmount: demoData.financialSummary.totalDue > 0 ? 1000 : null,
+            nextPaymentDueAt: demoData.financialSummary.nextPaymentDueAt,
+            invoiceCount: demoData.invoices.length,
+          });
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Normal API fetch
       try {
         // Fetch financial data in parallel
         const [invoicesData, financialsData, placementsData] = await Promise.all([
@@ -1734,6 +1765,12 @@ export default function PortalFinancialsPage() {
     // Find the invoice
     const invoice = invoices.find((inv) => inv.id === id);
     if (!invoice) return;
+
+    // Demo mode: Show alert instead of opening Stripe checkout
+    if (isDemoMode()) {
+      alert(`💳 Demo Mode: In production, this would open Stripe checkout to pay $${invoice.amountDue.toFixed(2)} for "${invoice.description}".`);
+      return;
+    }
 
     try {
       // Call the portal checkout endpoint to create a Stripe checkout session
@@ -1924,50 +1961,32 @@ export default function PortalFinancialsPage() {
           }
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={
-            overdueCount > 0
-              ? `${overdueCount} overdue`
-              : dueCount > 0
-                ? `${dueCount} due`
-                : "All paid"
-          }
-          statusVariant={overdueCount > 0 ? "error" : dueCount > 0 ? "warning" : "success"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={
+              overdueCount > 0
+                ? `${overdueCount} overdue`
+                : dueCount > 0
+                  ? `${dueCount} due`
+                  : "All paid"
+            }
+            statusVariant={overdueCount > 0 ? "error" : dueCount > 0 ? "warning" : "success"}
+          />
+        )}
 
         {/* Summary Card */}
         {summary && <FinancialSummaryCard summary={summary} />}
 
-        {/* View Toggle */}
-        <div style={{ display: "flex", justifyContent: "flex-start" }}>
-          <ViewToggle mode={viewMode} onChange={setViewMode} />
-        </div>
-
-        {/* Content based on view mode */}
-        {viewMode === "overview" ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-5)" }}>
-            {/* Active invoices (due + overdue) */}
-            {invoices.filter((inv) => inv.status === "due" || inv.status === "overdue").length > 0 && (
-              <InvoicesList
-                invoices={invoices.filter((inv) => inv.status === "due" || inv.status === "overdue")}
-                onSelectInvoice={handleSelectInvoice}
-                onPayInvoice={handlePayInvoice}
-              />
-            )}
-            {/* Recent transactions */}
-            {transactions.length > 0 && <RecentTransactions transactions={transactions} />}
-          </div>
-        ) : (
-          <InvoicesList
-            invoices={invoices}
-            onSelectInvoice={handleSelectInvoice}
-            onPayInvoice={handlePayInvoice}
-          />
-        )}
+        {/* All Invoices - Always show all invoices grouped by status */}
+        <InvoicesList
+          invoices={invoices}
+          onSelectInvoice={handleSelectInvoice}
+          onPayInvoice={handlePayInvoice}
+        />
       </div>
 
       {/* Success Modal */}

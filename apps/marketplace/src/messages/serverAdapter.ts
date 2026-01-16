@@ -119,6 +119,7 @@ function apiMessageToMessage(msg: any, conversationId: string): Message {
     content: msg.body,
     createdAt: msg.createdAt,
     readAt: null, // API doesn't track per-message read status
+    attachment: msg.attachment || null,
   };
 }
 
@@ -151,7 +152,40 @@ export const serverAdapter: MessagingAdapter = {
     }
   },
 
-  async sendMessage(conversationId: string, content: string): Promise<Message> {
+  async sendMessage(conversationId: string, content: string, file?: File): Promise<Message> {
+    if (file) {
+      // Upload with file attachment using multipart form
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("body", content);
+
+      const base = getApiBase();
+      const url = `${base}/messages/threads/${conversationId}/messages/upload`;
+
+      const headers = new Headers();
+      const csrf = getCsrfToken();
+      if (csrf) {
+        headers.set("x-csrf-token", csrf);
+      }
+      // Don't set Content-Type for FormData - browser will set it with boundary
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "unknown" }));
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return apiMessageToMessage(data.message, conversationId);
+    }
+
+    // Text-only message
     const data = await apiFetch<{ ok: boolean; message: any }>(
       `/messages/threads/${conversationId}/messages`,
       {

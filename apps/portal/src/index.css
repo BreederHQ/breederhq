@@ -1,7 +1,10 @@
 /* 1) Load BHQ design-system FIRST so PostCSS is happy and tokens exist */
 @import "@bhq/ui/bhq.css";
 
-/* 2) Tailwind v3 directives */
+/* 2) Portal-specific design tokens (CSS custom properties) */
+@import "./design/tokens.css";
+
+/* 3) Tailwind v3 directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

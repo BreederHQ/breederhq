@@ -11,8 +11,23 @@ interface ThreadViewProps {
   conversation: Conversation | null;
   messages: Message[];
   loading?: boolean;
-  onSendMessage: (content: string) => Promise<void>;
+  onSendMessage: (content: string, file?: File) => Promise<void>;
   sending?: boolean;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileIcon(mime: string | null): string {
+  if (!mime) return "📎";
+  if (mime.startsWith("image/")) return "🖼️";
+  if (mime === "application/pdf") return "📄";
+  if (mime.includes("word") || mime.includes("document")) return "📝";
+  if (mime.includes("excel") || mime.includes("spreadsheet")) return "📊";
+  return "📎";
 }
 
 export function ThreadView({
@@ -23,19 +38,49 @@ export function ThreadView({
   sending,
 }: ThreadViewProps) {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [draft, setDraft] = React.useState("");
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
 
   // Auto-scroll to bottom when messages change
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setFileError("File too large. Maximum size is 10MB.");
+        return;
+      }
+      setSelectedFile(file);
+      setFileError(null);
+    }
+  };
+
+  // Clear selected file
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   // Handle send
   const handleSend = async () => {
-    if (!draft.trim() || sending) return;
+    if ((!draft.trim() && !selectedFile) || sending) return;
     const content = draft.trim();
     setDraft("");
-    await onSendMessage(content);
+    const file = selectedFile;
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    await onSendMessage(content, file || undefined);
   };
 
   // Handle key press (Enter to send, Shift+Enter for newline)
@@ -129,7 +174,57 @@ export function ThreadView({
 
       {/* Composer */}
       <div className="flex-shrink-0 p-4 border-t border-border-subtle bg-portal-elevated">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileSelect}
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+          className="hidden"
+        />
+
+        {/* File error */}
+        {fileError && (
+          <div className="mb-2 px-3 py-2 text-sm text-red-400 bg-red-500/10 rounded-lg border border-red-500/20">
+            {fileError}
+          </div>
+        )}
+
+        {/* Selected file preview */}
+        {selectedFile && (
+          <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-portal-card rounded-lg border border-border-subtle">
+            <span className="text-xl">{getFileIcon(selectedFile.type)}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white truncate">
+                {selectedFile.name}
+              </div>
+              <div className="text-[11px] text-text-muted">
+                {formatFileSize(selectedFile.size)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearFile}
+              className="p-1 text-text-muted hover:text-white transition-colors"
+              aria-label="Remove file"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-3">
+          {/* Attach button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            className="px-3 py-2 rounded-portal-xs bg-portal-card border border-border-subtle text-text-secondary hover:text-white hover:border-border-default transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Attach file"
+            title="Attach file"
+          >
+            📎
+          </button>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -146,7 +241,7 @@ export function ThreadView({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!draft.trim() || sending}
+            disabled={(!draft.trim() && !selectedFile) || sending}
             className="px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             aria-label="Send message"
           >
@@ -266,6 +361,9 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
     minute: "2-digit",
   });
 
+  // Check for attachment (using the extended message type)
+  const attachment = (message as any).attachment;
+
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
       <div
@@ -278,6 +376,29 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words">
           {message.content}
         </p>
+        {attachment && (
+          <a
+            href={attachment.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center gap-2 mt-2 p-2 rounded-lg transition-colors ${
+              isOwn
+                ? "bg-white/10 hover:bg-white/20"
+                : "bg-portal-elevated hover:bg-border-default"
+            }`}
+          >
+            <span className="text-xl">{getFileIcon(attachment.mime)}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">
+                {attachment.filename}
+              </div>
+              <div className={`text-[11px] ${isOwn ? "text-white/60" : "text-text-muted"}`}>
+                {formatFileSize(attachment.bytes)}
+              </div>
+            </div>
+            <span className={`text-sm ${isOwn ? "text-white/60" : "text-accent"}`}>↓</span>
+          </a>
+        )}
         <p
           className={`mt-1 text-[10px] ${
             isOwn ? "text-white/60" : "text-text-muted"

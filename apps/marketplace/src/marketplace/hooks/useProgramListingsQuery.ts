@@ -1,8 +1,6 @@
 // apps/marketplace/src/marketplace/hooks/useProgramListingsQuery.ts
 import * as React from "react";
 import { getProgramListings } from "../../api/client";
-import { isDemoMode } from "../../demo/demoMode";
-import { getMockProgramListings, simulateDelay } from "../../demo/mockData";
 import type { ListingsResponse } from "../../api/types";
 
 interface UseProgramListingsQueryResult {
@@ -28,18 +26,6 @@ export function useProgramListingsQuery(
     setLoading(true);
     setError(null);
 
-    // Demo mode: use mock data
-    if (isDemoMode()) {
-      await simulateDelay(200);
-      if (fetchId !== fetchCounterRef.current) return;
-
-      const result = getMockProgramListings(programSlug);
-      setData(result);
-      setLoading(false);
-      return;
-    }
-
-    // Real API mode
     try {
       const result = await getProgramListings(programSlug);
 

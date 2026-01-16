@@ -1,0 +1,20 @@
+{
+  "plugins": ["local-rules"],
+  "rules": {
+    "local-rules/no-hardcoded-species-terms": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/speciesTerminology.ts",
+        "**/test-data.ts"
+      ],
+      "rules": {
+        "local-rules/no-hardcoded-species-terms": "off"
+      }
+    }
+  ]
+}

@@ -21,16 +21,22 @@ import {
   useViewMode,
   SortDropdown,
   type SortOption,
+  speciesUsesCollars,
+  Popover,
 } from "@bhq/ui";
 import type { BadgeProps } from "@bhq/ui";
 
 
 import { Overlay } from "@bhq/ui/overlay";
 import {
+  Archive,
+  Check,
   ChevronDown,
   ChevronUp,
   FilePlus2,
   LayoutGrid,
+  List,
+  MoreVertical,
   Plus,
   Table as TableIcon,
   Trash2,
@@ -43,7 +49,12 @@ import {
 } from "../api";
 
 import { OffspringCardView } from "../components/OffspringCardView";
+import { OffspringListView } from "../components/OffspringListView";
 import { CollarPicker, CollarSwatch } from "../components/CollarPicker";
+import { CoatColorPicker, CoatColorSwatch, CoatPatternPicker, CoatPatternSwatch } from "../components/CoatColorPicker";
+import { OffspringDeleteModal } from "../components/OffspringDeleteModal";
+import { OffspringDeleteBlockedModal } from "../components/OffspringDeleteBlockedModal";
+import { OffspringArchiveModal } from "../components/OffspringArchiveModal";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
@@ -61,11 +72,22 @@ const labelClass = "mt-3 text-xs text-secondary";
 
 const MODAL_Z = 2147485000;
 
+/** Helper to render section titles with emoji icons (matching animal drawer pattern) */
+function SectionTitle({ icon, children }: { icon?: string; children: React.ReactNode }) {
+  if (!icon) return <>{children}</>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-secondary">{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
+}
+
 
 
 
 /** ---------- Types for this page ---------- */
-type ViewMode = "table" | "cards";
+type ViewMode = "table" | "cards" | "list";
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
 type Status = "PLANNED" | "BORN" | "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
@@ -386,6 +408,7 @@ export type OffspringRow = {
   species: string | null;
   breed: string | null;
   color: string | null;
+  pattern: string | null;
   birthWeightOz: number | null;
   dob: string | null;
   microchip: string | null;
@@ -416,13 +439,33 @@ export type OffspringRow = {
   groupName?: string | null;
   groupCode?: string | null;
   groupSeasonLabel?: string | null;
+  groupBirthDate?: string | null;
   identifier?: string | null;
   placeholderLabel?: string | null;
 
   // Siblings and waitlist
   siblings?: SiblingLite[] | null;
   waitlistEntry?: WaitlistRefLite | null;
-  group?: { id: number; name?: string; code?: string } | null;
+  group?: {
+    id: number;
+    name?: string;
+    code?: string;
+    birthedStartAt?: string | null;
+    birthed_start_at?: string | null;
+    birthedEndAt?: string | null;
+    birthed_end_at?: string | null;
+    birthDate?: string | null;
+    birth_date?: string | null;
+    breedName?: string | null;
+    breed?: string | null;
+    breedText?: string | null;
+    plan?: {
+      id: number;
+      birthedAt?: string | null;
+      birthDateActual?: string | null;
+      breedText?: string | null;
+    } | null;
+  } | null;
 
   // new fields
   whelpingCollarColor: string | null;
@@ -449,6 +492,7 @@ export type OffspringUpdateInput = Partial<{
   name: string | null;
   sex: Sex | null;
   color: string | null;
+  pattern: string | null;
   birthWeightOz: number | null;
   status: OffspringStatus;
   buyerPartyId: number | null;
@@ -523,6 +567,7 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     species,
     breed,
     color,
+    pattern,
     birthDate,
     microchip,
     registryNumber,
@@ -615,6 +660,7 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     species: species ?? null,
     breed: typeof breed === "string" ? breed : null,
     color: color ?? null,
+    pattern: pattern ?? null,
     birthWeightOz:
       typeof birth_weight_oz === "number" ? birth_weight_oz : null,
     dob: birthDate ?? null,
@@ -668,6 +714,19 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
 
 function mapDetailToRow(detail: any): OffspringRow {
   const base = mapAnimalLiteToRow(detail as any);
+  const group = (detail as any).group ?? null;
+  // Extract group birth date from group or linked breeding plan
+  // Priority: group.birthedStartAt > group.birthedEndAt > plan.birthedAt
+  const groupBirthDate =
+    group?.birthedStartAt ??
+    group?.birthed_start_at ??
+    group?.birthedEndAt ??
+    group?.birthed_end_at ??
+    group?.birthDate ??
+    group?.birth_date ??
+    group?.plan?.birthedAt ??
+    group?.plan?.birthDateActual ??
+    null;
   return {
     ...base,
     buyer: (detail as any).buyer ?? null,
@@ -675,7 +734,8 @@ function mapDetailToRow(detail: any): OffspringRow {
       (detail as any).buyerRiskScore ??
       (detail as any).buyer_risk_score ??
       null,
-    group: (detail as any).group ?? null,
+    group,
+    groupBirthDate,
     healthSummary:
       (detail as any).healthSummary ??
       (detail as any).health_summary ??
@@ -994,8 +1054,6 @@ const lifeStateOptions: Array<{ value: LifeState; label: string }> = [
 
 const keeperIntentOptions: Array<{ value: KeeperIntent; label: string }> = [
   { value: "AVAILABLE", label: "Available" },
-  { value: "UNDER_EVALUATION", label: "Under evaluation" },
-  { value: "WITHHELD", label: "Withheld" },
   { value: "KEEP", label: "Keeper" },
 ];
 
@@ -1218,8 +1276,14 @@ function getLifeChip(lifeState?: LifeState | null, diedAt?: string | null): Stat
 
 function getKeeperChip(keeperIntent?: KeeperIntent | null): StatusChip | null {
   const normalized = normalizeState(keeperIntent);
-  if (normalized === "KEEP") {
+  if (normalized === "AVAILABLE") {
+    return { label: "Available", variant: "green" };
+  }
+  if (normalized === "KEEP" || normalized === "KEEPER") {
     return { label: "Keeper", variant: "blue" };
+  }
+  if (normalized === "RESERVED") {
+    return { label: "Reserved", variant: "amber" };
   }
   if (normalized === "WITHHELD" || normalized === "UNDER_EVALUATION") {
     return { label: "Withheld", variant: "amber" };
@@ -1272,21 +1336,18 @@ function buildOffspringStatusPresentation(offspring: Partial<OffspringRow>): {
     normalizeState((offspring as any)?.paperworkState ?? (offspring as any)?.paperwork_state);
   const diedAt = (offspring as any)?.diedAt ?? (offspring as any)?.died_at ?? null;
 
+  // Primary badge shows availability (Available, Keeper, or Sold if paid in full)
   const primaryBadge: StatusBadge | null =
     lifeState === "DECEASED"
       ? null
-      : {
-          label: getPlacementLabel(placementState) ?? "Placement not set",
-          variant: getPlacementVariant(placementState),
-        };
+      : getAvailabilityBadge(keeperIntent, financialState);
 
   const chips: StatusChip[] = [];
 
   const lifeChip = getLifeChip(lifeState, diedAt);
   if (lifeChip) chips.push(lifeChip);
 
-  const keeperChip = getKeeperChip(keeperIntent);
-  if (keeperChip) chips.push(keeperChip);
+  // Don't add keeper chip - it's now the primary badge
 
   const financialChip = getFinancialChip(financialState);
   if (financialChip) chips.push(financialChip);
@@ -1295,6 +1356,24 @@ function buildOffspringStatusPresentation(offspring: Partial<OffspringRow>): {
   if (paperworkChip) chips.push(paperworkChip);
 
   return { primaryBadge, chips };
+}
+
+/** Get primary badge for availability - derives Sold from financial state. Returns null for default "Available" state. */
+function getAvailabilityBadge(keeperIntent?: KeeperIntent | null, financialState?: FinancialState | null): StatusBadge | null {
+  // Sold overrides everything
+  if (financialState === "PAID_IN_FULL") {
+    return { label: "Sold", variant: "success" };
+  }
+
+  const normalized = normalizeState(keeperIntent);
+  switch (normalized) {
+    case "KEEP":
+    case "KEEPER":
+      return { label: "Keeper", variant: "blue" };
+    default:
+      // "Available" is the default state - no badge needed
+      return null;
+  }
 }
 
 const primaryBadgeClass =
@@ -1346,27 +1425,6 @@ function getBuyerSectionTitle(placementState?: PlacementState | null): string {
   if (normalized === "TRANSFERRED") return "Buyer (Transferred)";
   if (normalized === "RESERVED" || normalized === "OPTION_HOLD") return "Buyer (Reserved)";
   return "Buyer (Unassigned)";
-}
-
-const isDevRuntime =
-  typeof window !== "undefined" &&
-  (typeof (globalThis as any).process === "undefined" || ((globalThis as any).process as any)?.env?.NODE_ENV !== "production");
-
-if (isDevRuntime) {
-  const deceased = buildOffspringStatusPresentation({
-    lifeState: "DECEASED",
-    placementState: "UNASSIGNED",
-  } as Partial<OffspringRow>);
-  if (
-    !deceased.chips.some((c) => c.label === "Deceased") ||
-    (deceased.primaryBadge && deceased.primaryBadge.label === "Available")
-  ) {
-    console.warn("[Offspring] Deceased status presentation is missing required dominance.");
-  }
-  const placed = buildOffspringStatusPresentation({ placementState: "PLACED" } as Partial<OffspringRow>);
-  if (placed.primaryBadge?.label !== "Placed") {
-    console.warn("[Offspring] Placement badge regression detected for PLACED state.");
-  }
 }
 
 /** ---------- Offspring Tags Section ---------- */
@@ -2296,6 +2354,16 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     setCoreForm((prev) => (prev ? { ...prev, ...fields } : prev));
   }, []);
 
+  // Deletion and archive modal states
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+  const [showArchiveModal, setShowArchiveModal] = React.useState(false);
+  const [showBlockedModal, setShowBlockedModal] = React.useState(false);
+  const [deleteBlockers, setDeleteBlockers] = React.useState<any>(null);
+
+  // Overflow menu state (3-dot menu in edit mode)
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
+  const [isArchiving, setIsArchiving] = React.useState(false);
+
   // edit state for parent group override in the drawer
   const [allowWithoutParent, setAllowWithoutParent] = React.useState(false);
   const groupOptions = useOffspringGroupOptions(true);
@@ -2460,6 +2528,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       placeholderLabel: drawer.placeholderLabel,
       sex: drawer.sex,
       color: drawer.color,
+      pattern: drawer.pattern ?? null,
       birthWeightOz: drawer.birthWeightOz,
       status: drawer.status,
       dob: drawer.dob,
@@ -2616,6 +2685,44 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     }
   }
 
+  // Deletion and archive handlers
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+  };
+
+  const handleArchiveClick = () => {
+    setShowArchiveModal(true);
+  };
+
+  const handleArchive = async (_reason?: string) => {
+    // Archive functionality not yet implemented in API
+    alert("Archive functionality is not yet available");
+    setShowArchiveModal(false);
+  };
+
+  const handleDelete = async () => {
+    if (!drawer) return;
+    try {
+      await api.remove(drawer.id);
+      setShowDeleteModal(false);
+      // Remove from list
+      setRows((prev) => prev.filter((o) => o.id !== drawer.id));
+      // Close drawer
+      setDrawer(null);
+      alert("Offspring deleted permanently");
+    } catch (err: any) {
+      console.error(err);
+      if (err.status === 409 && err.data?.blockers) {
+        // Show blocked modal
+        setDeleteBlockers(err.data.blockers);
+        setShowDeleteModal(false);
+        setShowBlockedModal(true);
+      } else {
+        alert(`Failed to delete: ${err.message || "Unknown error"}`);
+      }
+    }
+  };
+
   const handleAssignBuyerFromGroup = React.useCallback(async () => {
     if (!drawer || !selectedGroupBuyerKey) return;
 
@@ -2767,6 +2874,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             ? null
             : ((coreForm.sex as Sex) ?? drawer.sex ?? null),
         color: coreForm.color ?? null,
+        pattern: coreForm.pattern ?? null,
         birthWeightOz: coreForm.birthWeightOz ?? null,
         status: (coreForm.status as OffspringStatus) ?? drawer.status,
         placementDate: coreForm.placementDate ?? drawer.placementDate,
@@ -2854,19 +2962,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
           <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
             <button
               type="button"
-              onClick={() => setViewMode("table")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                viewMode === "table"
-                  ? "bg-[hsl(var(--brand-orange))] text-black"
-                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-              }`}
-              title="Table view"
-            >
-              <TableIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Table</span>
-            </button>
-            <button
-              type="button"
               onClick={() => setViewMode("cards")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                 viewMode === "cards"
@@ -2878,6 +2973,32 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               <LayoutGrid className="w-4 h-4" />
               <span className="hidden sm:inline">Cards</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "list"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="List view"
+            >
+              <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "table"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="Table view"
+            >
+              <TableIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Table</span>
+            </button>
           </div>
 
           {/* Sort dropdown */}
@@ -2888,8 +3009,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             onClear={() => setSorts([])}
           />
 
-          {/* Column toggle - only show in table mode */}
-          {viewMode === "table" && (
+          {/* Column toggle - show in table and list modes */}
+          {(viewMode === "table" || viewMode === "list") && (
             <ColumnsPopover
               columns={cols.map}
               onToggle={cols.toggle}
@@ -2899,7 +3020,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             />
           )}
 
-          <div className="ml-auto">
+          <div className="ml-auto" />
+
+          <div>
             <Button
               size="sm"
               variant="primary"
@@ -2929,6 +3052,25 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                 console.error("[Offspring] Failed to load row", row.id, err);
               }
             }}
+          />
+        ) : viewMode === "list" ? (
+          <OffspringListView
+            rows={rows}
+            loading={false}
+            error={null}
+            onRowClick={async (row) => {
+              try {
+                const full = await api.getById(row.id);
+                if (full) {
+                  setDrawer(full);
+                  writeUrlParam(full.id);
+                  setDrawerTab("overview");
+                }
+              } catch (err) {
+                console.error("[Offspring] Failed to load row", row.id, err);
+              }
+            }}
+            visibleColumns={visibleSafe as any}
           />
         ) : (
         <Table
@@ -3229,7 +3371,11 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto">
               <div
                 ref={detailsPanelRef}
-                className="pointer-events-auto mb-10 flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+                className={`pointer-events-auto mb-10 flex flex-col overflow-hidden rounded-xl bg-surface shadow-xl transition-all duration-200 ${
+                  drawerMode === "edit"
+                    ? "border-2 border-amber-500/60 ring-2 ring-amber-500/20"
+                    : "border border-hairline"
+                }`}
                 style={{ width: 760, maxWidth: "calc(100vw - 64px)", marginTop: "6vh" }}
                 onMouseDown={(e) => {
                   // keep clicks inside the panel from bubbling to the outer close handler
@@ -3370,6 +3516,50 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                   ]}
                   activeTab={drawerTab}
                   onTabChange={(key) => setDrawerTab(key as any)}
+                  tabsRightContent={
+                    drawerMode === "edit" ? (
+                      <Popover
+                        open={overflowMenuOpen}
+                        onOpenChange={setOverflowMenuOpen}
+                      >
+                        <Popover.Trigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
+                            aria-label="More actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span>More</span>
+                          </button>
+                        </Popover.Trigger>
+                        <Popover.Content align="end" className="w-48 p-1">
+                          {/* Archive */}
+                          <button
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+                            disabled={isArchiving}
+                            onClick={() => {
+                              setOverflowMenuOpen(false);
+                              setShowArchiveModal(true);
+                            }}
+                          >
+                            <Archive className="h-4 w-4" />
+                            {isArchiving ? "Archiving…" : "Archive"}
+                          </button>
+                          {/* Delete */}
+                          <button
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded"
+                            onClick={() => {
+                              setOverflowMenuOpen(false);
+                              setShowDeleteModal(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </Popover.Content>
+                      </Popover>
+                    ) : undefined
+                  }
                   rightActions={
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="outline" onClick={closeDrawer}>
@@ -3407,8 +3597,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     const sireLabel =
                       row.groupSireName || row.sireName || "Not set";
 
-                    const dobLabel = row.dob
-                      ? formatDate(row.dob)
+                    // DOB: use individual's DOB, or inherit from group birth date if linked
+                    const effectiveDob = row.dob || row.groupBirthDate;
+                    const dobLabel = effectiveDob
+                      ? formatDate(effectiveDob)
                       : "Not set";
                     const lifeState =
                       normalizeState(
@@ -3566,13 +3758,12 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "overview" && (
                           <div className="space-y-4 max-w-4xl mx-auto">
 
-                            {/* Identity card */}
-                            <SectionCard title="Identity">
-                              <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                {/* Row 1: Primary fields */}
-                                <div>
-                                  <dt className="text-xs text-secondary mb-1">Name</dt>
-                                  <dd>
+                            {/* Identity Card */}
+                            <SectionCard title={<SectionTitle icon="🆔">Identity</SectionTitle>} highlight={drawerMode === "edit"}>
+                              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                                  {/* Row 1: Name, Sex, Species */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Name</div>
                                     {drawerMode === "edit" && coreForm ? (
                                       <input
                                         className={inputClass}
@@ -3588,14 +3779,45 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         data-form-type="other"
                                       />
                                     ) : (
-                                      name
+                                      <div className="text-sm text-white/90">{name}</div>
                                     )}
-                                  </dd>
-                                </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Sex</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <select
+                                        className={inputClass}
+                                        value={coreForm.sex ?? ""}
+                                        onChange={(e) => {
+                                          const value = e.target.value || "";
+                                          setCoreForm((prev) => prev ? { ...prev, sex: (value || null) as any } : prev);
+                                        }}
+                                      >
+                                        <option value="">Select sex</option>
+                                        <option value="FEMALE">Female</option>
+                                        <option value="MALE">Male</option>
+                                        <option value="UNKNOWN">Unknown</option>
+                                      </select>
+                                    ) : (
+                                      <div className="text-sm text-white/90">
+                                        {row.sex === "FEMALE" ? "Female" : row.sex === "MALE" ? "Male" : "Unknown"}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Species</div>
+                                    <div className="text-sm text-white/90">{speciesLabel}</div>
+                                  </div>
 
-                                <div>
-                                  <dt className="text-xs text-secondary mb-1">DOB</dt>
-                                  <dd>
+                                  {/* Row 2: Breed, DOB, Collar (if species uses collars) OR Color */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Breed</div>
+                                    <div className="text-sm text-white/90">
+                                      {row.group?.breedName || row.group?.breed || row.breedName || row.breed || "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">DOB</div>
                                     {drawerMode === "edit" && coreForm && !isLinkedToParent ? (
                                       <DatePicker
                                         value={coreForm.dob ?? drawer.dob ?? ""}
@@ -3607,14 +3829,62 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         inputClassName={inputClass}
                                       />
                                     ) : (
-                                      dobLabel
+                                      <div className="text-sm text-white/90">{dobLabel}</div>
                                     )}
-                                  </dd>
-                                </div>
+                                  </div>
+                                  {/* Collar (only for species that use collars like dogs/cats) */}
+                                  {speciesUsesCollars(row.species) && (
+                                    <div>
+                                      <div className="text-xs text-white/50 mb-0.5">Collar</div>
+                                      {drawerMode === "edit" && coreForm ? (
+                                        <CollarPicker
+                                          value={coreForm.whelpingCollarColor}
+                                          onChange={(colorLabel) => {
+                                            setCoreForm((prev) =>
+                                              prev
+                                                ? { ...prev, whelpingCollarColor: colorLabel }
+                                                : prev
+                                            );
+                                          }}
+                                          className="w-full"
+                                          species={row.species}
+                                        />
+                                      ) : (
+                                        <div className="text-sm">
+                                          {whelpingCollarValue ? (
+                                            <CollarSwatch color={whelpingCollarValue} showLabel />
+                                          ) : (
+                                            <span className="text-white/40">—</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
 
-                                <div>
-                                  <dt className="text-xs text-secondary mb-1">Life</dt>
-                                  <dd>
+                                  {/* Row 3: Microchip, Status, Registration */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Microchip #</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.microchip ?? drawer.microchip ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, microchip: e.target.value } : prev,
+                                          )
+                                        }
+                                        placeholder="Enter microchip"
+                                        autoComplete="off"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-form-type="other"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-white/90">{microchipLabel === "None" ? "—" : microchipLabel}</div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Status</div>
                                     {drawerMode === "edit" && coreForm ? (
                                       <select
                                         className={inputClass}
@@ -3636,26 +3906,74 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           });
                                         }}
                                       >
-                                        <option value="">Select life state</option>
+                                        <option value="">Select status</option>
                                         {lifeStateOptions.map((opt) => (
                                           <option key={opt.value} value={opt.value}>
                                             {opt.label}
                                           </option>
                                         ))}
                                       </select>
-                                    ) : lifeState === "DECEASED" ? (
-                                      "Deceased"
                                     ) : (
-                                      "Alive"
+                                      <div className={`text-sm ${lifeState === "DECEASED" ? "text-red-300" : "text-emerald-300"}`}>
+                                        {lifeState === "DECEASED" ? "Deceased" : "Active"}
+                                      </div>
                                     )}
-                                  </dd>
-                                </div>
+                                  </div>
+                                  {/* Empty spacer to complete row 3 */}
+                                  <div />
+                                  {/* Row 4: Color, Pattern - always side by side */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Color</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <CoatColorPicker
+                                        value={coreForm.color ?? drawer.color}
+                                        onChange={(colorName) => {
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, color: colorName } : prev
+                                          );
+                                        }}
+                                        species={row.species}
+                                        className="w-full"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-white/90">
+                                        {row.color ? (
+                                          <CoatColorSwatch color={row.color} showLabel />
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Pattern - next to Color */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Pattern</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <CoatPatternPicker
+                                        value={coreForm.pattern ?? drawer.pattern}
+                                        onChange={(patternName) => {
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, pattern: patternName } : prev
+                                          );
+                                        }}
+                                        species={row.species}
+                                        className="w-full"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-white/90">
+                                        {row.pattern ? (
+                                          <CoatPatternSwatch pattern={row.pattern} showLabel />
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
 
-                                {/* Conditional: Deceased date */}
-                                {lifeState === "DECEASED" && (
-                                  <div className="sm:col-span-2 md:col-span-3">
-                                    <dt className="text-xs text-secondary mb-1">Deceased Date</dt>
-                                    <dd>
+                                  {/* Deceased Date - Conditional row */}
+                                  {lifeState === "DECEASED" && (
+                                    <div>
+                                      <div className="text-xs text-white/50 mb-0.5">Deceased Date</div>
                                       {drawerMode === "edit" && coreForm ? (
                                         <DatePicker
                                           value={toDateInputValue(coreForm.diedAt ?? diedAtValue)}
@@ -3667,578 +3985,408 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           inputClassName={inputClass}
                                         />
                                       ) : (
-                                        diedAtLabel ?? "Yes"
+                                        <div className="text-sm text-white/70">{diedAtLabel ?? "—"}</div>
                                       )}
-                                    </dd>
-                                  </div>
-                                )}
-
-                                {/* Row 2: Secondary/identifier fields */}
-                                <div>
-                                  <dt className="text-xs text-secondary/70 mb-1">Offspring ID</dt>
-                                  <dd className="text-primary/80">
-                                    {drawer.id != null ? String(drawer.id) : "—"}
-                                  </dd>
-                                </div>
-
-                                <div>
-                                  <dt className="text-xs text-secondary mb-1">Microchip</dt>
-                                  <dd>
-                                    {drawerMode === "edit" && coreForm ? (
-                                      <input
-                                        className={inputClass}
-                                        value={coreForm.microchip ?? drawer.microchip ?? ""}
-                                        onChange={(e) =>
-                                          setCoreForm((prev) =>
-                                            prev ? { ...prev, microchip: e.target.value } : prev,
-                                          )
-                                        }
-                                        autoComplete="off"
-                                        data-1p-ignore
-                                        data-lpignore="true"
-                                        data-form-type="other"
-                                      />
-                                    ) : (
-                                      microchipLabel
-                                    )}
-                                  </dd>
-                                </div>
-
-                                <div>
-                                  <dt className="text-xs text-secondary mb-1">Whelping Collar</dt>
-                                  <dd>
-                                    {drawerMode === "edit" && coreForm ? (
-                                      <CollarPicker
-                                        value={coreForm.whelpingCollarColor}
-                                        onChange={(colorLabel) => {
-                                          setCoreForm((prev) =>
-                                            prev
-                                              ? { ...prev, whelpingCollarColor: colorLabel }
-                                              : prev
-                                          );
-                                        }}
-                                        className="w-full max-w-xs"
-                                      />
-                                    ) : (
-                                      <CollarSwatch
-                                        color={whelpingCollarValue}
-                                        showLabel
-                                      />
-                                    )}
-                                  </dd>
-                                </div>
-                              </dl>
-                            </SectionCard>
-
-                            {/* Profile card */}
-                            <SectionCard title="Profile">
-                              <div className="space-y-4">
-                                {/* Lineage Subsection */}
-                                <div>
-                                  <div className="text-xs text-secondary uppercase tracking-wide mb-2">Lineage</div>
-                                  <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                                    <div className="sm:col-span-3">
-                                      <dt className="text-xs text-secondary mb-1">Parent Group</dt>
-                                      <dd>
-                                        {drawerMode === "edit" && coreForm ? (
-                                          <div className="space-y-2">
-                                            <select
-                                              className={inputClass}
-                                              value={
-                                                coreForm.groupId != null
-                                                  ? String(coreForm.groupId)
-                                                  : ""
-                                              }
-                                              onChange={(e) => {
-                                                const value = e.target.value;
-                                                const nextGroupId = value ? Number(value) : null;
-                                                setCoreForm((prev) => {
-                                                  if (!prev) return prev;
-                                                  return { ...prev, groupId: nextGroupId };
-                                                });
-                                              }}
-                                            >
-                                              <option value="">Select parent group</option>
-                                              {drawerGroupOptions.map((opt) => (
-                                                <option key={opt.id} value={String(opt.id)}>
-                                                  {opt.label}
-                                                </option>
-                                              ))}
-                                            </select>
-
-                                            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                              <input
-                                                type="checkbox"
-                                                checked={allowWithoutParent}
-                                                onChange={(e) =>
-                                                  setAllowWithoutParent(e.target.checked)
-                                                }
-                                              />
-                                              <span>Override - Create Orphan</span>
-                                            </label>
-                                          </div>
-                                        ) : group ? (
-                                          <Button
-                                            variant="ghost"
-                                            className="h-auto p-0 text-sm underline"
-                                            onClick={() => navigateToGroup(group.id)}
-                                          >
-                                            {groupName}
-                                          </Button>
-                                        ) : (
-                                          groupName
-                                        )}
-                                      </dd>
                                     </div>
-
-                                    <div>
-                                      <dt className="text-xs text-secondary/70 mb-1">Dam</dt>
-                                      <dd className="text-primary/80">
-                                        {row.dam ? (
-                                          <span className="text-brand-600">
-                                            {row.dam.name ?? "Dam"}
-                                          </span>
-                                        ) : (
-                                          "Not set"
-                                        )}
-                                      </dd>
-                                    </div>
-
-                                    <div>
-                                      <dt className="text-xs text-secondary/70 mb-1">Sire</dt>
-                                      <dd className="text-primary/80">
-                                        {row.sire ? (
-                                          <span className="text-brand-600">
-                                            {row.sire.name ?? "Sire"}
-                                          </span>
-                                        ) : (
-                                          "Not set"
-                                        )}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </div>
-
-                                <div className="border-t border-hairline/50" />
-
-                                {/* Characteristics Subsection */}
-                                <div>
-                                  <div className="text-xs text-secondary uppercase tracking-wide mb-2">Characteristics</div>
-                                  <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                                    <div>
-                                      <dt className="text-xs text-secondary/70 mb-1">Species</dt>
-                                      <dd className="text-primary/80">{speciesLabel}</dd>
-                                    </div>
-
-                                    <div>
-                                      <dt className="text-xs text-secondary/70 mb-1">Breed</dt>
-                                      <dd className="text-primary/80">
-                                        {row.group?.breedName ||
-                                          row.group?.breed ||
-                                          row.breedName ||
-                                          row.breed ||
-                                          "Not set"}
-                                      </dd>
-                                    </div>
-
-                                    <div>
-                                      <dt className="text-xs text-secondary mb-1">Sex</dt>
-                                      <dd>
-                                        {drawerMode === "edit" && coreForm ? (
-                                          <select
-                                            className={inputClass}
-                                            value={coreForm.sex ?? ""}
-                                            onChange={(e) => {
-                                              const value = e.target.value || "";
-                                              setCoreForm((prev) =>
-                                                prev
-                                                  ? { ...prev, sex: (value || null) as any }
-                                                  : prev,
-                                              );
-                                            }}
-                                          >
-                                            <option value="">Select sex</option>
-                                            <option value="FEMALE">Female</option>
-                                            <option value="MALE">Male</option>
-                                            <option value="UNKNOWN">Unknown</option>
-                                          </select>
-                                        ) : (
-                                          <span>
-                                            {row.sex === "FEMALE"
-                                              ? "Female"
-                                              : row.sex === "MALE"
-                                                ? "Male"
-                                            : "Unknown"}
-                                          </span>
-                                        )}
-                                      </dd>
-                                    </div>
-
-                                    <div>
-                                      <dt className="text-xs text-secondary mb-1">Color</dt>
-                                      <dd>
-                                        {drawerMode === "edit" && coreForm ? (
-                                          <input
-                                            className={inputClass}
-                                            value={coreForm.color ?? drawer.color ?? ""}
-                                            onChange={(e) =>
-                                              setCoreForm((prev) =>
-                                                prev ? { ...prev, color: e.target.value } : prev,
-                                              )
-                                            }
-                                            autoComplete="off"
-                                            data-1p-ignore
-                                            data-lpignore="true"
-                                            data-form-type="other"
-                                          />
-                                        ) : (
-                                          row.color ?? "Not set"
-                                        )}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </div>
-
-                                <div className="border-t border-hairline/50" />
-
-                                {/* Status Subsection */}
-                                <div>
-                                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                    <div>
-                                      <dt className="text-xs text-secondary mb-1">Keeper Intent</dt>
-                                      <dd>
-                                        {drawerMode === "edit" && coreForm ? (
-                                          <div className="space-y-1">
-                                            <select
-                                              className={inputClass}
-                                              value={keeperIntentState ?? ""}
-                                              disabled={promotedAnimalId != null}
-                                              onChange={(e) => {
-                                                const next = e.target.value as KeeperIntent | "";
-                                                updateCoreForm({
-                                                  keeperIntent: next || null,
-                                                });
-                                              }}
-                                            >
-                                              <option value="">Select keeper intent</option>
-                                              {keeperIntentOptions.map((opt) => (
-                                                <option key={opt.value} value={opt.value}>
-                                                  {opt.label}
-                                                </option>
-                                              ))}
-                                            </select>
-                                            {promotedAnimalId != null && (
-                                              <div className="text-[11px] text-secondary">
-                                                Promoted; keeper locked
-                                              </div>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span>
-                                            {keeperIntentState
-                                              ? titleize(keeperIntentState)
-                                              : "Not set"}
-                                          </span>
-                                        )}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </div>
+                                  )}
                               </div>
                             </SectionCard>
 
-                            {/* Tags */}
-                            <SectionCard title="Tags">
-                              <div className="mt-1">
+                            {/* Lineage Card */}
+                            <SectionCard title={<SectionTitle icon="🔗">Lineage</SectionTitle>} highlight={drawerMode === "edit"}>
+                              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                                  {/* Parent Group */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Parent Group</div>
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="space-y-2">
+                                        <select
+                                          className={inputClass}
+                                          value={coreForm.groupId != null ? String(coreForm.groupId) : ""}
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            const nextGroupId = value ? Number(value) : null;
+                                            setCoreForm((prev) => {
+                                              if (!prev) return prev;
+                                              return { ...prev, groupId: nextGroupId };
+                                            });
+                                          }}
+                                        >
+                                          <option value="">Select group</option>
+                                          {drawerGroupOptions.map((opt) => (
+                                            <option key={opt.id} value={String(opt.id)}>
+                                              {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <label className="flex items-center gap-2 text-xs text-white/40">
+                                          <input
+                                            type="checkbox"
+                                            className="rounded border-white/20 bg-white/5"
+                                            checked={allowWithoutParent}
+                                            onChange={(e) => setAllowWithoutParent(e.target.checked)}
+                                          />
+                                          <span>Create Orphan</span>
+                                        </label>
+                                      </div>
+                                    ) : group ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => navigateToGroup(group.id)}
+                                        className="text-sm text-[hsl(var(--brand-orange))] hover:underline"
+                                      >
+                                        {groupName}
+                                      </button>
+                                    ) : (
+                                      <span className="text-sm text-white/40">—</span>
+                                    )}
+                                  </div>
+                                  {/* Dam */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Dam (Mother)</div>
+                                    {row.dam ? (
+                                      <div className="flex items-center gap-1.5 text-sm text-white/90">
+                                        <span className="w-2 h-2 rounded-full bg-pink-400" />
+                                        {row.dam.name ?? "Dam"}
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-white/40">—</span>
+                                    )}
+                                  </div>
+                                  {/* Sire */}
+                                  <div>
+                                    <div className="text-xs text-white/50 mb-0.5">Sire (Father)</div>
+                                    {row.sire ? (
+                                      <div className="flex items-center gap-1.5 text-sm text-white/90">
+                                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                                        {row.sire.name ?? "Sire"}
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-white/40">—</span>
+                                    )}
+                                  </div>
+                              </div>
+                            </SectionCard>
+
+{/* Availability moved to Identity card - Keeper Intent now in row 3 */}
+
+                            {/* Tags Card */}
+                            <SectionCard
+                              title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                              right={
                                 <OffspringTagsSection
                                   offspringId={drawer.id}
                                   api={rootApi}
                                   disabled={drawerMode === "view"}
                                 />
-                              </div>
-                            </SectionCard>
+                              }
+                            />
 
-                            {/* Buyer card - CONSOLIDATED */}
-                            <SectionCard
-                              title={buyerHeaderLabel}
-                            >
+                            {/* Buyer Card */}
+                            <SectionCard title={<SectionTitle icon="👥">Buyer</SectionTitle>} highlight={drawerMode === "edit"}>
                               {(() => {
                                 const hasGroup = !!group;
                                 const hasGroupOptions = groupBuyerOptions.length > 0;
                                 const currentBuyerName = hasBuyer ? buyerName : "None";
+                                // Keeper = not for sale, hide buyer section
+                                const isKeeper = keeperIntentState === "KEEP" || keeperIntentState === "KEEPER";
+                                const showBuyerSection = !isKeeper;
 
                                 return (
-                                  <div className="space-y-4 text-sm">
-                                    {/* Buyer Assignment - Always Visible */}
-                                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                      <div>
-                                        <dt className="text-xs text-secondary mb-1">Assigned Buyer</dt>
-                                        <dd className="flex items-center gap-2">
-                                          <span className={hasBuyer ? "font-medium" : "text-secondary"}>{currentBuyerName}</span>
-                                          {hasBuyer && (
-                                            <button
-                                              type="button"
-                                              onClick={handleClearBuyer}
-                                              className="text-muted-foreground hover:text-destructive transition-colors"
-                                              title="Unassign this buyer"
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                          )}
-                                        </dd>
-                                      </div>
-
-                                      {hasBuyer && (
+                                  <div className="space-y-4">
+                                    {/* Keeper Toggle - Styled card with clear intent */}
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <button
+                                        type="button"
+                                        disabled={promotedAnimalId != null}
+                                        onClick={() => {
+                                          updateCoreForm({ keeperIntent: isKeeper ? "AVAILABLE" : "KEEP" });
+                                        }}
+                                        className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                                          isKeeper
+                                            ? "bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15"
+                                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                                        } ${promotedAnimalId != null ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                                      >
+                                        {/* Toggle switch */}
+                                        <div
+                                          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                                            isKeeper ? "bg-blue-500" : "bg-white/20"
+                                          }`}
+                                        >
+                                          <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                                              isKeeper ? "translate-x-6" : "translate-x-1"
+                                            }`}
+                                          />
+                                        </div>
+                                        {/* Label and description */}
+                                        <div className="flex-1 text-left">
+                                          <div className={`text-sm font-medium ${isKeeper ? "text-blue-300" : "text-white/70"}`}>
+                                            {isKeeper ? "Marked as Keeper" : "Available for Sale"}
+                                          </div>
+                                          <div className="text-xs text-white/40">
+                                            {isKeeper
+                                              ? "Not listed on marketplace, no buyer can be assigned"
+                                              : "Can be listed and assigned to a buyer"
+                                            }
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ) : isKeeper ? (
+                                      <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                                        <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                                          <Check className="w-4 h-4 text-blue-300" />
+                                        </div>
                                         <div>
-                                          <dt className="text-xs text-secondary mb-1">Contact</dt>
-                                          <dd className="space-y-0.5">
-                                            {buyerEmail ? (
-                                              <a
-                                                href={`mailto:${buyerEmail}`}
-                                                className="block text-primary hover:underline"
-                                              >
-                                                {buyerEmail}
-                                              </a>
-                                            ) : null}
-                                            {buyerPhone ? (
-                                              <a
-                                                href={`tel:${buyerPhone}`}
-                                                className="block text-primary hover:underline"
-                                              >
-                                                {buyerPhone}
-                                              </a>
-                                            ) : null}
-                                            {!buyerEmail && !buyerPhone && (
-                                              <span className="text-secondary">No contact info</span>
-                                            )}
-                                          </dd>
+                                          <div className="text-sm font-medium text-blue-300">Keeper</div>
+                                          <div className="text-xs text-white/40">Not available for sale</div>
                                         </div>
-                                      )}
-                                    </dl>
-
-                                    {/* Status Summary - Always Visible */}
-                                    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                      <div>
-                                        <dt className="text-xs text-secondary mb-1">Placement</dt>
-                                        <dd>{placementState ? titleize(placementState) : "—"}</dd>
                                       </div>
-                                      <div>
-                                        <dt className="text-xs text-secondary mb-1">Deposit</dt>
-                                        <dd>{depositLabel}</dd>
-                                      </div>
-                                      <div>
-                                        <dt className="text-xs text-secondary mb-1">Contract</dt>
-                                        <dd>{contractLabel}</dd>
-                                      </div>
-                                    </dl>
+                                    ) : null}
 
-                                    {/* Edit Controls - Only in Edit Mode */}
-                                    {drawerMode === "edit" && (
-                                      <>
-                                        <div className="border-t border-hairline/50 pt-3">
-                                          <div className="text-xs text-secondary uppercase tracking-wide mb-2">Status</div>
-                                          <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                            <div>
-                                              <dt className="text-xs text-secondary mb-1">Placement</dt>
-                                              <dd>
-                                                <select
-                                                  className={inputClass}
-                                                  value={placementState ?? ""}
-                                                  disabled={lifeState === "DECEASED"}
-                                                  onChange={(e) => {
-                                                    const next = e.target.value as PlacementState | "";
-                                                    const resolved = next || null;
-                                                    updateCoreForm({
-                                                      placementState: lifeState === "DECEASED" ? "UNASSIGNED" : resolved,
-                                                      placedAt:
-                                                        resolved === "PLACED" && lifeState !== "DECEASED"
-                                                          ? (coreForm?.placedAt ?? placedAtValue ?? todayInputValue())
-                                                          : null,
-                                                    });
-                                                  }}
-                                                >
-                                                  <option value="">Select placement</option>
-                                                  {placementStateOptions.map((opt) => (
-                                                    <option key={opt.value} value={opt.value}>
-                                                      {opt.label}
-                                                    </option>
-                                                  ))}
-                                                </select>
-                                                {lifeState === "DECEASED" && (
-                                                  <div className="mt-1 text-[11px] text-secondary">
-                                                    Locked for deceased
-                                                  </div>
-                                                )}
-                                              </dd>
+                                    {/* Buyer Info Row - Only if available for sale */}
+                                    {showBuyerSection && hasBuyer ? (
+                                      <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-white/5 border border-white/10">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="w-8 h-8 rounded-full bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center text-[hsl(var(--brand-orange))] font-semibold text-sm">
+                                              {currentBuyerName.charAt(0).toUpperCase()}
+                                            </span>
+                                            <span className="font-medium text-white/90">{currentBuyerName}</span>
+                                          </div>
+                                          {(buyerEmail || buyerPhone) && (
+                                            <div className="ml-10 space-y-0.5 text-xs">
+                                              {buyerEmail && (
+                                                <a href={`mailto:${buyerEmail}`} className="block text-white/60 hover:text-white/90 transition-colors">
+                                                  {buyerEmail}
+                                                </a>
+                                              )}
+                                              {buyerPhone && (
+                                                <a href={`tel:${buyerPhone}`} className="block text-white/60 hover:text-white/90 transition-colors">
+                                                  {buyerPhone}
+                                                </a>
+                                              )}
                                             </div>
-
-                                            {placementState === "PLACED" && (
-                                              <div>
-                                                <dt className="text-xs text-secondary mb-1">Placed At</dt>
-                                                <dd>
-                                                  <DatePicker
-                                                    value={toDateInputValue(coreForm?.placedAt ?? placedAtValue)}
-                                                    onChange={(e) =>
-                                                      updateCoreForm({
-                                                        placedAt: e.currentTarget.value ? e.currentTarget.value : null,
-                                                      })
-                                                    }
-                                                    inputClassName={inputClass}
-                                                  />
-                                                </dd>
-                                              </div>
-                                            )}
-
-                                            <div>
-                                              <dt className="text-xs text-secondary mb-1">Financial</dt>
-                                              <dd>
-                                                <select
-                                                  className={inputClass}
-                                                  value={financialState ?? ""}
-                                                  onChange={(e) => {
-                                                    const next = e.target.value as FinancialState | "";
-                                                    updateCoreForm({
-                                                      financialState: next || null,
-                                                      paidInFullAt:
-                                                        next === "PAID_IN_FULL"
-                                                          ? (coreForm?.paidInFullAt ?? paidInFullAtValue ?? todayInputValue())
-                                                          : null,
-                                                    });
-                                                  }}
-                                                >
-                                                  <option value="">Select financial</option>
-                                                  {financialStateOptions.map((opt) => (
-                                                    <option key={opt.value} value={opt.value}>
-                                                      {opt.label}
-                                                    </option>
-                                                  ))}
-                                                </select>
-                                              </dd>
-                                            </div>
-
-                                            {financialState === "PAID_IN_FULL" && (
-                                              <div>
-                                                <dt className="text-xs text-secondary mb-1">Paid At</dt>
-                                                <dd>
-                                                  <DatePicker
-                                                    value={toDateInputValue(coreForm?.paidInFullAt ?? paidInFullAtValue)}
-                                                    onChange={(e) =>
-                                                      updateCoreForm({
-                                                        paidInFullAt: e.currentTarget.value ? e.currentTarget.value : null,
-                                                      })
-                                                    }
-                                                    inputClassName={inputClass}
-                                                  />
-                                                </dd>
-                                              </div>
-                                            )}
-
-                                            <div>
-                                              <dt className="text-xs text-secondary mb-1">Paperwork</dt>
-                                              <dd>
-                                                <select
-                                                  className={inputClass}
-                                                  value={paperworkState ?? ""}
-                                                  onChange={(e) => {
-                                                    const next = e.target.value as PaperworkState | "";
-                                                    updateCoreForm({
-                                                      paperworkState: next || null,
-                                                      contractSignedAt:
-                                                        next === "SIGNED" || next === "COMPLETE"
-                                                          ? (coreForm?.contractSignedAt ?? contractSignedAtValue ?? todayInputValue())
-                                                          : null,
-                                                    });
-                                                  }}
-                                                >
-                                                  <option value="">Select paperwork</option>
-                                                  {paperworkStateOptions.map((opt) => (
-                                                    <option key={opt.value} value={opt.value}>
-                                                      {opt.label}
-                                                    </option>
-                                                  ))}
-                                                </select>
-                                              </dd>
-                                            </div>
-
-                                            {(paperworkState === "SIGNED" || paperworkState === "COMPLETE") && (
-                                              <div>
-                                                <dt className="text-xs text-secondary mb-1">Signed At</dt>
-                                                <dd>
-                                                  <DatePicker
-                                                    value={toDateInputValue(coreForm?.contractSignedAt ?? contractSignedAtValue)}
-                                                    onChange={(e) =>
-                                                      updateCoreForm({
-                                                        contractSignedAt: e.currentTarget.value ? e.currentTarget.value : null,
-                                                      })
-                                                    }
-                                                    inputClassName={inputClass}
-                                                  />
-                                                </dd>
-                                              </div>
-                                            )}
-
-                                            <div>
-                                              <dt className="text-xs text-secondary mb-1">Contract ID</dt>
-                                              <dd>
-                                                <input
-                                                  className={inputClass}
-                                                  value={coreForm?.contractId ?? contractIdValue ?? ""}
-                                                  onChange={(e) =>
-                                                    updateCoreForm({
-                                                      contractId: e.target.value ? e.target.value : null,
-                                                    })
-                                                  }
-                                                  autoComplete="off"
-                                                  data-1p-ignore
-                                                  data-lpignore="true"
-                                                  data-form-type="other"
-                                                />
-                                              </dd>
-                                            </div>
-                                          </dl>
+                                          )}
                                         </div>
-                                      </>
+                                        <button
+                                          type="button"
+                                          onClick={handleClearBuyer}
+                                          className="p-1.5 rounded-md text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                          title="Unassign buyer"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    ) : showBuyerSection ? (
+                                      <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-dashed border-white/10">
+                                        <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/30">
+                                          ?
+                                        </span>
+                                        <span className="text-sm text-white/40">No buyer assigned</span>
+                                      </div>
+                                    ) : null}
+
+                                    {/* Status Pills - Only if available for sale */}
+                                    {showBuyerSection && <div className="flex flex-wrap gap-2">
+                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                        placementState === "PLACED"
+                                          ? "bg-emerald-500/20 text-emerald-300"
+                                          : placementState === "RESERVED"
+                                            ? "bg-amber-500/20 text-amber-300"
+                                            : "bg-white/10 text-white/50"
+                                      }`}>
+                                        <span className="text-[10px] uppercase tracking-wider text-white/40 mr-1">Placement</span>
+                                        {placementState ? titleize(placementState) : "Unassigned"}
+                                      </div>
+                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                        financialState === "PAID_IN_FULL"
+                                          ? "bg-emerald-500/20 text-emerald-300"
+                                          : financialState === "DEPOSIT_PAID"
+                                            ? "bg-amber-500/20 text-amber-300"
+                                            : "bg-white/10 text-white/50"
+                                      }`}>
+                                        <span className="text-[10px] uppercase tracking-wider text-white/40 mr-1">Payment</span>
+                                        {depositLabel}
+                                      </div>
+                                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                        paperworkState === "COMPLETE" || paperworkState === "SIGNED"
+                                          ? "bg-emerald-500/20 text-emerald-300"
+                                          : paperworkState === "SENT"
+                                            ? "bg-amber-500/20 text-amber-300"
+                                            : "bg-white/10 text-white/50"
+                                      }`}>
+                                        <span className="text-[10px] uppercase tracking-wider text-white/40 mr-1">Contract</span>
+                                        {contractLabel}
+                                      </div>
+                                    </div>}
+
+                                    {/* Edit Controls - Only in Edit Mode and if available for sale */}
+                                    {showBuyerSection && drawerMode === "edit" && (
+                                      <div className="pt-4 border-t border-white/5 space-y-4">
+                                        <div className="text-xs font-medium text-white/50 uppercase tracking-wider">Update Status</div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                          {/* Placement */}
+                                          <div>
+                                            <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Placement</label>
+                                            <select
+                                              className={inputClass}
+                                              value={placementState ?? ""}
+                                              disabled={lifeState === "DECEASED"}
+                                              onChange={(e) => {
+                                                const next = e.target.value as PlacementState | "";
+                                                const resolved = next || null;
+                                                updateCoreForm({
+                                                  placementState: lifeState === "DECEASED" ? "UNASSIGNED" : resolved,
+                                                  placedAt:
+                                                    resolved === "PLACED" && lifeState !== "DECEASED"
+                                                      ? (coreForm?.placedAt ?? placedAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select placement</option>
+                                              {placementStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                              ))}
+                                            </select>
+                                            {lifeState === "DECEASED" && (
+                                              <div className="mt-1 text-[11px] text-white/40">Locked for deceased</div>
+                                            )}
+                                          </div>
+
+                                          {placementState === "PLACED" && (
+                                            <div>
+                                              <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Placed At</label>
+                                              <DatePicker
+                                                value={toDateInputValue(coreForm?.placedAt ?? placedAtValue)}
+                                                onChange={(e) => updateCoreForm({ placedAt: e.currentTarget.value ? e.currentTarget.value : null })}
+                                                inputClassName={inputClass}
+                                              />
+                                            </div>
+                                          )}
+
+                                          {/* Financial */}
+                                          <div>
+                                            <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Financial</label>
+                                            <select
+                                              className={inputClass}
+                                              value={financialState ?? ""}
+                                              onChange={(e) => {
+                                                const next = e.target.value as FinancialState | "";
+                                                updateCoreForm({
+                                                  financialState: next || null,
+                                                  paidInFullAt:
+                                                    next === "PAID_IN_FULL"
+                                                      ? (coreForm?.paidInFullAt ?? paidInFullAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select financial</option>
+                                              {financialStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          {financialState === "PAID_IN_FULL" && (
+                                            <div>
+                                              <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Paid At</label>
+                                              <DatePicker
+                                                value={toDateInputValue(coreForm?.paidInFullAt ?? paidInFullAtValue)}
+                                                onChange={(e) => updateCoreForm({ paidInFullAt: e.currentTarget.value ? e.currentTarget.value : null })}
+                                                inputClassName={inputClass}
+                                              />
+                                            </div>
+                                          )}
+
+                                          {/* Paperwork */}
+                                          <div>
+                                            <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Paperwork</label>
+                                            <select
+                                              className={inputClass}
+                                              value={paperworkState ?? ""}
+                                              onChange={(e) => {
+                                                const next = e.target.value as PaperworkState | "";
+                                                updateCoreForm({
+                                                  paperworkState: next || null,
+                                                  contractSignedAt:
+                                                    next === "SIGNED" || next === "COMPLETE"
+                                                      ? (coreForm?.contractSignedAt ?? contractSignedAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select paperwork</option>
+                                              {paperworkStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          {(paperworkState === "SIGNED" || paperworkState === "COMPLETE") && (
+                                            <div>
+                                              <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Signed At</label>
+                                              <DatePicker
+                                                value={toDateInputValue(coreForm?.contractSignedAt ?? contractSignedAtValue)}
+                                                onChange={(e) => updateCoreForm({ contractSignedAt: e.currentTarget.value ? e.currentTarget.value : null })}
+                                                inputClassName={inputClass}
+                                              />
+                                            </div>
+                                          )}
+
+                                          {/* Contract ID */}
+                                          <div>
+                                            <label className="text-xs font-medium text-white/50 uppercase tracking-wider block mb-1.5">Contract ID</label>
+                                            <input
+                                              className={inputClass}
+                                              value={coreForm?.contractId ?? contractIdValue ?? ""}
+                                              onChange={(e) => updateCoreForm({ contractId: e.target.value ? e.target.value : null })}
+                                              placeholder="Enter contract ID"
+                                              autoComplete="off"
+                                              data-1p-ignore
+                                              data-lpignore="true"
+                                              data-form-type="other"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
                                     )}
 
-                                    {/* Assignment Section */}
-                                    {(hasGroup || !hasBuyer) && (
-                                      <div className="border-t border-hairline/50 pt-3">
-                                        <div className="text-xs text-secondary uppercase tracking-wide mb-2">
+                                    {/* Assignment Section - Only if available for sale */}
+                                    {showBuyerSection && (hasGroup || !hasBuyer) && (
+                                      <div className="pt-4 border-t border-white/5">
+                                        <div className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">
                                           {hasGroup ? "Assign from Group" : "Find Buyer"}
                                         </div>
 
                                         {/* Group buyer assignment */}
                                         {hasGroup && hasGroupOptions && (
-                                          <div className="space-y-2">
+                                          <div className="space-y-3">
                                             <select
                                               className={inputClass}
                                               value={selectedGroupBuyerKey}
-                                              onChange={(e) =>
-                                                setSelectedGroupBuyerKey(e.target.value)
-                                              }
+                                              onChange={(e) => setSelectedGroupBuyerKey(e.target.value)}
                                             >
                                               <option value="">Select a group buyer</option>
                                               {groupBuyerOptions.map((opt) => (
                                                 <option key={opt.key} value={opt.key}>
-                                                  {opt.label}
-                                                  {opt.email ? ` (${opt.email})` : ""}
+                                                  {opt.label}{opt.email ? ` (${opt.email})` : ""}
                                                 </option>
                                               ))}
                                             </select>
 
                                             <div className="flex items-center gap-2">
                                               {hasBuyer && (
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  type="button"
-                                                  onClick={handleClearBuyer}
-                                                >
+                                                <Button size="sm" variant="ghost" type="button" onClick={handleClearBuyer}>
                                                   Clear
                                                 </Button>
                                               )}
                                               <Button
                                                 size="sm"
+                                                variant="primary"
                                                 type="button"
                                                 onClick={handleAssignBuyerFromGroup}
                                                 disabled={!selectedGroupBuyerKey}
@@ -4250,46 +4398,42 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         )}
 
                                         {hasGroup && !hasGroupOptions && (
-                                          <div className="text-xs text-secondary">
+                                          <div className="text-sm text-white/40">
                                             No buyers linked to this group yet.
                                           </div>
                                         )}
 
                                         {/* Directory search */}
                                         {!hasBuyer && (
-                                          <div className="space-y-2 mt-3">
+                                          <div className="space-y-3 mt-3">
                                             <SearchBar
                                               value={buyerSearchQ}
                                               onChange={setBuyerSearchQ}
                                               placeholder="Search by name, email, or phone"
                                             />
                                             {buyerHits.length > 0 ? (
-                                              <div className="max-h-48 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
+                                              <div className="max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-white/5">
                                                 {buyerHits.map((hit) => (
                                                   <button
                                                     key={`${hit.kind}:${hit.id}`}
                                                     type="button"
-                                                    className="flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left text-xs hover:bg-surface/80"
+                                                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-white/10 transition-colors border-b border-white/5 last:border-b-0"
                                                     onClick={() => handleAssignBuyerFromDirectory(hit)}
                                                   >
                                                     <div className="flex flex-col">
-                                                      <span className="font-medium">{hit.label}</span>
+                                                      <span className="font-medium text-white/90">{hit.label}</span>
                                                       {hit.sub && (
-                                                        <span className="text-[11px] text-muted-foreground">
-                                                          {hit.sub}
-                                                        </span>
+                                                        <span className="text-xs text-white/50">{hit.sub}</span>
                                                       )}
                                                     </div>
-                                                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                                    <span className="text-[10px] uppercase tracking-wider text-white/40 px-2 py-0.5 rounded bg-white/10">
                                                       {hit.kind === "contact" ? "Contact" : "Org"}
                                                     </span>
                                                   </button>
                                                 ))}
                                               </div>
                                             ) : buyerSearchQ.trim() ? (
-                                              <div className="text-[11px] text-muted-foreground">
-                                                No matches found.
-                                              </div>
+                                              <div className="text-sm text-white/40">No matches found.</div>
                                             ) : null}
                                           </div>
                                         )}
@@ -4407,6 +4551,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             </div>
                           </SectionCard>
                         )}
+
+{/* Danger Zone removed - Archive/Delete now only in 3-dot menu during edit mode */}
                       </>
                     );
                   })()}
@@ -4415,6 +4561,35 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               </div>
             </div>
           </div>
+        )}
+
+        {/* Deletion and Archive Modals */}
+        {showDeleteModal && drawer && (
+          <OffspringDeleteModal
+            offspring={drawer}
+            onArchive={handleArchive}
+            onDelete={handleDelete}
+            onCancel={() => setShowDeleteModal(false)}
+          />
+        )}
+
+        {showArchiveModal && drawer && (
+          <OffspringArchiveModal
+            offspring={drawer}
+            onArchive={handleArchive}
+            onCancel={() => setShowArchiveModal(false)}
+          />
+        )}
+
+        {showBlockedModal && deleteBlockers && (
+          <OffspringDeleteBlockedModal
+            blockers={deleteBlockers}
+            onArchive={async () => {
+              setShowBlockedModal(false);
+              setShowArchiveModal(true);
+            }}
+            onClose={() => setShowBlockedModal(false)}
+          />
         )}
       </Overlay>
     </div>

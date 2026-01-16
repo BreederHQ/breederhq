@@ -3,8 +3,9 @@
 
 /**
  * View mode options - consistent across all modules
+ * Note: "list" is experimental - a cleaner row-based view for prototyping
  */
-export type ViewMode = "cards" | "table";
+export type ViewMode = "cards" | "table" | "list";
 
 /**
  * Modules that support card/table view toggle

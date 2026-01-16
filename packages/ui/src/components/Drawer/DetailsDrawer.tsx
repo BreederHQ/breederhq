@@ -146,7 +146,7 @@ export function DetailsDrawer({
       {backdrop && (
         <div
           data-drawer-backdrop
-          className="fixed inset-0 bg-black/40"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm"
           style={{ zIndex: 2147483599 }}
         />
       )}

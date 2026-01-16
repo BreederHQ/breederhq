@@ -2,11 +2,9 @@
 // Notifications surface for messaging activity - "New reply from {Breeder}"
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { useUnreadCounts, useMarkRead } from "../../messages/hooks";
-import { getConversations, getMessages } from "../../messages/store";
-import { generateDemoActivity, seedDemoConversations } from "../../messages/demoData";
-import type { Conversation } from "../../messages/types";
+import { getMessagingAdapter } from "../../messages/adapter";
+import type { Conversation, Message } from "../../messages/types";
 
 
 interface NotificationItem {
@@ -23,90 +21,77 @@ interface NotificationItem {
 /**
  * Updates page - notifications about messaging activity.
  * Shows "New reply from {Breeder}" notifications for unread messages.
- * Includes "Generate demo activity" button in demo mode.
  */
 export function UpdatesPage() {
   const navigate = useNavigate();
-  const demoMode = isDemoMode();
   const { totalUnread, unreadConversations, refresh } = useUnreadCounts();
   const { markAllRead } = useMarkRead();
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // Seed demo data on first load
-  React.useEffect(() => {
-    if (demoMode) {
-      seedDemoConversations();
-    }
-  }, [demoMode]);
-
   // Build notifications from conversations with unread messages
   React.useEffect(() => {
-    if (!demoMode) {
-      setLoading(false);
-      return;
-    }
+    let dead = false;
 
-    const buildNotifications = () => {
-      const conversations = getConversations();
-      const items: NotificationItem[] = [];
+    const buildNotifications = async () => {
+      setLoading(true);
+      try {
+        const adapter = getMessagingAdapter();
+        const conversations = await adapter.getConversations();
+        const items: NotificationItem[] = [];
 
-      for (const conv of conversations) {
-        const messages = getMessages(conv.id);
-        // Get the last message from breeder (if any)
-        const lastBreederMessage = [...messages]
-          .reverse()
-          .find((m) => m.senderType === "breeder" || m.senderType === "service_provider");
+        for (const conv of conversations) {
+          const messages = await adapter.getMessages(conv.id);
+          // Get the last message from breeder (if any)
+          const lastBreederMessage = [...messages]
+            .reverse()
+            .find((m) => m.senderType === "breeder" || m.senderType === "service_provider");
 
-        // Find the breeder/service provider participant
-        const breederParticipant = conv.participants.find(
-          (p) => p.type === "breeder" || p.type === "service_provider"
-        );
+          // Find the breeder/service provider participant
+          const breederParticipant = conv.participants.find(
+            (p) => p.type === "breeder" || p.type === "service_provider"
+          );
 
-        if (lastBreederMessage && breederParticipant) {
-          const isRead = conv.lastReadAt
-            ? new Date(lastBreederMessage.createdAt) <= new Date(conv.lastReadAt)
-            : false;
+          if (lastBreederMessage && breederParticipant) {
+            const isRead = conv.lastReadAt
+              ? new Date(lastBreederMessage.createdAt) <= new Date(conv.lastReadAt)
+              : false;
 
-          items.push({
-            id: `${conv.id}-${lastBreederMessage.id}`,
-            conversationId: conv.id,
-            breederName: breederParticipant.name,
-            breederSlug: breederParticipant.slug || "",
-            contextLabel: getContextLabel(conv),
-            messagePreview: truncateMessage(lastBreederMessage.content),
-            timestamp: new Date(lastBreederMessage.createdAt),
-            isRead,
-          });
+            items.push({
+              id: `${conv.id}-${lastBreederMessage.id}`,
+              conversationId: conv.id,
+              breederName: breederParticipant.name,
+              breederSlug: breederParticipant.slug || "",
+              contextLabel: getContextLabel(conv),
+              messagePreview: truncateMessage(lastBreederMessage.content),
+              timestamp: new Date(lastBreederMessage.createdAt),
+              isRead,
+            });
+          }
+        }
+
+        // Sort by timestamp, newest first
+        items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+        if (!dead) {
+          setNotifications(items);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
+        if (!dead) {
+          setNotifications([]);
+          setLoading(false);
         }
       }
-
-      // Sort by timestamp, newest first
-      items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-      setNotifications(items);
-      setLoading(false);
     };
 
     buildNotifications();
 
-    // Poll for updates
-    const interval = setInterval(buildNotifications, 2000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
-
-  // Handle enabling demo mode
-  const handleEnableDemo = () => {
-    setDemoMode(true);
-    window.location.reload();
-  };
-
-  // Handle generate demo activity
-  const handleGenerateActivity = () => {
-    const added = generateDemoActivity();
-    if (added > 0) {
-      refresh();
-    }
-  };
+    return () => {
+      dead = true;
+    };
+  }, [totalUnread]);
 
   // Handle notification click - navigate to conversation
   const handleNotificationClick = (notif: NotificationItem) => {
@@ -119,50 +104,6 @@ export function UpdatesPage() {
     refresh();
   };
 
-  // Real mode: show coming soon state
-  if (!demoMode) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            Updates
-          </h1>
-          <p className="text-sm text-text-tertiary mt-1">
-            Notifications when breeders reply to your messages.
-          </p>
-        </div>
-
-        <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
-            <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-white mb-2">Updates are coming soon</h2>
-          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-            You'll receive notifications when breeders respond to your messages. In the meantime, browse breeders to find animals.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              to="/breeders"
-              className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-            >
-              Browse breeders
-            </Link>
-            <button
-              type="button"
-              onClick={handleEnableDemo}
-              className="text-sm text-text-tertiary hover:text-white transition-colors"
-            >
-              Preview with demo data
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Demo mode: show notifications
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -186,16 +127,6 @@ export function UpdatesPage() {
               Mark all read
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleGenerateActivity}
-            className="inline-flex items-center px-3 py-1.5 rounded-portal-xs border border-border-subtle bg-portal-card text-sm text-white hover:bg-portal-card-hover transition-colors"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Generate demo activity
-          </button>
         </div>
       </div>
 
@@ -224,13 +155,13 @@ export function UpdatesPage() {
           </div>
           <h2 className="text-lg font-semibold text-white mb-2">No updates yet</h2>
           <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-            When breeders reply to your messages, notifications will appear here. Try generating some demo activity!
+            When breeders reply to your messages, notifications will appear here.
           </p>
           <Link
-            to="/inquiries"
+            to="/breeders"
             className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
           >
-            View messages
+            Browse breeders
           </Link>
         </div>
       ) : (

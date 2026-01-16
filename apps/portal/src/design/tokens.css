@@ -187,3 +187,73 @@ button {
   background: var(--portal-warning-soft);
   color: var(--portal-warning);
 }
+
+/* Light Mode Theme */
+[data-theme="light"] {
+  /* Colors - Premium light palette with clarity */
+  --portal-bg: #ffffff;
+  --portal-bg-elevated: #f8f9fa;
+  --portal-bg-card: #ffffff;
+  --portal-bg-card-hover: #f8f9fa;
+  --portal-border: #e5e7eb;
+  --portal-border-subtle: #f3f4f6;
+  --portal-border-glow: rgba(255, 107, 53, 0.2);
+
+  /* Gradient backgrounds for depth */
+  --portal-gradient-page: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 107, 53, 0.04) 0%, transparent 60%),
+                          radial-gradient(ellipse 60% 40% at 100% 100%, rgba(139, 92, 246, 0.02) 0%, transparent 50%),
+                          linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  --portal-gradient-card: linear-gradient(135deg, rgba(255, 107, 53, 0.01) 0%, rgba(255, 255, 255, 0) 100%);
+  --portal-gradient-hero: linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(139, 92, 246, 0.03) 100%);
+  --portal-gradient-status-reserved: linear-gradient(135deg, #ff6b35 0%, #ff8555 100%);
+  --portal-gradient-status-placed: linear-gradient(135deg, #22c55e 0%, #4ade80 100%);
+  --portal-gradient-status-pending: linear-gradient(135deg, #eab308 0%, #facc15 100%);
+
+  /* Shadow system for depth - lighter, more subtle */
+  --portal-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --portal-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --portal-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --portal-shadow-glow: 0 0 40px rgba(255, 107, 53, 0.1);
+  --portal-shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --portal-shadow-hero: 0 8px 32px rgba(0, 0, 0, 0.1), 0 0 40px rgba(255, 107, 53, 0.06);
+
+  /* Text colors - inverted for light mode */
+  --portal-text-primary: #111827;
+  --portal-text-secondary: #4b5563;
+  --portal-text-tertiary: #9ca3af;
+  --portal-text-muted: #d1d5db;
+
+  /* Accent color - slightly adjusted for better light mode contrast */
+  --portal-accent: #ff6b35;
+  --portal-accent-hover: #ff5520;
+  --portal-accent-muted: rgba(255, 107, 53, 0.12);
+  --portal-accent-soft: rgba(255, 107, 53, 0.06);
+
+  /* Status colors - adjusted for light mode */
+  --portal-success: #16a34a;
+  --portal-success-soft: rgba(22, 163, 74, 0.1);
+  --portal-warning: #ca8a04;
+  --portal-warning-soft: rgba(202, 138, 4, 0.1);
+  --portal-error: #dc2626;
+  --portal-error-soft: rgba(220, 38, 38, 0.1);
+  --portal-info: #2563eb;
+  --portal-info-soft: rgba(37, 99, 235, 0.1);
+
+  /* Species accent colors - adjusted for light mode readability */
+  --portal-species-dog: #ff6b35;
+  --portal-species-cat: #8b5cf6;
+  --portal-species-horse: #f59e0b;
+  --portal-species-sheep: #64748b;
+  --portal-species-rabbit: #ec4899;
+  --portal-species-unknown: #6b7280;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

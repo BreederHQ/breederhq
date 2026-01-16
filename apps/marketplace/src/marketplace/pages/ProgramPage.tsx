@@ -1,11 +1,10 @@
 // apps/marketplace/src/marketplace/pages/ProgramPage.tsx
-// Breeder profile page with enhanced program details and "Available Litters" section
+// Breeder profile page with enhanced program details and "Available Offspring Groups" section
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
 import { getUserMessage } from "../../api/errors";
-import { isDemoMode } from "../../demo/demoMode";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
@@ -14,7 +13,7 @@ import type { PublicOffspringGroupListingDTO, PublicProgramDTO } from "../../api
 
 /**
  * Breeder profile page.
- * Shows breeder info with bio toggle, Message button, then "Available Litters" section.
+ * Shows breeder info with bio toggle, Message button, then "Available Offspring Groups" section.
  */
 export function ProgramPage() {
   const navigate = useNavigate();
@@ -102,10 +101,9 @@ export function ProgramPage() {
 
   const listingsCount = listingsData?.items.length ?? 0;
   const singleListing = listingsCount === 1;
-  const demoMode = isDemoMode();
 
   // AI-quotable summary
-  const aiSummary = `${profile.name} publishes available litters and breeder services in the BreederHQ Marketplace.`;
+  const aiSummary = `${profile.name} publishes available offspring and breeder services in the BreederHQ Marketplace.`;
 
   return (
     <div className="space-y-6">
@@ -123,25 +121,23 @@ export function ProgramPage() {
           {profile.name}
         </h1>
 
-        {/* Message button - shown in demo mode or when messaging backend available */}
-        {demoMode && (
-          <button
-            type="button"
-            onClick={handleMessageBreeder}
-            disabled={starting}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-              />
-            </svg>
-            {starting ? "Opening..." : "Message breeder"}
-          </button>
-        )}
+        {/* Message button */}
+        <button
+          type="button"
+          onClick={handleMessageBreeder}
+          disabled={starting}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+            />
+          </svg>
+          {starting ? "Opening..." : "Message breeder"}
+        </button>
       </div>
 
       {/* AI-quotable summary paragraph */}
@@ -196,11 +192,11 @@ export function ProgramPage() {
       {/* Enhanced Program Information Sections */}
       <EnhancedProgramDetails profile={profile} />
 
-      {/* Available Litters section - emphasized */}
+      {/* Available Offspring Groups section - emphasized */}
       <div className="space-y-3">
         {/* Section header with plain text count */}
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-white">Available Litters</h2>
+          <h2 className="text-lg font-semibold text-white">Available Offspring Groups</h2>
           {!listingsLoading && !listingsError && (
             <span className="text-[13px] text-text-tertiary">
               ({listingsCount})
@@ -234,9 +230,9 @@ export function ProgramPage() {
         {/* Listings empty - buyer-facing */}
         {!listingsLoading && !listingsError && listingsCount === 0 && (
           <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
-            <p className="text-[15px] font-semibold text-white mb-1">No litters available</p>
+            <p className="text-[15px] font-semibold text-white mb-1">No offspring groups available</p>
             <p className="text-[13px] text-text-tertiary">
-              This breeder hasn&apos;t listed any litters yet. Check back later.
+              This breeder hasn&apos;t listed any offspring yet. Check back later.
             </p>
           </div>
         )}
@@ -293,7 +289,7 @@ function ListingCardSkeleton() {
 }
 
 /**
- * Litter card with buyer-facing language.
+ * Offspring group card with buyer-facing language.
  */
 function ListingCard({
   listing,
@@ -341,7 +337,7 @@ function ListingCard({
       {/* Header row: Title left, Price right */}
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-base font-semibold text-white line-clamp-1 flex-1">
-          {listing.title || "Untitled Litter"}
+          {listing.title || "Untitled Offspring Group"}
         </h3>
         {priceText ? (
           <span className="text-sm font-semibold text-accent whitespace-nowrap">
@@ -372,7 +368,7 @@ function ListingCard({
       {/* Footer row */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-subtle">
         <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
-          View litter
+          View details
         </span>
         <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
           →

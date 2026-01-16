@@ -225,3 +225,96 @@ export interface AnimalListingsResponse {
   page: number;
   limit: number;
 }
+
+/**
+ * Public Animal Program types - for grouped animal programs on marketplace
+ */
+export type AnimalProgramTemplateType =
+  | "STUD_SERVICES"
+  | "GUARDIAN"
+  | "TRAINED"
+  | "REHOME"
+  | "CO_OWNERSHIP"
+  | "CUSTOM";
+
+export interface PublicAnimalProgramParticipant {
+  id: number;
+  animalId: number;
+  name: string;
+  photoUrl: string | null;
+  species: string;
+  breed: string | null;
+  sex: string | null;
+  birthDate: string | null;
+  headlineOverride: string | null;
+  descriptionOverride: string | null;
+  priceModel: string | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  featured: boolean;
+  viewCount: number;
+  inquiryCount: number;
+}
+
+export interface PublicAnimalProgramBreeder {
+  tenantId: number;
+  name: string;
+  slug: string | null;
+  location: string | null;
+  contactEmail: string | null;
+  website: string | null;
+}
+
+export interface PublicAnimalProgramMedia {
+  id: number;
+  type: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+}
+
+export interface PublicAnimalProgramSummaryDTO extends MonetizationFields {
+  id: number;
+  slug: string;
+  name: string;
+  headline: string | null;
+  description: string | null;
+  coverImageUrl: string | null;
+  templateType: string;
+  priceModel: string;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  viewCount: number;
+  publishedAt: string | null;
+  breeder: PublicAnimalProgramBreeder;
+  participants: Array<{
+    id: number;
+    animalId: number;
+    name: string;
+    photoUrl: string | null;
+    species: string;
+    breed: string | null;
+    sex: string | null;
+  }>;
+  participantCount: number;
+}
+
+export interface PublicAnimalProgramDetailDTO extends PublicAnimalProgramSummaryDTO {
+  programContent: any;
+  dataDrawerConfig: any;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  inquiryCount: number;
+  createdAt: string;
+  participants: PublicAnimalProgramParticipant[];
+  media: PublicAnimalProgramMedia[];
+}
+
+export interface AnimalProgramsResponse {
+  items: PublicAnimalProgramSummaryDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}

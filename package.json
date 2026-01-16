@@ -16,8 +16,9 @@
     "dev:platform": "npm -C ./apps/platform run dev",
     "dev:portal": "npm -C ./apps/portal run dev",
     "dev:marketplace": "npm -C ./apps/marketplace run dev",
+    "dev:www": "npm -C ../breederhq-www run dev",
     "dev:api": "npm -C ../breederhq-api run dev",
-    "dev:all": "concurrently -n platform,portal,marketplace,caddy \"npm run dev:platform\" \"npm run dev:portal\" \"npm run dev:marketplace\" \"\\\"C:\\\\Users\\\\Aaron\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\CaddyServer.Caddy_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\caddy.exe\\\" run --config Caddyfile --adapter caddyfile\"",
+    "dev:all": "concurrently -n platform,portal,marketplace,www,caddy \"npm run dev:platform\" \"npm run dev:portal\" \"npm run dev:marketplace\" \"npm run dev:www\" \"\\\"C:\\\\Users\\\\Aaron\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\CaddyServer.Caddy_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\caddy.exe\\\" run --config Caddyfile --adapter caddyfile\"",
     "build": "npm -C ./apps/platform run build",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,.tsx,js,json,css,md}\"",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^24.3.2",
     "@types/react": "^19.2.7",

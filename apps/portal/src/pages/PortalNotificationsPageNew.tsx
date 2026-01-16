@@ -188,7 +188,7 @@ function NotificationGroup({ title, notifications }: NotificationGroupProps) {
  * Empty State
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function EmptyNotifications({ animalName }: { animalName: string }) {
+function EmptyNotifications() {
   return (
     <PortalCard variant="flat" padding="lg">
       <div
@@ -234,7 +234,7 @@ function EmptyNotifications({ animalName }: { animalName: string }) {
             maxWidth: "320px",
           }}
         >
-          Updates about {animalName}'s journey from the last 7 days will appear here.
+          Updates from the last 7 days will appear here.
         </p>
       </div>
     </PortalCard>
@@ -384,8 +384,8 @@ export default function PortalNotificationsPageNew() {
   const { notifications, loading, error } = usePortalNotifications();
   const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Animal context
-  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  // Animal context - only set if we have real placement data
+  const animalName = primaryAnimal?.offspring?.name || null;
   const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
   const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
@@ -447,24 +447,26 @@ export default function PortalNotificationsPageNew() {
         <PortalHero
           variant="page"
           title="Notifications"
-          subtitle={`Recent updates about ${animalName}'s journey`}
-          animalContext={animalName}
+          subtitle={animalName ? `Recent updates about ${animalName}'s journey` : "Recent updates"}
+          animalContext={animalName ?? undefined}
           status={unreadCount > 0 ? "action" : "info"}
           statusLabel={unreadCount > 0 ? `${unreadCount} new` : "All read"}
         />
 
-        {/* Subject Header - Species-aware context */}
-        <SubjectHeader
-          name={animalName}
-          species={species}
-          breed={breed}
-          statusLabel={unreadCount > 0 ? `${unreadCount} new` : "All read"}
-          statusVariant={unreadCount > 0 ? "action" : "neutral"}
-        />
+        {/* Subject Header - Only show when we have real placement data */}
+        {animalName && (
+          <SubjectHeader
+            name={animalName}
+            species={species}
+            breed={breed}
+            statusLabel={unreadCount > 0 ? `${unreadCount} new` : "All read"}
+            statusVariant={unreadCount > 0 ? "action" : "neutral"}
+          />
+        )}
 
         {/* Notification Groups */}
         {notifications.length === 0 ? (
-          <EmptyNotifications animalName={animalName} />
+          <EmptyNotifications />
         ) : (
           <>
             <NotificationGroup title="Today" notifications={todayItems} />

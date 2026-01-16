@@ -145,6 +145,7 @@ export * from "./types/party-crm";
 export * from "./types/templates";
 export * from "./types/animal-linking";
 export * from "./types/collar-settings";
+export * from "./types/coat-colors";
 export * from "./types/genetics";
 export * from "./types/view-preferences";
 export * from "./types/vaccinations";

@@ -6,22 +6,50 @@
 
 import * as React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { useIsSeller } from "../gate/MarketplaceGate";
 
 // Page imports
 import { HomePage } from "../marketplace/pages/HomePage";
 import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
 import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
 import { BreederPage } from "../marketplace/pages/BreederPage";
-import { ServicesPage } from "../marketplace/pages/ServicesPage";
+import { BreedingProgramPage } from "../marketplace/pages/BreedingProgramPage";
+import { ServicesIndexPage } from "../marketplace/pages/ServicesIndexPage";
 import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MyListingPage } from "../marketplace/pages/MyListingPage";
-import { ProgramsSettingsPage } from "../management/pages/ProgramsSettingsPage";
-import { ServicesSettingsPage } from "../management/pages/ServicesSettingsPage";
-import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage";
+// import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage"; // ARCHIVED
+import { AnimalProgramDetailPage } from "../marketplace/pages/AnimalProgramDetailPage";
 import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
+import { SavedListingsPage } from "../marketplace/pages/SavedListingsPage";
+import { WaitlistPositionsPage } from "../marketplace/pages/WaitlistPositionsPage";
+import { BuyerDashboardPage } from "../buyer/pages/BuyerDashboardPage";
+
+// V2 Breeder Management Portal
+import { MarketplaceManagePortal } from "../breeder/pages/MarketplaceManagePortal";
+import { ManageAnimalsPage } from "../breeder/pages/ManageAnimalsPage";
+import { ManageServicesPage } from "../breeder/pages/ManageServicesPage";
+import { ManageBreedingProgramsPage } from "../breeder/pages/ManageBreedingProgramsPage";
+import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
+import BreedingProgramRulesPage from "../breeder/pages/BreedingProgramRulesPage";
+import { CreateDirectListingWizard } from "../breeder/pages/CreateDirectListingWizard";
+
+/**
+ * Route guard for seller-only routes.
+ * Redirects to home if user doesn't have seller context.
+ */
+function SellerOnlyRoute({ children }: { children: React.ReactNode }) {
+  const isSeller = useIsSeller();
+
+  if (!isSeller) {
+    // Buyers trying to access seller routes get redirected to home
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 /**
  * Route tree for authenticated/entitled marketplace users.
@@ -37,25 +65,149 @@ export function MarketplaceRoutes() {
       <Route path="/animals" element={<AnimalsIndexPage />} />
       <Route path="/breeders" element={<BreedersIndexPage />} />
       <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
-      <Route path="/breeding-programs" element={<BreedingProgramsIndexPage />} />
-      <Route path="/services" element={<ServicesPage />} />
+      {/* <Route path="/breeding-programs" element={<BreedingProgramsIndexPage />} /> */} {/* ARCHIVED - redundant with animal-programs */}
+      <Route path="/breeding-programs/:slug" element={<BreedingProgramPage />} />
+      <Route path="/animal-programs/:slug" element={<AnimalProgramDetailPage />} />
+      <Route path="/services" element={<ServicesIndexPage />} />
 
       {/* Buyer activity */}
+      <Route path="/dashboard" element={<BuyerDashboardPage />} />
       <Route path="/inquiries" element={<InquiriesPage />} />
       <Route path="/updates" element={<UpdatesPage />} />
+      <Route path="/saved" element={<SavedListingsPage />} />
+      <Route path="/waitlist" element={<WaitlistPositionsPage />} />
 
-      {/* Seller: My listing preview */}
+      {/* Seller: My listing preview (legacy) */}
       <Route path="/me/listing" element={<MyListingPage />} />
 
-      {/* Seller: Programs management */}
-      <Route path="/me/programs" element={<ProgramsSettingsPage />} />
+      {/* V2 Unified Marketplace Management Portal - Seller only */}
+      <Route
+        path="/manage/breeder"
+        element={
+          <SellerOnlyRoute>
+            <MarketplaceManagePortal />
+          </SellerOnlyRoute>
+        }
+      />
 
-      {/* Seller: Services management */}
-      <Route path="/me/services" element={<ServicesSettingsPage />} />
+      {/* V2 Dedicated Management Pages - Seller only */}
+      <Route
+        path="/manage/animals-direct"
+        element={
+          <SellerOnlyRoute>
+            <ManageAnimalsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/animals-direct/new"
+        element={
+          <SellerOnlyRoute>
+            <CreateDirectListingWizard />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/animal-programs"
+        element={
+          <SellerOnlyRoute>
+            <AnimalProgramsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/services-direct"
+        element={
+          <SellerOnlyRoute>
+            <ManageServicesPage />
+          </SellerOnlyRoute>
+        }
+      />
+      {/* Legacy route redirects */}
+      <Route
+        path="/manage/animal-listings"
+        element={<Navigate to="/manage/animals-direct" replace />}
+      />
+      <Route
+        path="/manage/services"
+        element={<Navigate to="/manage/services-direct" replace />}
+      />
+      <Route
+        path="/manage/breeding-programs"
+        element={
+          <SellerOnlyRoute>
+            <ManageBreedingProgramsPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/manage/breeding-programs/:programSlug/rules"
+        element={
+          <SellerOnlyRoute>
+            <BreedingProgramRulesPage />
+          </SellerOnlyRoute>
+        }
+      />
 
-      {/* Service Provider Portal */}
-      <Route path="/provider" element={<ProviderDashboardPage />} />
-      <Route path="/provider/*" element={<ProviderDashboardPage />} />
+      {/* Legacy seller routes - redirect to new management pages */}
+      <Route
+        path="/manage"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/programs"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/services"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/services-direct" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/animals"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/me/litters"
+        element={
+          <SellerOnlyRoute>
+            <Navigate to="/manage/breeder" replace />
+          </SellerOnlyRoute>
+        }
+      />
+
+      {/* Service Provider Portal - Seller only */}
+      <Route
+        path="/provider"
+        element={
+          <SellerOnlyRoute>
+            <ProviderDashboardPage />
+          </SellerOnlyRoute>
+        }
+      />
+      <Route
+        path="/provider/*"
+        element={
+          <SellerOnlyRoute>
+            <ProviderDashboardPage />
+          </SellerOnlyRoute>
+        }
+      />
 
       {/* Legacy redirects */}
       <Route path="/litters" element={<Navigate to="/animals" replace />} />

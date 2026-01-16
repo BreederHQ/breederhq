@@ -10,28 +10,31 @@ module.exports = {
   ],
   theme: {
     extend: {
-      // Portal-aligned colors
+      // Theme colors - dark mode portal colors (marketplace uses dark by default for cards)
       colors: {
-        // Portal backgrounds
+        // Dark portal backgrounds (for dark mode / cards)
         portal: {
-          bg: "#08090a",
-          elevated: "#0f1012",
-          card: "#141618",
-          "card-hover": "#1a1c1f",
+          bg: "#0a0a0a",           // Dark background
+          base: "#0d0d0d",         // Base dark
+          elevated: "#141414",      // Elevated surfaces
+          card: "#1a1a1a",          // Card background
+          "card-hover": "#242424",  // Card hover
+          surface: "#1f1f1f",       // Surface areas
         },
-        // Portal borders
-        "border-subtle": "#1a1c1e",
-        "border-default": "#232528",
-        // Portal accent (orange)
+        // Dark borders
+        "border-subtle": "#2a2a2a",
+        "border-default": "#3a3a3a",
+        // Brand accent (orange) - #f97316 is the theme orange
         accent: {
-          DEFAULT: "#ff6b35",
-          hover: "#ff8555",
-          muted: "rgba(255, 107, 53, 0.15)",
+          DEFAULT: "#f97316",
+          hover: "#ea580c",
+          muted: "rgba(249, 115, 22, 0.1)",
         },
-        // Portal text
-        "text-secondary": "#a8adb3",
-        "text-tertiary": "#6b7280",
-        "text-muted": "#4b5563",
+        // Dark theme text (light text on dark backgrounds)
+        "text-primary": "#ffffff",
+        "text-secondary": "#a1a1aa",
+        "text-tertiary": "#71717a",
+        "text-muted": "#52525b",
       },
       // Portal radius scale
       borderRadius: {

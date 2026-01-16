@@ -415,7 +415,7 @@ export function PlanJourney({
           </div>
           <div className="flex items-center gap-1.5">
             {guidanceCollapsed && (
-              <span className="text-xs text-secondary">Expand for Guidance</span>
+              <span className="text-xs font-medium text-violet-400">Expand for Guidance</span>
             )}
             <svg
               className={`w-4 h-4 text-secondary transition-transform ${guidanceCollapsed ? "" : "rotate-180"}`}

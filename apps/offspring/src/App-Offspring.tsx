@@ -3,7 +3,8 @@
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, List, Table as TableIcon, CheckCircle, Bookmark, Receipt, DollarSign, PawPrint, Bird, Cat, Dog, Rabbit, Squirrel, Calendar, Baby, Home, Heart } from "lucide-react";
+import { NavLink, useInRouterContext } from "react-router-dom";
 import {
   PageHeader,
   Card,
@@ -27,6 +28,9 @@ import {
   useViewMode,
   TagPicker,
   type TagOption,
+  Tooltip,
+  getGroupName,
+  getBirthProcess,
 } from "@bhq/ui";
 import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
@@ -44,7 +48,10 @@ import clsx from "clsx";
 
 import { reproEngine } from "@bhq/ui/utils";
 import { GroupCardView } from "./components/GroupCardView";
+import { GroupListView } from "./components/GroupListView";
 import { CollarPicker, CollarSwatch } from "./components/CollarPicker";
+import { AddOffspringForm, type AddOffspringFormData } from "./components/AddOffspringForm";
+import { RecordBirthDatePrompt } from "./components/RecordBirthDatePrompt";
 
 
 /* ───────────────────────── shared types ───────────────────────── */
@@ -264,45 +271,52 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
   );
 }
 
-/* ───────────────────────── Underline tabs ───────────────────────── */
-function UnderlineTabs({
-  value,
-  onChange,
+/* ───────────────────────── SafeNavLink (works with or without Router) ───────────────────────── */
+function SafeNavLink({
+  to,
+  children,
+  className,
+  style,
+  end,
 }: {
-  value: "offspring" | "groups";
-  onChange: (v: "offspring" | "groups") => void;
+  to: string;
+  children: React.ReactNode | ((arg: { isActive: boolean }) => React.ReactNode);
+  className: ((arg: { isActive: boolean }) => string) | string;
+  style?: ((arg: { isActive: boolean }) => React.CSSProperties) | React.CSSProperties;
+  end?: boolean;
 }) {
-  const tabs = [
-    { key: "groups" as const, label: "Groups", emoji: "📦" },
-    { key: "offspring" as const, label: "Offspring", emoji: "🐾" },
-  ];
+  const inRouter = useInRouterContext();
+
+  const computeActive = React.useCallback(() => {
+    try {
+      const here = (typeof window !== "undefined" ? window.location.pathname : "/").replace(/\/+$/, "") || "/";
+      const target = new URL(to, typeof window !== "undefined" ? window.location.href : "http://x").pathname
+        .replace(/\/+$/, "") || "/";
+      if (end) {
+        return here === target;
+      }
+      return here === target || here.startsWith(target + "/");
+    } catch {
+      return false;
+    }
+  }, [to, end]);
+
+  if (!inRouter) {
+    const isActive = computeActive();
+    const cls = typeof className === "function" ? className({ isActive }) : className;
+    const sty = typeof style === "function" ? style({ isActive }) : style;
+    const resolvedChildren = typeof children === "function" ? children({ isActive }) : children;
+    return (
+      <a href={to} className={cls} style={sty}>
+        {resolvedChildren}
+      </a>
+    );
+  }
 
   return (
-    <div role="tablist" aria-label="Offspring tabs" className="flex gap-1">
-      {tabs.map((tab) => {
-        const isActive = value === tab.key;
-        return (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={isActive}
-            className={[
-              "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
-              isActive
-                ? "text-primary border-[hsl(var(--brand-orange))]"
-                : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
-            ].join(" ")}
-            onClick={() => onChange(tab.key)}
-          >
-            {isActive && (
-              <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
-            )}
-            <span className="relative z-10">{tab.emoji}</span>
-            <span className="relative z-10">{tab.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <NavLink to={to} end={end} className={className as any} style={style as any}>
+      {children as any}
+    </NavLink>
   );
 }
 
@@ -589,6 +603,8 @@ type GroupTableRow = {
   planCode?: string | null;
   planName?: string | null;
   planId?: number | null;
+  programId?: number | null;
+  programName?: string | null;
   groupName?: string | null;
   species?: string | null;
   breed?: string | null;
@@ -611,6 +627,7 @@ type GroupTableRow = {
 
   // Optional group level tags, from backend if present
   tags?: string[] | null;
+  tagObjects?: Array<{ id: number; name: string; color?: string | null }>;
   buyers?: BuyerLink[];
 
   // Counts
@@ -660,12 +677,13 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "countReserved", label: "Reserved", default: true },
 
   // New columns, off by default
+  { key: "tags", label: "Tags", default: false },
   { key: "countWeaned", label: "Weaned", default: false },
   { key: "countPlaced", label: "Placed", default: false },
-    { key: "updatedAt", label: "Updated", default: false },
+  { key: "updatedAt", label: "Updated", default: false },
 ];
 
-const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
+const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v4";
 
 const GROUP_DATE_COLS = new Set<string>([
   "expectedBirth",
@@ -830,6 +848,20 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     });
   }
 
+  // Fall back to dates directly on the plan or offspring group if computed dates are empty
+  if (!expected.expectedBirthDate && (plan?.expectedBirthDate || d.birthedStartAt)) {
+    expected.expectedBirthDate = plan?.expectedBirthDate || d.birthedStartAt || null;
+  }
+  if (!expected.expectedWeaned && (plan?.expectedWeaned || d.weanedAt)) {
+    expected.expectedWeaned = plan?.expectedWeaned || d.weanedAt || null;
+  }
+  if (!expected.expectedPlacementStartDate && (plan?.expectedPlacementStart || d.placementStartAt)) {
+    expected.expectedPlacementStartDate = plan?.expectedPlacementStart || d.placementStartAt || null;
+  }
+  if (!expected.expectedPlacementCompletedDate && (plan?.expectedPlacementCompleted || d.placementCompletedAt)) {
+    expected.expectedPlacementCompletedDate = plan?.expectedPlacementCompleted || d.placementCompletedAt || null;
+  }
+
   const baseStatus =
     planAny?.status === "COMMITTED" || planAny?.status === "ACTIVE"
       ? "Committed"
@@ -871,6 +903,8 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     planCode: plan?.code ?? null,
     planName: plan?.name ?? null,
     planId: plan?.id ?? null,
+    programId: plan?.program?.id ?? plan?.programId ?? null,
+    programName: plan?.program?.name ?? null,
     groupName: d.identifier ?? plan?.name ?? `Group #${d.id}`,
     species: plan?.species ?? d.species ?? null,
     breed: plan?.breedText ?? null,
@@ -1666,386 +1700,6 @@ function CreateGroupForm({
     </div>
   );
 }
-
-type AddOffspringForGroupOverlayProps = {
-  api: OffspringApi | null;
-  tenantId: number | null;
-  group: OffspringRow | null;
-  open: boolean;
-  onClose: () => void;
-  onCreated?: () => void;
-};
-
-function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
-  const { api, tenantId, group, open, onClose, onCreated } = props;
-
-  const [name, setName] = React.useState("");
-  const [sex, setSex] = React.useState<"MALE" | "FEMALE" | "UNKNOWN">("UNKNOWN");
-  const [status, setStatus] = React.useState<"NEWBORN" | "WEANED" | "PLACED" | "DECEASED">("NEWBORN");
-  const [birthWeightOz, setBirthWeightOz] = React.useState<string>("");
-  const [price, setPrice] = React.useState<string>("");
-  const [notes, setNotes] = React.useState("");
-
-  // new: whelping collar color
-  const [whelpingCollarColor, setWhelpingCollarColor] = React.useState<string | null>(null);
-  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
-
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const labelClass = "block text-xs font-medium text-muted-foreground mb-1";
-  const inputClass =
-    "h-8 w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 text-xs text-foreground";
-
-  const paletteRef = React.useRef<HTMLDivElement | null>(null);
-
-  const reset = React.useCallback(() => {
-    setName("");
-    setSex("UNKNOWN");
-    setStatus("NEWBORN");
-    setBirthWeightOz("");
-    setPrice("");
-    setNotes("");
-    setWhelpingCollarColor(null);
-    setShowWhelpPalette(false);
-    setSubmitting(false);
-    setError(null);
-  }, []);
-
-  // Reset fields whenever the overlay closes
-  React.useEffect(() => {
-    if (!open) {
-      reset();
-    }
-  }, [open, reset]);
-
-  // Escape key closes overlay, body scroll lock while open
-  React.useEffect(() => {
-    if (!open) return;
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (evt: KeyboardEvent) => {
-      if (evt.key === "Escape") {
-        evt.preventDefault();
-        if (!submitting) {
-          onClose();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open, onClose, submitting]);
-
-  // Click outside the palette closes it
-  React.useEffect(() => {
-    if (!showWhelpPalette) return;
-
-    const handler = (evt: MouseEvent) => {
-      const node = paletteRef.current;
-      if (!node) return;
-      if (!node.contains(evt.target as Node)) {
-        setShowWhelpPalette(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showWhelpPalette]);
-
-  const whelpingCollarLabel =
-    whelpingCollarColor && String(whelpingCollarColor).trim().length
-      ? String(whelpingCollarColor)
-      : "Not set";
-
-  const handleSubmit = async (evt: React.FormEvent) => {
-    evt.preventDefault();
-    if (!api || !group) return;
-
-    const effectiveTenantId = tenantId ?? readTenantIdFast();
-    if (!effectiveTenantId) {
-      setError("Missing tenant id.");
-      return;
-    }
-
-    const anyApi: any = api;
-    const individuals = anyApi?.individuals;
-    if (!individuals || typeof individuals.create !== "function") {
-      setError("Offspring individuals API is not available.");
-      return;
-    }
-
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Name is required.");
-      return;
-    }
-
-    const parsedBirthWeight =
-      birthWeightOz.trim() === ""
-        ? null
-        : Number.isNaN(Number(birthWeightOz))
-          ? null
-          : Number(birthWeightOz);
-
-    const parsedPrice =
-      price.trim() === ""
-        ? null
-        : Number.isNaN(Number(price))
-          ? null
-          : Number(price);
-
-    const sexWire: "MALE" | "FEMALE" | "UNKNOWN" =
-      sex === "MALE" || sex === "FEMALE" ? sex : "UNKNOWN";
-
-    const statusWire = status ?? "NEWBORN";
-
-    const speciesFromGroup = (group as any)?.species ?? null;
-    const breedFromGroup =
-      (group as any)?.breed ??
-      (group as any)?.breedText ??
-      null;
-
-    const groupId =
-      (group as any)?.id ??
-      (group as any)?.groupId ??
-      null;
-
-    if (groupId == null) {
-      setError("Group id is missing for this offspring.");
-      return;
-    }
-
-    const collarValue =
-      whelpingCollarColor && whelpingCollarColor.trim().length
-        ? whelpingCollarColor.trim()
-        : null;
-
-    const payload: any = {
-      name: trimmedName,
-      sex: sexWire,
-      status: statusWire,
-      groupId,
-      species: speciesFromGroup,
-      breed: breedFromGroup,
-      birthWeightOz: parsedBirthWeight,
-      price: parsedPrice,
-      notes: notes.trim() || null,
-      whelpingCollarColor: collarValue,
-    };
-
-    try {
-      setSubmitting(true);
-      setError(null);
-
-      await individuals.create(payload);
-
-      if (onCreated) {
-        onCreated();
-      }
-
-      reset();
-      onClose();
-    } catch (e: any) {
-      console.error("[Offspring] failed to create individual from group", e);
-      setError(String(e?.message || e) || "Create failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Closed or no group, render nothing
-  if (!open || !group) return null;
-
-  // Modal content
-  const modal = (
-    <div
-      className="fixed inset-0"
-      style={{ zIndex: MODAL_Z + 10, isolation: "isolate" }}
-      onClick={() => {
-        if (!submitting) {
-          onClose();
-        }
-      }}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" />
-
-      {/* Centered card */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="w-full max-w-xl px-4 sm:px-0 pointer-events-auto"
-          onClick={(e) => {
-            // keep clicks inside the card from bubbling up and closing the overlay
-            e.stopPropagation();
-          }}
-        >
-          <Card className="h-full">
-            <form className="flex h-full flex-col" onSubmit={handleSubmit}>
-              <div className="border-b border-[var(--hairline,#222)] px-4 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Add offspring
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Parent group: {(group as any).identifier || `Group #${(group as any).id}`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      onClick={() => {
-                        if (!submitting) {
-                          onClose();
-                        }
-                      }}
-                      disabled={submitting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      size="xs"
-                      disabled={submitting}
-                    >
-                      {submitting ? "Saving…" : "Save offspring"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Name */}
-                  <div>
-                    <span className={labelClass}>Name</span>
-                    <input
-                      className={inputClass}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoFocus
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-
-                  {/* Sex */}
-                  <div>
-                    <span className={labelClass}>Sex</span>
-                    <select
-                      className={inputClass}
-                      value={sex}
-                      onChange={(e) =>
-                        setSex(e.target.value as "MALE" | "FEMALE" | "UNKNOWN")
-                      }
-                    >
-                      <option value="UNKNOWN">Unknown</option>
-                      <option value="MALE">Male</option>
-                      <option value="FEMALE">Female</option>
-                    </select>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <span className={labelClass}>Status</span>
-                    <select
-                      className={inputClass}
-                      value={status}
-                      onChange={(e) =>
-                        setStatus(
-                          e.target.value as "NEWBORN" | "WEANED" | "PLACED" | "DECEASED",
-                        )
-                      }
-                    >
-                      <option value="NEWBORN">Newborn</option>
-                      <option value="WEANED">Weaned</option>
-                      <option value="PLACED">Placed</option>
-                      <option value="DECEASED">Deceased</option>
-                    </select>
-                  </div>
-
-                  {/* Whelping collar color */}
-                  <div>
-                    <span className={labelClass}>Collar Color</span>
-                    <CollarPicker
-                      value={whelpingCollarColor}
-                      onChange={(colorLabel) => setWhelpingCollarColor(colorLabel)}
-                    />
-                  </div>
-
-                  {/* Birth weight */}
-                  <div>
-                    <span className={labelClass}>Birth weight (oz)</span>
-                    <input
-                      className={inputClass}
-                      inputMode="decimal"
-                      value={birthWeightOz}
-                      onChange={(e) => setBirthWeightOz(e.target.value)}
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-
-                  {/* Price */}
-                  <div>
-                    <span className={labelClass}>Price</span>
-                    <input
-                      className={inputClass}
-                      inputMode="decimal"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <span className={labelClass}>Notes</span>
-                  <textarea
-                    className="w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 py-1.5 text-xs text-foreground min-h-[72px]"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Notes about this puppy..."
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                    data-form-type="other"
-                  />
-                </div>
-
-                {error && (
-                  <div className="text-xs text-red-400">
-                    {error}
-                  </div>
-                )}
-              </div>
-            </form>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-
-  return ReactDOM.createPortal(modal, document.body);
-}
-
 /* ───────────────────────── Buyers hook and tab ───────────────────────── */
 
 type Candidate = {
@@ -4034,7 +3688,33 @@ function OffspringGroupsTab(
       );
 
       setRaw(items);
-      setRows(items.map(mapDetailToTableRow));
+      const tableRows = items.map(mapDetailToTableRow);
+      setRows(tableRows);
+
+      // Fetch tags for each group
+      Promise.all(
+        tableRows.map(async (row: GroupTableRow) => {
+          try {
+            const tags = await api.tags.listForOffspringGroup(row.id);
+            return { id: row.id, tags };
+          } catch {
+            return { id: row.id, tags: [] };
+          }
+        })
+      ).then((tagResults) => {
+        const tagMap = new Map(tagResults.map((r) => [r.id, r.tags]));
+        setRows((prev) =>
+          prev.map((row) => {
+            const tags = tagMap.get(row.id);
+            if (!tags || tags.length === 0) return row;
+            return {
+              ...row,
+              tags: tags.map((t) => t.name),
+              tagObjects: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+            };
+          })
+        );
+      });
     } catch (e: any) {
       setError(e?.message || "Failed to load groups");
     } finally {
@@ -4310,10 +3990,38 @@ function OffspringGroupsTab(
 
               const animals: any[] = fromRow;
 
+              // Status colors for the indicator
+              const STATUS_COLORS: Record<string, string> = {
+                PLANNING: "hsl(210, 70%, 50%)",
+                COMMITTED: "hsl(25, 95%, 53%)",
+                BRED: "hsl(330, 70%, 50%)",
+                BIRTHED: "hsl(45, 90%, 50%)",
+                WEANED: "hsl(80, 60%, 45%)",
+                PLACEMENT: "hsl(142, 70%, 45%)",
+                COMPLETE: "hsl(160, 50%, 40%)",
+                CANCELED: "hsl(0, 0%, 50%)",
+              };
+              const statusKey = (tblRow.status || "PLANNING").toUpperCase();
+              const statusColor = STATUS_COLORS[statusKey] || STATUS_COLORS.PLANNING;
+
               return (
                 <DetailsScaffold
-                  title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
-                  subtitle={tblRow.breed || tblRow.species || ""}
+                  title={
+                    <span className="flex items-center gap-2">
+                      {tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
+                      <span
+                        className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: statusColor }}
+                        />
+                        {tblRow.status || "Planning"}
+                      </span>
+                    </span>
+                  }
+                  subtitle={tblRow.species && tblRow.breed ? `${tblRow.species} • ${tblRow.breed}` : tblRow.breed || tblRow.species || ""}
                   mode={mode}
                   onEdit={() => setMode("edit")}
                   onCancel={() => { setMode("view"); setDraft({}); }}
@@ -4473,96 +4181,507 @@ function OffspringGroupsTab(
 
                   {effectiveTab === "overview" && (
                     <>
-                      <SectionCard title="Identity">
-                        <div className="mt-2 grid grid-cols-1 gap-y-16 text-xs md:text-sm md:grid-cols-2 md:gap-x-10">
-                          <IdentityField label="Offspring Group Name">
-                            {isEdit ? (
-                              <Input
-                                type="text"
-                                defaultValue={row.identifier ?? ""}
-                                onBlur={(e) => {
-                                  const v = e.currentTarget.value.trim();
-                                  setDraft({ identifier: v || null });
-                                }}
-                                className="h-8 w-full bg-background text-sm"
-                                placeholder="Enter group name..."
-                              />
-                            ) : (
-                              tblRow.groupName || "-"
-                            )}
-                          </IdentityField>
+                      {/* Dashboard Stats Bar */}
+                      {(() => {
+                        const totalOffspring = tblRow.totalOffspring || 0;
+                        const reservedForBuyers = tblRow.countReserved || 0;
+                        const reservedForKeepers = 0; // TODO: Add keeper count when available
+                        const available = Math.max(0, totalOffspring - reservedForBuyers - reservedForKeepers - (tblRow.countSold || 0));
+                        const depositsRequired = reservedForBuyers;
+                        const depositsPaid = tblRow.depositCollected || 0;
+                        const totalCollected = tblRow.fullPaymentReceived || 0;
+                        const totalReserved = reservedForBuyers + reservedForKeepers;
 
-                          <IdentityField label="Linked Breeding Plan">
-                            {tblRow.planName && tblRow.planId ? (
-                              <a
-                                href={`/breeding?planId=${tblRow.planId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.planName}
-                              </a>
-                            ) : (
-                              tblRow.planName || "-"
-                            )}
-                          </IdentityField>
+                        return (
+                          <div className="flex gap-3 mb-6">
+                            {/* Total */}
+                            <div className="flex-1 bg-portal-card border border-border-subtle rounded-lg p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-slate-500/20 flex items-center justify-center">
+                                  <PawPrint className="w-5 h-5 text-slate-400" />
+                                </div>
+                                <div>
+                                  <div className="text-2xl font-semibold text-white">{totalOffspring}</div>
+                                  <div className="text-xs text-secondary">Total</div>
+                                </div>
+                              </div>
+                            </div>
 
-                          <IdentityField label="Species">
-                            {tblRow.species || "-"}
-                          </IdentityField>
+                            {/* Available */}
+                            <div className="flex-1 bg-portal-card border border-border-subtle rounded-lg p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                                </div>
+                                <div>
+                                  <div className="text-2xl font-semibold">
+                                    {available > 0 ? <span className="text-emerald-400">{available}</span> : <span className="text-secondary">—</span>}
+                                  </div>
+                                  <div className="text-xs text-emerald-400/70">Available</div>
+                                </div>
+                              </div>
+                            </div>
 
-                          <IdentityField label="Breed">
-                            {tblRow.breed || "-"}
-                          </IdentityField>
+                            {/* Reserved */}
+                            <Tooltip content={
+                              <div className="text-xs space-y-1.5 py-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                  <span className="text-white">Buyers: <span className="text-amber-300 font-medium">{reservedForBuyers}</span></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-violet-400" />
+                                  <span className="text-white">Keepers: <span className="text-violet-300 font-medium">{reservedForKeepers}</span></span>
+                                </div>
+                              </div>
+                            }>
+                              <div className="flex-1 bg-portal-card border border-border-subtle rounded-lg p-4 cursor-help">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                                    <Bookmark className="w-5 h-5 text-amber-400" />
+                                  </div>
+                                  <div>
+                                    <div className="text-2xl font-semibold">
+                                      {totalReserved > 0 ? (
+                                        <span className="flex items-baseline gap-0.5">
+                                          <span className="text-amber-400">{reservedForBuyers}</span>
+                                          <span className="text-secondary/40 text-lg">/</span>
+                                          <span className="text-violet-400">{reservedForKeepers}</span>
+                                        </span>
+                                      ) : <span className="text-secondary">—</span>}
+                                    </div>
+                                    <div className="text-xs text-amber-400/70">Reserved</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </Tooltip>
 
-                          <IdentityField label="Dam">
-                            {tblRow.damName && tblRow.damId ? (
-                              <a
-                                href={`/animals/${tblRow.damId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.damName}
-                              </a>
-                            ) : (
-                              tblRow.damName || "-"
-                            )}
-                          </IdentityField>
+                            {/* Deposits */}
+                            <Tooltip content={
+                              <div className="text-xs space-y-1.5 py-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                  <span className="text-white">Paid: <span className="text-emerald-300 font-medium">{depositsPaid}</span></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-orange-400" />
+                                  <span className="text-white">Required: <span className="text-orange-300 font-medium">{depositsRequired}</span></span>
+                                </div>
+                              </div>
+                            }>
+                              <div className="flex-1 bg-portal-card border border-border-subtle rounded-lg p-4 cursor-help">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                                    <Receipt className="w-5 h-5 text-orange-400" />
+                                  </div>
+                                  <div>
+                                    <div className="text-2xl font-semibold">
+                                      {depositsPaid > 0 || depositsRequired > 0 ? (
+                                        <span className="flex items-baseline gap-0.5">
+                                          <span className="text-emerald-400">{depositsPaid}</span>
+                                          <span className="text-secondary/40 text-lg">/</span>
+                                          <span className="text-orange-400">{depositsRequired}</span>
+                                        </span>
+                                      ) : <span className="text-secondary">—</span>}
+                                    </div>
+                                    <div className="text-xs text-orange-400/70">Deposits</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </Tooltip>
 
-                          <IdentityField label="Sire">
-                            {tblRow.sireName && tblRow.sireId ? (
-                              <a
-                                href={`/animals/${tblRow.sireId}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary underline"
-                              >
-                                {tblRow.sireName}
-                              </a>
-                            ) : (
-                              tblRow.sireName || "-"
-                            )}
-                          </IdentityField>
-
-                          <div className="md:col-span-2">
-                            <IdentityField label="Status">
-                              {tblRow.status || "-"}
-                            </IdentityField>
+                            {/* Paid */}
+                            <div className="flex-1 bg-portal-card border border-border-subtle rounded-lg p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                                  <DollarSign className="w-5 h-5 text-green-400" />
+                                </div>
+                                <div>
+                                  <div className="text-2xl font-semibold">
+                                    {totalCollected > 0 ? <span className="text-green-400">${(totalCollected / 100).toLocaleString()}</span> : <span className="text-secondary">—</span>}
+                                  </div>
+                                  <div className="text-xs text-green-400/70">Paid</div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </SectionCard>
+                        );
+                      })()}
 
+                      {/* Timeline / Key Dates */}
+                      {(() => {
+                        // Format date for display
+                        const formatDate = (dateStr: string | null | undefined): string => {
+                          if (!dateStr) return "—";
+                          try {
+                            const dateOnly = dateStr.slice(0, 10);
+                            const [year, month, day] = dateOnly.split("-").map(Number);
+                            if (!year || !month || !day) return "—";
+                            const date = new Date(year, month - 1, day);
+                            if (isNaN(date.getTime())) return "—";
+                            return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                          } catch {
+                            return "—";
+                          }
+                        };
+
+                        const phases = [
+                          {
+                            key: "bred",
+                            label: "Bred",
+                            date: row.plan?.breedDateActual || tblRow.expectedBreedDate,
+                            icon: Heart,
+                            color: "pink",
+                          },
+                          {
+                            key: "birth",
+                            label: getBirthProcess(tblRow.species, true),
+                            date: row.plan?.birthDateActual || tblRow.expectedBirth,
+                            icon: Baby,
+                            color: "amber",
+                          },
+                          {
+                            key: "weaned",
+                            label: "Weaned",
+                            date: tblRow.expectedWeaned,
+                            icon: CheckCircle,
+                            color: "emerald",
+                          },
+                          {
+                            key: "placement",
+                            label: "Placement",
+                            date: tblRow.expectedPlacementStart,
+                            icon: Home,
+                            color: "blue",
+                          },
+                          {
+                            key: "complete",
+                            label: "Complete",
+                            date: tblRow.expectedPlacementCompleted,
+                            icon: CheckCircle,
+                            color: "green",
+                          },
+                        ];
+
+                        // Determine current phase based on status
+                        // Index 0 = Bred, 1 = Birth, 2 = Weaned, 3 = Placement, 4 = Complete
+                        const statusToPhaseIdx: Record<string, number> = {
+                          PLANNING: 0,
+                          COMMITTED: 0,
+                          BRED: 1,
+                          BIRTHED: 2,
+                          WEANED: 3,
+                          PLACEMENT: 3,
+                          PLACEMENT_STARTED: 3,
+                          PLACEMENT_COMPLETED: 4,
+                          COMPLETE: 5,
+                        };
+                        const currentIdx = statusToPhaseIdx[tblRow.status || "PLANNING"] ?? 0;
+
+                        return (
+                          <SectionCard title="Timeline" className="mb-4">
+                            <div className="relative pt-2">
+                              {/* Background line (full width) */}
+                              <div
+                                className="absolute h-0.5 bg-slate-700"
+                                style={{ left: "10%", right: "10%", top: "22px" }}
+                              />
+
+                              {/* Progress line (completed portion) */}
+                              {currentIdx >= 0 && (
+                                <div
+                                  className="absolute h-0.5 bg-emerald-500"
+                                  style={{
+                                    left: "10%",
+                                    width: `${Math.min(currentIdx, phases.length - 1) * (80 / (phases.length - 1))}%`,
+                                    top: "22px"
+                                  }}
+                                />
+                              )}
+
+                              {/* Marching ants for current segment */}
+                              {currentIdx >= 0 && currentIdx < phases.length && (
+                                <div
+                                  className="absolute h-0.5"
+                                  style={{
+                                    left: `${10 + currentIdx * (80 / (phases.length - 1))}%`,
+                                    width: `${80 / (phases.length - 1)}%`,
+                                    top: "22px",
+                                    background: `repeating-linear-gradient(90deg, #f59e0b 0px, #f59e0b 4px, transparent 4px, transparent 8px)`,
+                                    animation: "march 0.5s linear infinite",
+                                  }}
+                                />
+                              )}
+
+                              {/* Phase nodes */}
+                              <div className="relative flex justify-between px-[5%]">
+                                {phases.map((phase, idx) => {
+                                  const Icon = phase.icon;
+                                  const isComplete = idx < currentIdx;
+                                  const isCurrent = idx === currentIdx;
+
+                                  return (
+                                    <div key={phase.key} className="flex flex-col items-center" style={{ width: "80px" }}>
+                                      <div
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center border-2 bg-portal-card z-10 ${
+                                          isComplete
+                                            ? "border-emerald-500 bg-emerald-500/20"
+                                            : isCurrent
+                                            ? "border-amber-500 bg-amber-500/20"
+                                            : "border-slate-600 bg-slate-800"
+                                        }`}
+                                        style={
+                                          isCurrent
+                                            ? {
+                                                boxShadow: "0 0 12px rgba(245, 158, 11, 0.3)",
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        {isComplete ? (
+                                          <CheckCircle className="w-5 h-5 text-emerald-400" />
+                                        ) : (
+                                          <Icon className={`w-5 h-5 ${isCurrent ? "text-amber-400" : "text-slate-500"}`} />
+                                        )}
+                                      </div>
+                                      <div className={`text-xs font-medium mt-2 text-center ${isComplete ? "text-emerald-400" : isCurrent ? "text-amber-400" : "text-slate-500"}`}>
+                                        {phase.label}
+                                      </div>
+                                      <div className={`text-[10px] mt-0.5 ${isComplete || isCurrent ? "text-secondary" : "text-slate-600"}`}>
+                                        {formatDate(phase.date)}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Marching ants animation */}
+                              <style>{`
+                                @keyframes march {
+                                  0% { background-position: 0 0; }
+                                  100% { background-position: 8px 0; }
+                                }
+                              `}</style>
+                            </div>
+                          </SectionCard>
+                        );
+                      })()}
+
+                      {/* Group Info + Hierarchy - Side by Side */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* Group Info Section */}
+                        <SectionCard title="Group Info">
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-xs text-secondary mb-1">{getGroupName(tblRow.species, false, true)} Nickname</div>
+                              <div className="text-sm text-primary">
+                                {tblRow.groupName || "—"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-secondary mb-1">Dam</div>
+                              <div className="text-sm flex items-center gap-1.5">
+                                <span className="text-pink-400">♀</span>
+                                {tblRow.damName && tblRow.damId ? (
+                                  <a
+                                    href={`/animals/${tblRow.damId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-primary underline hover:text-primary/80"
+                                  >
+                                    {tblRow.damName}
+                                  </a>
+                                ) : (
+                                  <span className="text-primary">{tblRow.damName || "—"}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-secondary mb-1">Sire</div>
+                              <div className="text-sm flex items-center gap-1.5">
+                                <span className="text-blue-400">♂</span>
+                                {tblRow.sireName && tblRow.sireId ? (
+                                  <a
+                                    href={`/animals/${tblRow.sireId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-primary underline hover:text-primary/80"
+                                  >
+                                    {tblRow.sireName}
+                                  </a>
+                                ) : (
+                                  <span className="text-primary">{tblRow.sireName || "—"}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </SectionCard>
+
+                        {/* Hierarchy Tree Section */}
+                        <SectionCard title="Hierarchy">
+                          {(() => {
+                            const hasProgramLink = !!tblRow.programName;
+                            const hasPlanLink = !!tblRow.planName;
+                            const isBroken = !hasProgramLink;
+                            const lineColor = hasProgramLink ? "#10b981" : "#ef4444"; // emerald-500 / red-500
+
+                            return (
+                              <div className="text-sm">
+                                {/* Program Level */}
+                                <div className="flex items-center h-7 relative">
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{
+                                      backgroundColor: hasProgramLink ? "#10b981" : "#ef4444",
+                                      animation: !hasProgramLink ? "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" : undefined,
+                                    }}
+                                  />
+                                  {/* Vertical line going down from program dot */}
+                                  <div
+                                    className="absolute"
+                                    style={{
+                                      left: 4,
+                                      top: 18,
+                                      width: 2,
+                                      height: 18,
+                                      backgroundColor: lineColor,
+                                      opacity: 0.6,
+                                    }}
+                                  />
+                                  <span className="ml-3 text-secondary text-xs">(Marketplace)</span>
+                                  <span className="text-secondary/50 px-2">-</span>
+                                  {hasProgramLink && tblRow.programId ? (
+                                    <a
+                                      href={`/marketplace/programs?programId=${tblRow.programId}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary font-medium underline hover:text-primary/80"
+                                    >
+                                      {tblRow.programName}
+                                    </a>
+                                  ) : (
+                                    <span className="text-red-400 font-medium">Not Linked</span>
+                                  )}
+                                  {!hasProgramLink && (
+                                    <span className="text-xs text-red-400/80 ml-2">(not marketplace eligible)</span>
+                                  )}
+                                </div>
+
+                                {/* Plan Level */}
+                                <div className="flex items-center h-7 relative" style={{ marginLeft: 20 }}>
+                                  {/* Horizontal connector from vertical line to dot */}
+                                  <div
+                                    className="absolute"
+                                    style={{
+                                      left: -16,
+                                      top: 12,
+                                      width: 16,
+                                      height: 2,
+                                      backgroundColor: lineColor,
+                                      opacity: 0.6,
+                                    }}
+                                  />
+                                  {/* Vertical line going down from plan dot */}
+                                  <div
+                                    className="absolute"
+                                    style={{
+                                      left: 4,
+                                      top: 18,
+                                      width: 2,
+                                      height: 18,
+                                      backgroundColor: "#10b981",
+                                      opacity: 0.6,
+                                    }}
+                                  />
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: hasPlanLink ? "#10b981" : "#eab308" }}
+                                  />
+                                  <span className="ml-3 text-secondary text-xs">Breeding Plan</span>
+                                  <span className="text-secondary/50 px-2">-</span>
+                                  {tblRow.planName && tblRow.planId ? (
+                                    <a
+                                      href={`/breeding?planId=${tblRow.planId}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary font-medium underline hover:text-primary/80"
+                                    >
+                                      {tblRow.planName}
+                                    </a>
+                                  ) : (
+                                    <span className="text-secondary">{tblRow.planName || "No Breeding Plan"}</span>
+                                  )}
+                                </div>
+
+                                {/* Group Level */}
+                                <div className="flex items-center h-7 relative" style={{ marginLeft: 40 }}>
+                                  {/* Horizontal connector from vertical line to dot */}
+                                  <div
+                                    className="absolute"
+                                    style={{
+                                      left: -16,
+                                      top: 12,
+                                      width: 16,
+                                      height: 2,
+                                      backgroundColor: "#10b981",
+                                      opacity: 0.6,
+                                    }}
+                                  />
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{
+                                      backgroundColor: "#10b981",
+                                      boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)",
+                                    }}
+                                  />
+                                  <span className="ml-3 text-secondary text-xs">Offspring Group</span>
+                                  <span className="text-secondary/50 px-2">-</span>
+                                  <span className="text-primary font-semibold">
+                                    {tblRow.groupName || "This Group"}
+                                  </span>
+                                  <span className="text-xs text-secondary/60 ml-2">(current)</span>
+                                </div>
+
+                                {/* Warning message for broken linkage */}
+                                {isBroken && (
+                                  <div
+                                    className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg animate-pulse"
+                                    style={{
+                                      animation: "pulse-glow 2s ease-in-out infinite",
+                                      boxShadow: "0 0 12px rgba(239, 68, 68, 0.15)",
+                                    }}
+                                  >
+                                    <style>{`
+                                      @keyframes pulse-glow {
+                                        0%, 100% {
+                                          box-shadow: 0 0 8px rgba(239, 68, 68, 0.1);
+                                          border-color: rgba(239, 68, 68, 0.3);
+                                        }
+                                        50% {
+                                          box-shadow: 0 0 16px rgba(239, 68, 68, 0.25);
+                                          border-color: rgba(239, 68, 68, 0.5);
+                                        }
+                                      }
+                                    `}</style>
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-red-400 text-sm">⚠️</span>
+                                      <div className="text-xs text-red-300">
+                                        <strong>Marketplace Ineligible:</strong> This offspring group's breeding plan is not linked to a breeding program.
+                                        To list offspring in the marketplace, link the breeding plan to a program first.
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </SectionCard>
+                      </div>
+
+                      {/* Tags Section */}
                       <SectionCard
-                        title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                        title="Tags"
                         right={<GroupTagsSection groupId={row.id} api={api} disabled={!isEdit} />}
-                      />
-
-                      <DetailsSpecRenderer<GroupTableRow>
-                        row={tblRow}
-                        mode={isEdit ? "edit" : "view"}
-                        setDraft={(p: Partial<GroupTableRow>) => setDraft((d: any) => ({ ...d, ...p }))}
-                        sections={groupSections(isEdit ? "edit" : "view")}
                       />
                     </>
                   )}
@@ -4639,23 +4758,39 @@ function OffspringGroupsTab(
                       <div className="mb-3 flex items-center justify-between">
                         <h3 className="text-sm font-semibold">Offspring</h3>
                         <div className="flex gap-2">
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setActiveTab("linkedOffspring");
-                              setAddOffspringGroup(row);
-                              setAddOffspringOpen(true);
-                            }}
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Add Offspring
-                          </Button>
+                          {/* Only show Add Offspring button if no linked plan OR birth date is recorded */}
+                          {(!row.plan || row.plan.birthDateActual) && (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setActiveTab("linkedOffspring");
+                                setAddOffspringGroup(row);
+                                setAddOffspringOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1.5" />
+                              Add Offspring
+                            </Button>
+                          )}
                         </div>
                       </div>
+                      {/* Show birth date prompt if linked plan lacks birthDateActual */}
+                      {row.plan && !row.plan.birthDateActual && (
+                        <RecordBirthDatePrompt
+                          group={row}
+                          planId={row.plan.id}
+                          breedDateActual={row.plan.breedDateActual}
+                          api={api}
+                          onSuccess={async () => {
+                            // Refresh the group data to show the Add Offspring button
+                            await load();
+                          }}
+                        />
+                      )}
                       {(() => {
                         const animals =
                           Array.isArray((row as any).Offspring) && (row as any).Offspring.length > 0
@@ -4759,19 +4894,6 @@ function OffspringGroupsTab(
             <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
-                onClick={() => setViewMode("table")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                  viewMode === "table"
-                    ? "bg-[hsl(var(--brand-orange))] text-black"
-                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Table</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setViewMode("cards")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "cards"
@@ -4783,12 +4905,40 @@ function OffspringGroupsTab(
                 <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Cards</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
             </div>
 
-            {/* Column toggle - only show in table mode */}
-            {viewMode === "table" && (
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
               <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />
             )}
+
+            <div className="ml-auto" />
           </div>
 
           {/* Conditional view rendering */}
@@ -4798,6 +4948,14 @@ function OffspringGroupsTab(
               loading={loading}
               error={error}
               onRowClick={(row) => openDetails("groupId", row.id)}
+            />
+          ) : viewMode === "list" ? (
+            <GroupListView
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              onRowClick={(row) => openDetails("groupId", row.id)}
+              visibleColumns={visibleSafe}
             />
           ) : (
           <Table
@@ -4925,28 +5083,55 @@ function OffspringGroupsTab(
         }}
       />
 
-      {
-        addOffspringGroup && (
-          <AddOffspringForGroupOverlay
-            api={api}
-            tenantId={tenantId}
-            group={addOffspringGroup}
-            open={addOffspringOpen}
-            onClose={() => {
-              setAddOffspringOpen(false);
-              setAddOffspringGroup(null);
-              if (setActiveTabRef.current) {
-                setActiveTabRef.current("linkedOffspring");
-                if (typeof window !== "undefined" && window.requestAnimationFrame) {
-                  window.requestAnimationFrame(() => {
-                    if (setActiveTabRef.current) {
-                      setActiveTabRef.current("linkedOffspring");
-                    }
-                  });
-                }
+      {addOffspringGroup && (
+        <AddOffspringForm
+          open={addOffspringOpen}
+          onClose={() => {
+            setAddOffspringOpen(false);
+            setAddOffspringGroup(null);
+            if (setActiveTabRef.current) {
+              setActiveTabRef.current("linkedOffspring");
+              if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                window.requestAnimationFrame(() => {
+                  if (setActiveTabRef.current) {
+                    setActiveTabRef.current("linkedOffspring");
+                  }
+                });
               }
-            }}
-            onCreated={async () => {
+            }
+          }}
+          onCreate={async (formData: AddOffspringFormData) => {
+            if (!api) return;
+
+            const effectiveTenantId = tenantId ?? readTenantIdFast();
+            if (!effectiveTenantId) {
+              console.error("[Offspring] Missing tenant id.");
+              return;
+            }
+
+            const anyApi: any = api;
+            const individuals = anyApi?.individuals;
+            if (!individuals || typeof individuals.create !== "function") {
+              console.error("[Offspring] Offspring individuals API is not available.");
+              return;
+            }
+
+            const payload: any = {
+              name: formData.name,
+              sex: formData.sex === "UNKNOWN" ? null : formData.sex,
+              status: "NEWBORN",
+              groupId: formData.groupId,
+              species: formData.species,
+              breed: formData.breed,
+              birthWeightOz: formData.birthWeightOz,
+              price: formData.price,
+              notes: formData.notes || null,
+              whelpingCollarColor: formData.whelpingCollarColor,
+            };
+
+            try {
+              await individuals.create(payload);
+
               setAddOffspringOpen(false);
               setAddOffspringGroup(null);
               if (setActiveTabRef.current) {
@@ -4963,10 +5148,19 @@ function OffspringGroupsTab(
                   });
                 }
               }
-            }}
-          />
-        )
-      }
+            } catch (e: any) {
+              console.error("[Offspring] failed to create individual from group", e);
+              window.alert(String(e?.message || e) || "Create failed");
+            }
+          }}
+          groupContext={{
+            id: addOffspringGroup.id,
+            name: (addOffspringGroup as any).identifier || `Group #${addOffspringGroup.id}`,
+            species: (addOffspringGroup as any).species ?? (addOffspringGroup as any).plan?.species ?? null,
+            breed: (addOffspringGroup as any).breed ?? (addOffspringGroup as any).breedName ?? (addOffspringGroup as any).plan?.breedText ?? null,
+          }}
+        />
+      )}
 
       {/* Create Group Modal */}
       <Overlay
@@ -5065,38 +5259,107 @@ export default function AppOffspringModule() {
   const readOnlyGlobal =
     !((window as any).bhqPerms?.offspring?.canEdit ?? true);
 
-  const [activeTab, setActiveTab] =
-    React.useState<"offspring" | "groups">("groups");
+  /* ───────── View routing (groups | offspring) ───────── */
+  type ViewRoute = "groups" | "offspring";
 
-  const handleTabChange = React.useCallback(
-    (next: "offspring" | "groups") => {
-      setActiveTab(next);
-    },
-    [],
-  );
+  const getBasePath = React.useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const p = window.location.pathname || "/";
+    const clean = p.replace(/\/+$/, "");
+    // Strip /individual sub-path to get base offspring path
+    if (clean.endsWith("/individual")) return clean.slice(0, -"/individual".length) || "/";
+    return clean || "/";
+  }, []);
+
+  const getViewFromLocation = (): ViewRoute => {
+    if (typeof window === "undefined") return "groups";
+    const p = window.location.pathname || "/";
+    // Check for /individual sub-path for individual offspring view
+    if (p.endsWith("/individual") || p.includes("/individual/")) return "offspring";
+    return "groups";
+  };
+
+  const [currentView, setCurrentView] = React.useState<ViewRoute>(getViewFromLocation());
+
+  React.useEffect(() => {
+    const onPop = () => setCurrentView(getViewFromLocation());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const basePath = React.useMemo(() => getBasePath(), [getBasePath]);
 
   return (
     <div className="p-4 space-y-4">
-      <PageHeader
-        title="Offspring"
-        subtitle={
-          activeTab === "offspring"
-            ? "Manage individual offspring"
-            : "Manage offspring groups and buyers"
-        }
-        rightSlot={
-          <UnderlineTabs value={activeTab} onChange={handleTabChange} />
-        }
-      />
+      <div className="relative">
+        <PageHeader
+          title={currentView === "offspring" ? "Offspring - Individuals" : "Offspring - Groups"}
+          subtitle={
+            currentView === "offspring"
+              ? "Manage individual offspring records"
+              : "Manage groups and buyers"
+          }
+        />
 
-      {activeTab === "groups" && (
+        {/* Right-aligned Tab Navigation with emojis and orange underline */}
+        <div className="absolute right-0 top-0 h-full flex items-center">
+          <nav className="flex items-center gap-1">
+            <SafeNavLink
+              to={basePath === "/" ? "/" : `${basePath}/`}
+              end
+              className={({ isActive }) =>
+                [
+                  "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                  isActive
+                    ? "text-primary border-[hsl(var(--brand-orange))]"
+                    : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                ].join(" ")
+              }
+            >
+              {({ isActive }: { isActive: boolean }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                  )}
+                  <span className="relative z-10">📦</span>
+                  <span className="relative z-10">Groups</span>
+                </>
+              )}
+            </SafeNavLink>
+
+            <SafeNavLink
+              to={`${basePath}/individual`}
+              className={({ isActive }) =>
+                [
+                  "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                  isActive
+                    ? "text-primary border-[hsl(var(--brand-orange))]"
+                    : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                ].join(" ")
+              }
+            >
+              {({ isActive }: { isActive: boolean }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                  )}
+                  <span className="relative z-10">🐾</span>
+                  <span className="relative z-10">All Offspring</span>
+                </>
+              )}
+            </SafeNavLink>
+          </nav>
+        </div>
+      </div>
+
+      {currentView === "groups" && (
         <OffspringGroupsTab
           api={api}
           tenantId={tenantId}
           readOnlyGlobal={readOnlyGlobal}
         />
       )}
-      {activeTab === "offspring" && <OffspringPage embed />}
+      {currentView === "offspring" && <OffspringPage embed />}
     </div>
   );
 }

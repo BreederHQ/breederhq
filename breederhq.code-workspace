@@ -7,6 +7,9 @@
 		{
 			"name": "breederhq-api",
 			"path": "../breederhq-api"
+		},
+		{
+			"path": "../breederhq-www"
 		}
 	],
 	"settings": {

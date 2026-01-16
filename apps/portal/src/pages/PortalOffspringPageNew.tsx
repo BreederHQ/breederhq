@@ -5,6 +5,7 @@ import { EmptyStatePanel } from "../design/EmptyStatePanel";
 import { getSpeciesAccent } from "../ui/speciesTokens";
 import { StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 // Format date
 function formatDate(dateStr: string): string {
@@ -42,6 +43,18 @@ export default function PortalOffspringPageNew() {
 
     async function loadOffspring() {
       setLoading(true);
+
+      // Check if demo mode is active
+      if (isDemoMode()) {
+        const demoData = generateDemoData();
+        if (!cancelled) {
+          setOffspring(demoData.placements);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Normal API fetch
       try {
         const data = await portalFetch<{ placements: any[] }>("/portal/placements");
         if (cancelled) return;

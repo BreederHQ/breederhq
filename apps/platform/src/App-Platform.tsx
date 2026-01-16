@@ -252,10 +252,11 @@ export default function AppPlatform() {
           ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
         };
 
-        // Fetch messages and pending waitlist in parallel
-        const [messagesRes, waitlistRes] = await Promise.all([
+        // Fetch messages, pending waitlist, and health/breeding notifications in parallel
+        const [messagesRes, waitlistRes, notificationsRes] = await Promise.all([
           fetch("/api/v1/messages/threads", { credentials: "include", headers }),
           fetch("/api/v1/waitlist/pending-count", { credentials: "include", headers }),
+          fetch("/api/v1/notifications?status=UNREAD&limit=50", { credentials: "include", headers }),
         ]);
 
         if (cancelled) return;
@@ -292,6 +293,51 @@ export default function AppPlatform() {
             read: false,
           });
         }
+
+        // Add health and breeding notifications from API
+        if (notificationsRes.ok) {
+          const data = await notificationsRes.json();
+          const dbNotifications = data?.notifications || [];
+
+          for (const notif of dbNotifications) {
+            let type: Notification["type"] = "system";
+
+            // Map notification types to platform types
+            if (
+              notif.type === "vaccination_expiring_7d" ||
+              notif.type === "vaccination_expiring_3d" ||
+              notif.type === "vaccination_expiring_1d" ||
+              notif.type === "vaccination_overdue"
+            ) {
+              type = "vaccination";
+            } else if (
+              notif.type === "foaling_30d" ||
+              notif.type === "foaling_14d" ||
+              notif.type === "foaling_7d" ||
+              notif.type === "foaling_approaching" ||
+              notif.type === "foaling_overdue"
+            ) {
+              type = "foaling";
+            } else if (
+              notif.type === "breeding_heat_cycle_expected" ||
+              notif.type === "breeding_hormone_testing_due" ||
+              notif.type === "breeding_window_approaching"
+            ) {
+              type = "breeding";
+            }
+
+            newNotifications.push({
+              id: `notif-${notif.id}`,
+              type,
+              title: notif.title,
+              body: notif.message || "",
+              href: notif.linkUrl || "/animals",
+              createdAt: new Date(notif.createdAt),
+              read: false,
+            });
+          }
+        }
+
         setNotifications(newNotifications);
       } catch {
         // Silently ignore errors for notification count
@@ -395,13 +441,54 @@ export default function AppPlatform() {
                 notifications={notifications}
                 unreadCount={notifications.filter((n) => !n.read).length}
                 onClose={() => {/* handled by NavShell */}}
-                onMarkAllRead={() => {
+                onMarkAllRead={async () => {
+                  // Mark all as read in local state
                   setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+
+                  // Mark persistent notifications as read in API
+                  try {
+                    const tenantId = (window as any).__BHQ_TENANT_ID__;
+                    if (!tenantId) return;
+
+                    const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+                    await fetch("/api/v1/notifications/mark-all-read", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: {
+                        "x-tenant-id": String(tenantId),
+                        ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+                      },
+                    });
+                  } catch {
+                    // Silently ignore errors
+                  }
                 }}
-                onNotificationClick={(notification) => {
+                onNotificationClick={async (notification) => {
+                  // Mark as read in local state
                   setNotifications((prev) =>
                     prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
                   );
+
+                  // Mark persistent notification as read in API
+                  if (notification.id.startsWith("notif-")) {
+                    try {
+                      const notifId = notification.id.replace("notif-", "");
+                      const tenantId = (window as any).__BHQ_TENANT_ID__;
+                      if (!tenantId) return;
+
+                      const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+                      await fetch(`/api/v1/notifications/${notifId}/read`, {
+                        method: "PUT",
+                        credentials: "include",
+                        headers: {
+                          "x-tenant-id": String(tenantId),
+                          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+                        },
+                      });
+                    } catch {
+                      // Silently ignore errors
+                    }
+                  }
                 }}
               />
             }

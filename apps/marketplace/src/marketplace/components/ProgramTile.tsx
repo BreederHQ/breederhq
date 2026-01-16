@@ -1,22 +1,27 @@
 // apps/marketplace/src/marketplace/components/ProgramTile.tsx
-// Buyer-facing breeder tile with "View litters" CTA
+// Buyer-facing breeder tile with species-aware CTA
 import { Link } from "react-router-dom";
+import { useSpeciesTerminology } from "@bhq/ui";
 import { SponsorDisclosure } from "./SponsorDisclosure";
+import { DefaultCoverImage } from "../shared/DefaultCoverImage";
 
 interface ProgramTileProps {
   slug: string;
   name: string;
   location: string | null;
   photoUrl: string | null;
+  species?: string | null;
   isBoosted?: boolean;
   sponsorDisclosureText?: string;
 }
 
 /**
  * Breeder card with buyer-facing language.
- * Shows breeder name, location, and "View litters" CTA.
+ * Shows breeder name, location, and species-aware CTA.
  */
-export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false, sponsorDisclosureText }: ProgramTileProps) {
+export function ProgramTile({ slug, name, location, photoUrl, species, isBoosted = false, sponsorDisclosureText }: ProgramTileProps) {
+  const terms = useSpeciesTerminology(species);
+
   return (
     <Link
       to={`/programs/${slug}`}
@@ -25,7 +30,7 @@ export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false,
       }`}
     >
       {/* Image area */}
-      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default overflow-hidden flex-shrink-0 relative">
+      <div className="h-[100px] overflow-hidden flex-shrink-0 relative">
         {photoUrl ? (
           <img
             src={photoUrl}
@@ -36,11 +41,7 @@ export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false,
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-2xl font-semibold text-text-tertiary">
-              {name.charAt(0).toUpperCase()}
-            </span>
-          </div>
+          <DefaultCoverImage />
         )}
         {/* Boosted badge */}
         {isBoosted && (
@@ -62,7 +63,7 @@ export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false,
         </p>
         <div className="mt-auto pt-3 flex items-center justify-between">
           <span className="text-[13px] font-medium text-accent group-hover:text-accent-hover transition-colors">
-            View litters →
+            View {terms.group.plural} →
           </span>
           {isBoosted && sponsorDisclosureText && (
             <div onClick={(e) => e.preventDefault()}>

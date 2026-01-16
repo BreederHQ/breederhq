@@ -1,19 +1,12 @@
 // apps/portal/src/design/Footer.tsx
 import * as React from "react";
 
-const linkStyle: React.CSSProperties = {
-  fontSize: "var(--portal-font-size-sm)",
-  color: "var(--portal-text-muted)",
-  textDecoration: "none",
-  opacity: 0.6,
-};
-
 export function Footer() {
   return (
     <footer
       style={{
         borderTop: "1px solid var(--portal-border-subtle)",
-        padding: "var(--portal-space-3) var(--portal-space-2)",
+        padding: "var(--portal-space-3) var(--portal-space-4)",
         marginTop: "auto",
       }}
     >
@@ -24,27 +17,31 @@ export function Footer() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "var(--portal-space-2)",
-          flexWrap: "wrap",
+          gap: "var(--portal-space-4)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
-          <p
-            style={{
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-muted)",
-              margin: 0,
-              opacity: 0.4,
-            }}
-          >
-            Powered by BreederHQ
-          </p>
-          <nav style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
-            <a href="/terms" style={linkStyle}>
-              Terms of Service
-            </a>
-          </nav>
-        </div>
+        <p
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-secondary)",
+            margin: 0,
+          }}
+        >
+          Powered by BreederHQ
+        </p>
+        <a
+          href="/terms"
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-secondary)",
+            textDecoration: "none",
+            transition: "color var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--portal-text-primary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--portal-text-secondary)")}
+        >
+          Terms of Service
+        </a>
       </div>
     </footer>
   );

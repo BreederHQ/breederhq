@@ -137,22 +137,22 @@ export function useConversation(conversationId: string | null) {
 }
 
 /**
- * Hook to send a message
+ * Hook to send a message (with optional file attachment)
  */
 export function useSendMessage() {
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
 
   const sendMessage = React.useCallback(
-    async (conversationId: string, content: string): Promise<Message | null> => {
-      if (!content.trim()) return null;
+    async (conversationId: string, content: string, file?: File): Promise<Message | null> => {
+      if (!content.trim() && !file) return null;
 
       setSending(true);
       setError(null);
 
       try {
         const adapter = getMessagingAdapter();
-        const message = await adapter.sendMessage(conversationId, content.trim());
+        const message = await adapter.sendMessage(conversationId, content.trim(), file);
         return message;
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
@@ -215,11 +215,18 @@ export function useStartConversation() {
 /**
  * Hook to get unread counts
  */
-export function useUnreadCounts() {
+export function useUnreadCounts(authenticated = true) {
   const [totalUnread, setTotalUnread] = React.useState(0);
   const [unreadConversations, setUnreadConversations] = React.useState<Conversation[]>([]);
 
   const load = React.useCallback(async () => {
+    // Don't attempt to fetch if not authenticated
+    if (!authenticated) {
+      setTotalUnread(0);
+      setUnreadConversations([]);
+      return;
+    }
+
     try {
       const adapter = getMessagingAdapter();
       // Fetch conversations once and compute both values to avoid duplicate API calls
@@ -231,14 +238,21 @@ export function useUnreadCounts() {
     } catch {
       // Silently fail
     }
-  }, []);
+  }, [authenticated]);
 
   React.useEffect(() => {
+    // Only poll if authenticated
+    if (!authenticated) {
+      setTotalUnread(0);
+      setUnreadConversations([]);
+      return;
+    }
+
     load();
     // Poll for updates every 30 seconds (reduced from 2s to avoid excessive requests)
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, authenticated]);
 
   return { totalUnread, unreadConversations, refresh: load };
 }
@@ -306,12 +320,20 @@ export interface WaitlistRequest {
 /**
  * Hook to fetch user's waitlist requests
  */
-export function useWaitlistRequests() {
+export function useWaitlistRequests(authenticated = true) {
   const [requests, setRequests] = React.useState<WaitlistRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
 
   const load = React.useCallback(async () => {
+    // Don't attempt to fetch if not authenticated
+    if (!authenticated) {
+      setRequests([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const base = import.meta.env.DEV
         ? "/api/v1/marketplace"
@@ -339,14 +361,22 @@ export function useWaitlistRequests() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authenticated]);
 
   React.useEffect(() => {
+    // Only poll if authenticated
+    if (!authenticated) {
+      setRequests([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     load();
     // Poll for updates every 60 seconds
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, authenticated]);
 
   return { requests, loading, error, refresh: load };
 }

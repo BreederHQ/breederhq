@@ -19,3 +19,8 @@ marketplace.breederhq.test {
 	tls internal
 	reverse_proxy localhost:6172
 }
+
+www.breederhq.test {
+	tls internal
+	reverse_proxy localhost:4321
+}

@@ -60,7 +60,7 @@ const STAGE_CONFIG: Record<PlanStage, { label: string; color: string; bgColor: s
   breeding: { label: "Breeding", color: "text-pink-400", bgColor: "bg-[#ec4899]" },
   gestation: { label: "Gestation", color: "text-orange-400", bgColor: "bg-[#ff6b35]" },
   birth: { label: "Birth", color: "text-red-400", bgColor: "bg-[#ef4444]" },
-  care: { label: "Offspring Care", color: "text-yellow-400", bgColor: "bg-[#eab308]" },
+  care: { label: "Care", color: "text-yellow-400", bgColor: "bg-[#eab308]" },
   placement: { label: "Placement", color: "text-green-400", bgColor: "bg-[#22c55e]" },
   complete: { label: "Complete", color: "text-emerald-400", bgColor: "bg-[#10b981]" },
 };

@@ -2,6 +2,7 @@
 // Horizontal scrollable cards showing active offspring groups
 
 import * as React from "react";
+import { useSpeciesTerminology } from "@bhq/ui";
 import type { OffspringGroupSummary } from "../../features/useDashboardDataV2";
 
 type Props = {
@@ -196,7 +197,28 @@ function EmptyGroups() {
 
 // ─────────────────── Main Component ───────────────────
 
+/**
+ * Get header label based on species in the groups.
+ * If single species, use species-specific term. If mixed, use generic "Offspring".
+ */
+function useHeaderLabel(groups: OffspringGroupSummary[]): string {
+  const species = groups.length > 0 ? groups[0].species : null;
+  const allSameSpecies = groups.every(g => g.species === species);
+
+  // If all groups are same species, use species-specific terminology
+  if (allSameSpecies && species) {
+    // Hook must be called unconditionally, so we call it but only use result if same species
+    const terms = useSpeciesTerminology(species);
+    return terms.group.inCare;
+  }
+
+  // Mixed species or no species - use generic term
+  return "Offspring in Care";
+}
+
 export default function OffspringGroupCards({ groups, onViewGroup, loading }: Props) {
+  const headerLabel = useHeaderLabel(groups);
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -204,7 +226,7 @@ export default function OffspringGroupCards({ groups, onViewGroup, loading }: Pr
           <span className="text-[#ff6b35]">
             <HeartIcon />
           </span>
-          <span className="text-sm font-medium text-white">Offspring in Care</span>
+          <span className="text-sm font-medium text-white">{headerLabel}</span>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           <SkeletonCard />
@@ -226,7 +248,7 @@ export default function OffspringGroupCards({ groups, onViewGroup, loading }: Pr
           <span className="text-[#ff6b35]">
             <HeartIcon />
           </span>
-          <span className="text-sm font-medium text-white">Offspring in Care</span>
+          <span className="text-sm font-medium text-white">{headerLabel}</span>
           <span className="text-xs text-[rgba(255,255,255,0.5)]">({groups.length})</span>
         </div>
         <a

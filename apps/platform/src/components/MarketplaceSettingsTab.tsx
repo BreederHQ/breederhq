@@ -80,20 +80,32 @@ type MarketplaceProfileDraft = {
   programs: ProgramData[];
   standardsAndCredentials: {
     registrations: string[];
+    showRegistrations: boolean;
     registrationsNote: string;
     healthPractices: string[];
+    showHealthPractices: boolean;
     healthNote: string;
     breedingPractices: string[];
+    showBreedingPractices: boolean;
     breedingNote: string;
     carePractices: string[];
+    showCarePractices: boolean;
     careNote: string;
   };
   placementPolicies: {
     requireApplication: boolean;
     requireInterview: boolean;
     requireContract: boolean;
+    requireDeposit: boolean;
+    requireReservationFee: boolean;
+    depositRefundable: boolean;
+    requireHomeVisit: boolean;
+    requireVetReference: boolean;
+    requireSpayNeuter: boolean;
     hasReturnPolicy: boolean;
+    lifetimeTakeBack: boolean;
     offersSupport: boolean;
+    showPolicies: boolean;
     note: string;
   };
   updatedAt: string | null;
@@ -142,6 +154,72 @@ async function fetchMarketplaceProfile(tenantId: string): Promise<{
     return { draft: null, draftUpdatedAt: null, published: null, publishedAt: null };
   }
   return res.json();
+}
+
+/**
+ * Fetch the breeding program profile to get credentials with visibility flags.
+ * This is the authoritative source for standards & credentials data.
+ */
+async function fetchBreedingProgramCredentials(tenantId: string): Promise<{
+  standardsAndCredentials: MarketplaceProfileDraft["standardsAndCredentials"] | null;
+  placementPolicies: MarketplaceProfileDraft["placementPolicies"] | null;
+}> {
+  try {
+    const res = await fetch(`/api/v1/breeding/program/tenant/${encodeURIComponent(tenantId)}`, {
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "X-Tenant-Id": tenantId,
+      },
+    });
+    if (!res.ok) {
+      console.warn("Could not fetch breeding program for credentials:", res.status);
+      return { standardsAndCredentials: null, placementPolicies: null };
+    }
+    const data = await res.json();
+    const profile = data?.data ?? data;
+    const rawCreds = profile?.standardsAndCredentials;
+    const rawPolicies = profile?.placementPolicies;
+
+    // Extract credentials with visibility flags, defaulting visibility to true
+    const standardsAndCredentials = rawCreds ? {
+      registrations: Array.isArray(rawCreds.registrations) ? rawCreds.registrations : [],
+      showRegistrations: rawCreds.showRegistrations !== false,
+      registrationsNote: rawCreds.registrationsNote || "",
+      healthPractices: Array.isArray(rawCreds.healthPractices) ? rawCreds.healthPractices : [],
+      showHealthPractices: rawCreds.showHealthPractices !== false,
+      healthNote: rawCreds.healthNote || "",
+      breedingPractices: Array.isArray(rawCreds.breedingPractices) ? rawCreds.breedingPractices : [],
+      showBreedingPractices: rawCreds.showBreedingPractices !== false,
+      breedingNote: rawCreds.breedingNote || "",
+      carePractices: Array.isArray(rawCreds.carePractices) ? rawCreds.carePractices : [],
+      showCarePractices: rawCreds.showCarePractices !== false,
+      careNote: rawCreds.careNote || "",
+    } : null;
+
+    // Extract placement policies with visibility flag
+    const placementPolicies = rawPolicies ? {
+      requireApplication: !!rawPolicies.requireApplication,
+      requireInterview: !!rawPolicies.requireInterview,
+      requireContract: !!rawPolicies.requireContract,
+      requireDeposit: !!rawPolicies.requireDeposit,
+      requireReservationFee: !!rawPolicies.requireReservationFee,
+      depositRefundable: !!rawPolicies.depositRefundable,
+      requireHomeVisit: !!rawPolicies.requireHomeVisit,
+      requireVetReference: !!rawPolicies.requireVetReference,
+      requireSpayNeuter: !!rawPolicies.requireSpayNeuter,
+      hasReturnPolicy: !!rawPolicies.hasReturnPolicy,
+      lifetimeTakeBack: !!rawPolicies.lifetimeTakeBack,
+      offersSupport: !!rawPolicies.offersSupport,
+      showPolicies: rawPolicies.showPolicies !== false,
+      note: rawPolicies.note || "",
+    } : null;
+
+    return { standardsAndCredentials, placementPolicies };
+  } catch (e) {
+    console.warn("Error fetching breeding program credentials:", e);
+    return { standardsAndCredentials: null, placementPolicies: null };
+  }
 }
 
 async function saveMarketplaceDraft(tenantId: string, draftData: MarketplaceProfileDraft): Promise<{ ok: boolean; draftUpdatedAt?: string }> {
@@ -248,20 +326,32 @@ function createEmptyDraft(): MarketplaceProfileDraft {
     programs: [],
     standardsAndCredentials: {
       registrations: [],
+      showRegistrations: true,
       registrationsNote: "",
       healthPractices: [],
+      showHealthPractices: true,
       healthNote: "",
       breedingPractices: [],
+      showBreedingPractices: true,
       breedingNote: "",
       carePractices: [],
+      showCarePractices: true,
       careNote: "",
     },
     placementPolicies: {
       requireApplication: false,
       requireInterview: false,
       requireContract: false,
+      requireDeposit: false,
+      requireReservationFee: false,
+      depositRefundable: false,
+      requireHomeVisit: false,
+      requireVetReference: false,
+      requireSpayNeuter: false,
       hasReturnPolicy: false,
+      lifetimeTakeBack: false,
       offersSupport: false,
+      showPolicies: true,
       note: "",
     },
     updatedAt: null,
@@ -291,16 +381,33 @@ type MarketplacePublicProfile = {
   listedPrograms: { name: string; description: string; acceptInquiries: boolean; openWaitlist: boolean; comingSoon: boolean }[];
   standardsAndCredentials: {
     registrations: string[];
+    showRegistrations: boolean;
+    registrationsNote: string | null;
     healthPractices: string[];
+    showHealthPractices: boolean;
+    healthNote: string | null;
     breedingPractices: string[];
+    showBreedingPractices: boolean;
+    breedingNote: string | null;
     carePractices: string[];
+    showCarePractices: boolean;
+    careNote: string | null;
   };
   placementPolicies: {
     requireApplication: boolean;
     requireInterview: boolean;
     requireContract: boolean;
+    requireDeposit: boolean;
+    requireReservationFee: boolean;
+    depositRefundable: boolean;
+    requireHomeVisit: boolean;
+    requireVetReference: boolean;
+    requireSpayNeuter: boolean;
     hasReturnPolicy: boolean;
+    lifetimeTakeBack: boolean;
     offersSupport: boolean;
+    showPolicies: boolean;
+    note: string | null;
   };
   publishedAt: string | null;
 };
@@ -348,16 +455,33 @@ function buildMarketplacePublicProfile(
       .map((p) => ({ name: p.name, description: p.description, acceptInquiries: p.acceptInquiries, openWaitlist: p.openWaitlist, comingSoon: p.comingSoon })),
     standardsAndCredentials: {
       registrations: published.standardsAndCredentials.registrations,
+      showRegistrations: published.standardsAndCredentials.showRegistrations,
+      registrationsNote: published.standardsAndCredentials.registrationsNote || null,
       healthPractices: published.standardsAndCredentials.healthPractices,
+      showHealthPractices: published.standardsAndCredentials.showHealthPractices,
+      healthNote: published.standardsAndCredentials.healthNote || null,
       breedingPractices: published.standardsAndCredentials.breedingPractices,
+      showBreedingPractices: published.standardsAndCredentials.showBreedingPractices,
+      breedingNote: published.standardsAndCredentials.breedingNote || null,
       carePractices: published.standardsAndCredentials.carePractices,
+      showCarePractices: published.standardsAndCredentials.showCarePractices,
+      careNote: published.standardsAndCredentials.careNote || null,
     },
     placementPolicies: {
       requireApplication: published.placementPolicies.requireApplication,
       requireInterview: published.placementPolicies.requireInterview,
       requireContract: published.placementPolicies.requireContract,
+      requireDeposit: published.placementPolicies.requireDeposit ?? false,
+      requireReservationFee: published.placementPolicies.requireReservationFee ?? false,
+      depositRefundable: published.placementPolicies.depositRefundable ?? false,
+      requireHomeVisit: published.placementPolicies.requireHomeVisit ?? false,
+      requireVetReference: published.placementPolicies.requireVetReference ?? false,
+      requireSpayNeuter: published.placementPolicies.requireSpayNeuter ?? false,
       hasReturnPolicy: published.placementPolicies.hasReturnPolicy,
+      lifetimeTakeBack: published.placementPolicies.lifetimeTakeBack ?? false,
       offersSupport: published.placementPolicies.offersSupport,
+      showPolicies: published.placementPolicies.showPolicies,
+      note: published.placementPolicies.note || null,
     },
     publishedAt: published.publishedAt,
   };
@@ -1276,15 +1400,49 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
     (async () => {
       try {
         setApiError(null);
-        const profile = await fetchMarketplaceProfile(tenantId);
+
+        // Load marketplace profile and breeding program credentials in parallel
+        const [profile, breedingCreds] = await Promise.all([
+          fetchMarketplaceProfile(tenantId),
+          fetchBreedingProgramCredentials(tenantId),
+        ]);
         if (!alive) return;
+
+        // Merge credentials from breeding program (authoritative source with visibility flags)
+        const emptyDraft = createEmptyDraft();
+        const mergedCredentials = breedingCreds.standardsAndCredentials || emptyDraft.standardsAndCredentials;
+        const mergedPolicies = breedingCreds.placementPolicies || emptyDraft.placementPolicies;
+
         if (profile.draft) {
-          const loadedDraft = { ...createEmptyDraft(), ...profile.draft };
+          const loadedDraft = {
+            ...emptyDraft,
+            ...profile.draft,
+            // Override credentials with data from breeding program (has visibility flags)
+            standardsAndCredentials: mergedCredentials,
+            placementPolicies: mergedPolicies,
+          };
           setDraft(loadedDraft);
           initialDraftRef.current = JSON.stringify(loadedDraft);
+        } else {
+          // No marketplace draft yet, but still use breeding program credentials
+          const newDraft = {
+            ...emptyDraft,
+            standardsAndCredentials: mergedCredentials,
+            placementPolicies: mergedPolicies,
+          };
+          setDraft(newDraft);
+          initialDraftRef.current = JSON.stringify(newDraft);
         }
+
         if (profile.published) {
-          setPublished({ ...createEmptyDraft(), ...profile.published, publishedAt: profile.publishedAt || "" } as MarketplacePublishedSnapshot);
+          setPublished({
+            ...emptyDraft,
+            ...profile.published,
+            // Override credentials with data from breeding program
+            standardsAndCredentials: mergedCredentials,
+            placementPolicies: mergedPolicies,
+            publishedAt: profile.publishedAt || "",
+          } as MarketplacePublishedSnapshot);
         }
       } catch (e: any) {
         console.error("Failed to load marketplace profile from API:", e);

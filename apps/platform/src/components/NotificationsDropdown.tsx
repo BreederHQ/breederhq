@@ -5,7 +5,7 @@ import * as React from "react";
 
 export interface Notification {
   id: string;
-  type: "message" | "task" | "waitlist" | "offspring" | "system";
+  type: "message" | "task" | "waitlist" | "offspring" | "system" | "vaccination" | "breeding" | "foaling";
   title: string;
   body: string;
   href?: string;
@@ -27,6 +27,9 @@ const typeIcons: Record<Notification["type"], string> = {
   waitlist: "📋",
   offspring: "🍼",
   system: "🔔",
+  vaccination: "💉",
+  breeding: "🐴",
+  foaling: "🐎",
 };
 
 const typeLabels: Record<Notification["type"], string> = {
@@ -35,6 +38,9 @@ const typeLabels: Record<Notification["type"], string> = {
   waitlist: "Waitlist",
   offspring: "Offspring",
   system: "System",
+  vaccination: "Vaccination",
+  breeding: "Breeding",
+  foaling: "Foaling",
 };
 
 function formatTimeAgo(date: Date): string {

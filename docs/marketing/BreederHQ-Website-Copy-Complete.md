@@ -95,9 +95,9 @@ Everything a breeding program needs. Nothing it doesn't.
 **Description:** Create invoices tied to specific animals. Track deposits. Know who's paid and who hasn't.
 **Link text:** Learn more →
 
-### Feature 5: Buyer Portal
-**Title:** Buyer Portal
-**Description:** Your buyers get their own login. They see updates, documents, and progress without you answering the same questions repeatedly.
+### Feature 5: Client Portal
+**Title:** Client Portal
+**Description:** Your clients get their own login. They see updates, documents, and progress without you answering the same questions repeatedly.
 **Link text:** Learn more →
 
 ### Feature 6: Marketplace
@@ -337,7 +337,7 @@ BreederHQ was built for this
 
 ### Body
 ```
-Dog-specific cycle calculations that account for individual variation. Pedigree tracking with genetic health markers. A breeding calendar that shows you what's coming before it arrives. Waitlist management that doesn't require a separate spreadsheet. Buyer portals so you stop answering the same questions. Invoicing that connects to the actual puppy.
+Dog-specific cycle calculations that account for individual variation. Pedigree tracking with genetic health markers. A breeding calendar that shows you what's coming before it arrives. Waitlist management that doesn't require a separate spreadsheet. Client portals so you stop answering the same questions. Invoicing that connects to the actual puppy.
 
 All of it connected. None of it requiring you to become a database administrator.
 ```
@@ -413,7 +413,7 @@ Questions dog breeders ask
 
 ### Q3
 **Question:** Can buyers see health testing results?
-**Answer:** Yes. The buyer portal shows what you choose to share. You control visibility.
+**Answer:** Yes. The client portal shows what you choose to share. You control visibility.
 
 ### Q4
 **Question:** What if I breed multiple breeds?
@@ -601,7 +601,7 @@ BreederHQ understands cats
 
 ### Body
 ```
-Built with induced ovulation in mind. Tracking that accounts for how cats actually cycle. Genetic marker tracking for breed-specific concerns. Waitlist management that handles "I want a blue point female" requests. Buyer portals so you're not sending the same kitten photos individually to 15 people.
+Built with induced ovulation in mind. Tracking that accounts for how cats actually cycle. Genetic marker tracking for breed-specific concerns. Waitlist management that handles "I want a blue point female" requests. Client portals so you're not sending the same kitten photos individually to 15 people.
 
 A system that works the way catteries work.
 ```
@@ -682,7 +682,7 @@ Questions catteries ask
 
 ### Q5
 **Question:** Can buyers see kitten photos?
-**Answer:** Yes. The buyer portal lets you share photos, updates, and documents without sending individual messages.
+**Answer:** Yes. The client portal lets you share photos, updates, and documents without sending individual messages.
 
 ### Q6
 **Question:** Can I try it first?
@@ -2034,7 +2034,7 @@ This might be overkill if:
 
 ### Q4
 **Question:** Can buyers see their waitlist position?
-**Answer:** The buyer portal can show relevant information. You control what's visible.
+**Answer:** The client portal can show relevant information. You control what's visible.
 
 ### Q5
 **Question:** What about refunds?
@@ -2178,7 +2178,7 @@ Genetics organized
 • Breeding compatibility visible
 
 Buyer access
-• Share relevant documentation through buyer portal
+• Share relevant documentation through client portal
 • Professional presentation
 • No scanning and emailing for each inquiry
 ```
@@ -2194,7 +2194,7 @@ BreederHQ organizes health testing
 
 ### Body
 ```
-All test results attached to the animal. Documents stored and accessible. Renewal reminders automated. Genetics tracked and visible. Buyer portal access so you're not scanning documents for every inquiry.
+All test results attached to the animal. Documents stored and accessible. Renewal reminders automated. Genetics tracked and visible. Client portal access so you're not scanning documents for every inquiry.
 
 Health testing done right, finally organized.
 ```
@@ -2257,7 +2257,7 @@ This might be overkill if:
 
 ### Q3
 **Question:** Can buyers see health testing?
-**Answer:** Yes. The buyer portal shows what you choose to share. You control visibility.
+**Answer:** Yes. The client portal shows what you choose to share. You control visibility.
 
 ### Q4
 **Question:** Does it track genetics?
@@ -2383,7 +2383,7 @@ Direct comparison
 │  Genetics tracking             ✓ (manual)          Structured      │
 │  Waitlist management           ✓ (manual)          Integrated      │
 │  Client communication          Separate            Integrated      │
-│  Buyer portal                  Not possible        Included        │
+│  Client portal                 Not possible        Included        │
 │  Invoicing                     Separate            Connected       │
 │  Document storage              Separate            Attached        │
 │  Mobile access                 Varies              Yes             │
@@ -2493,7 +2493,7 @@ Client management
 Breeding is a relationship business. Your software should help you manage those relationships—waitlists, communication, contracts, documents.
 
 Buyer-facing tools
-Modern buyers expect more than emails and text messages. A buyer portal, documentation sharing, and professional presentation matter.
+Modern buyers expect more than emails and text messages. A client portal, documentation sharing, and professional presentation matter.
 
 Mobile access
 You're not always at your desk. The software should work on your phone when you're in the barn, at a show, or meeting a buyer.
@@ -2545,7 +2545,7 @@ What BreederHQ offers
 ```
 BreederHQ is built specifically for breeders. Dogs, cats, horses, goats, rabbits, sheep—each with species-appropriate logic.
 
-Animal records with pedigrees, health testing, and genetics. Breeding management with cycle tracking and calendars. Client management with waitlists and communication. Invoicing connected to animals. Buyer portals for professional presentation.
+Animal records with pedigrees, health testing, and genetics. Breeding management with cycle tracking and calendars. Client management with waitlists and communication. Invoicing connected to animals. Client portals for professional presentation.
 
 Modern web-based software that works on any device. Active development with regular updates. Responsive support from people who understand breeding.
 
@@ -2668,7 +2668,7 @@ Everything you need to run your breeding program
 ✓ Client/contact management
 ✓ Waitlist management
 ✓ Invoicing & payment tracking
-✓ Buyer portal
+✓ Client portal
 ✓ Marketplace listing
 ✓ Document storage
 ✓ Unlimited breeding plans
@@ -2793,7 +2793,7 @@ Breeders shouldn't have to become database administrators.
 You started breeding because you love animals, not because you wanted to manage spreadsheet formulas. The software should handle the complexity so you can focus on the animals.
 
 Buyers deserve transparency.
-And breeders deserve tools that make transparency easy. Buyer portals, health documentation sharing, and professional presentation should be built in, not bolted on.
+And breeders deserve tools that make transparency easy. Client portals, health documentation sharing, and professional presentation should be built in, not bolted on.
 
 The best software is invisible.
 It does its job without making you think about it. Reminders happen automatically. Calculations are correct. Information is where you expect it. You spend your time on animals, not administration.
@@ -2879,7 +2879,7 @@ Built for breeders.
 
 ## Cats
 **Title:** Cat Breeding Software | BreederHQ
-**Description:** Cat breeding software designed for catteries. Induced ovulation tracking, pedigrees, health testing, buyer portals. Built for how cat breeders work.
+**Description:** Cat breeding software designed for catteries. Induced ovulation tracking, pedigrees, health testing, client portals. Built for how cat breeders work.
 
 ## Horses
 **Title:** Horse Breeding Software | BreederHQ

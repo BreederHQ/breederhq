@@ -29,8 +29,9 @@ import {
   SortDropdown,
   type SortOption,
 } from "@bhq/ui";
-import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon, List } from "lucide-react";
 import { ContactCardView } from "./components/ContactCardView";
+import { ContactListView } from "./components/ContactListView";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
 import { PartyKind } from "@bhq/api";
@@ -94,9 +95,10 @@ export type PartyTableRow = {
 
 const PARTY_COLUMNS: Array<{ key: keyof PartyTableRow & string; label: string; default?: boolean }> = [
   { key: "kind", label: "Type", default: true },
-  { key: "displayName", label: "Name", default: true },
+  { key: "displayName", label: "Display Name", default: true },
   { key: "email", label: "Email", default: true },
   { key: "phone", label: "Phone", default: true },
+  { key: "whatsappE164", label: "WhatsApp", default: false },
   { key: "firstName", label: "First Name", default: false },
   { key: "lastName", label: "Last Name", default: false },
   { key: "nickname", label: "Nickname", default: false },
@@ -485,6 +487,78 @@ function CardViewWithDetails({
         pageCount={pageCount}
         pageSize={pageSize}
         pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={displayRows.length}
+        total={totalRows}
+        includeArchived={includeArchived}
+        onIncludeArchivedChange={(checked) => {
+          setIncludeArchived(checked);
+          setPage(1);
+        }}
+      />
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * List View Wrapper (uses DetailsHost context) - EXPERIMENTAL
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function ListViewWithDetails({
+  rows,
+  loading,
+  error,
+  displayRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  includeArchived,
+  setIncludeArchived,
+  totalRows,
+  visibleColumns,
+}: {
+  rows: PartyTableRow[];
+  loading: boolean;
+  error: string | null;
+  displayRows: PartyTableRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  includeArchived: boolean;
+  setIncludeArchived: (v: boolean) => void;
+  totalRows: number;
+  visibleColumns: Array<{ key: string; label: string }>;
+}) {
+  const { open } = useTableDetails<PartyTableRow>();
+
+  const start = displayRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = displayRows.length === 0 ? 0 : Math.min(displayRows.length, page * pageSize);
+
+  return (
+    <>
+      <ContactListView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+        visibleColumns={visibleColumns}
+      />
+      <TableFooter
+        entityLabel="entries"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[10, 25, 50, 100]}
         onPageChange={setPage}
         onPageSizeChange={(n) => {
           setPageSize(n);
@@ -978,19 +1052,6 @@ export default function AppContacts() {
             <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
               <button
                 type="button"
-                onClick={() => setViewMode("table")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                  viewMode === "table"
-                    ? "bg-[hsl(var(--brand-orange))] text-black"
-                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Table</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setViewMode("cards")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "cards"
@@ -1002,6 +1063,32 @@ export default function AppContacts() {
                 <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Cards</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
             </div>
 
             {/* Sort dropdown */}
@@ -1012,8 +1099,8 @@ export default function AppContacts() {
               onClear={() => setSorts([])}
             />
 
-            {/* Column toggle - only show in table mode */}
-            {viewMode === "table" && (
+            {/* Column toggle - show in table and list modes */}
+            {(viewMode === "table" || viewMode === "list") && (
               <ColumnsPopover
                 columns={map}
                 onToggle={toggle}
@@ -1071,6 +1158,22 @@ export default function AppContacts() {
                 }}
               />
             </Table>
+          ) : viewMode === "list" ? (
+            <ListViewWithDetails
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              displayRows={displayRows}
+              pageSize={pageSize}
+              page={clampedPage}
+              pageCount={pageCount}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              includeArchived={includeArchived}
+              setIncludeArchived={setIncludeArchived}
+              totalRows={rows.length}
+              visibleColumns={visibleSafe}
+            />
           ) : (
             <CardViewWithDetails
               rows={pageRows}

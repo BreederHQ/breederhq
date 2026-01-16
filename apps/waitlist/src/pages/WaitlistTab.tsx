@@ -19,14 +19,17 @@ import {
   Button,
   BreedCombo,
   DatePicker,
-  useToast
+  useToast,
+  useViewMode,
 } from "@bhq/ui";
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid, List, Table as TableIcon } from "lucide-react";
 import { Overlay } from "@bhq/ui/overlay";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { WaitlistApi, WaitlistEntry, WaitlistInvoiceSummary } from "../api";
 import { PaymentStatusBadge } from "@bhq/ui/components/Finance/PaymentStatusBadge";
+import { WaitlistCardView } from "../components/WaitlistCardView";
+import { WaitlistListView } from "../components/WaitlistListView";
 
 
 /* URL param helper used by row clicks to open drawers */
@@ -2000,6 +2003,12 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // View mode: cards | list | table
+  const { viewMode, setViewMode } = useViewMode({
+    storageKey: "bhq_waitlist_approved_view",
+    defaultMode: "table",
+  });
+
   // Sorting for Waitlist table
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
@@ -2081,6 +2090,33 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
       <Card>
         <div className="relative">
           <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+            {/* View mode toggle */}
+            <div className="flex items-center border border-hairline rounded-md overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="List view"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 transition-colors ${viewMode === "table" ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]" : "text-secondary hover:text-primary hover:bg-surface-strong"}`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+              </button>
+            </div>
             {!readOnlyGlobal && (
               <Button
                 size="sm"
@@ -2206,75 +2242,101 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
             },
           }}
         >
-          <Table
-            columns={WAITLIST_COLS}
-            columnState={cols.map}
-            onColumnStateChange={cols.setAll}
-            getRowId={(r: WaitlistTableRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={cols.map}
-                onToggle={cols.toggle}
-                onSet={cols.setAll}
-                allColumns={WAITLIST_COLS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
-              <div />
+          {/* Search bar - shown for all view modes */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
+            <div className="flex items-center gap-2">
+              {viewMode === "table" && (
+                <ColumnsPopover
+                  columns={cols.map}
+                  onToggle={cols.toggle}
+                  onSet={cols.setAll}
+                  allColumns={WAITLIST_COLS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              )}
             </div>
+          </div>
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading waitlist...</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && !error && rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No entries.</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading &&
-                  !error &&
-                  rows.length > 0 &&
-                  rows.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      detailsRow={raw.find((x) => x.id === r.id)!}
-                      className="cursor-pointer"
-                      onClick={() => setParamAndNotify("waitlistId", r.id)}
-                    >
-                      {visibleSafe.map((c) => {
-                        let v: any = (r as any)[c.key];
-                        if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
-                        if (c.key === "invoice") {
-                          return <TableCell key={c.key}><PaymentStatusBadge invoice={r.invoice} /></TableCell>;
-                        }
-                        return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : v ?? ""}</TableCell>;
-                      })}
+          {/* Card View */}
+          {viewMode === "cards" && (
+            <WaitlistCardView
+              rows={sorted}
+              loading={loading}
+              error={error}
+              onRowClick={(r) => setParamAndNotify("waitlistId", r.id)}
+            />
+          )}
+
+          {/* List View */}
+          {viewMode === "list" && (
+            <WaitlistListView
+              rows={sorted}
+              loading={loading}
+              error={error}
+              onRowClick={(r) => setParamAndNotify("waitlistId", r.id)}
+              visibleColumns={visibleSafe}
+            />
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
+            <Table
+              columns={WAITLIST_COLS}
+              columnState={cols.map}
+              onColumnStateChange={cols.setAll}
+              getRowId={(r: WaitlistTableRow) => r.id}
+              pageSize={25}
+              stickyRightWidthPx={40}
+            >
+              <table className="min-w-max w-full text-sm">
+                <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+                <tbody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">Loading waitlist...</div>
+                      </TableCell>
                     </TableRow>
-                  ))}
-              </tbody>
-            </table>
-          </Table>
+                  )}
+                  {!loading && error && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading && !error && rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">No entries.</div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!loading &&
+                    !error &&
+                    rows.length > 0 &&
+                    sorted.map((r) => (
+                      <TableRow
+                        key={r.id}
+                        detailsRow={raw.find((x) => x.id === r.id)!}
+                        className="cursor-pointer"
+                        onClick={() => setParamAndNotify("waitlistId", r.id)}
+                      >
+                        {visibleSafe.map((c) => {
+                          let v: any = (r as any)[c.key];
+                          if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
+                          if (c.key === "invoice") {
+                            return <TableCell key={c.key}><PaymentStatusBadge invoice={r.invoice} /></TableCell>;
+                          }
+                          return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : v ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    ))}
+                </tbody>
+              </table>
+            </Table>
+          )}
         </DetailsHost>
       </div>
 

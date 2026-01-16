@@ -161,6 +161,75 @@ export type OffspringGroupLite = {
   tentativeName?: string | null;
 };
 
+/** Individual offspring record (Offspring table) */
+export type OffspringIndividual = {
+  id: number;
+  groupId: number;
+  tenantId: number;
+  name: string | null;
+  sex: "MALE" | "FEMALE" | null;
+  collarColorId: number | null;
+  collarColorName: string | null;
+  collarColorHex: string | null;
+  lifeState: string | null;
+  placementState: string | null;
+  keeperIntent: string | null;
+  financialState: string | null;
+  paperworkState: string | null;
+  marketplaceListed: boolean;
+  marketplacePriceCents: number | null;
+  headlineOverride: string | null;
+  photos: string[];
+  coatDescription: string | null;
+  birthWeight: string | null;
+  currentWeight: string | null;
+  microchipId: string | null;
+  notes: string | null;
+  buyerPartyId: number | null;
+  buyerParty?: { id: number; type: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Full offspring group detail including linked offspring */
+export type OffspringGroupDetail = OffspringGroupLite & {
+  name?: string | null;
+  plan?: {
+    id: number;
+    code?: string | null;
+    name?: string | null;
+    species?: string | null;
+    breedText?: string | null;
+    dam?: { id: number; name: string } | null;
+    sire?: { id: number; name: string } | null;
+  } | null;
+  offspring: OffspringIndividual[];
+  animals: Array<{
+    id: number;
+    name: string | null;
+    sex: string | null;
+    status: string | null;
+    birthDate: string | null;
+    species: string | null;
+    breed: string | null;
+    collarColorId: number | null;
+    collarColorName: string | null;
+    collarColorHex: string | null;
+    buyerPartyId: number | null;
+  }>;
+  waitlist: Array<{
+    id: number;
+    priority: number | null;
+    clientParty?: { id: number; type: string; name: string } | null;
+  }>;
+  buyers: Array<{
+    id: number;
+    buyerPartyId: number;
+    buyerParty?: { id: number; type: string; name: string } | null;
+    createdAt: string;
+  }>;
+};
+
 export type OffspringGroupLinkSuggestion = {
   planId: number;
   planName: string;
@@ -577,6 +646,10 @@ export function makeBreedingApi(opts: ApiOpts) {
 
     /* Offspring Groups linkage helpers (new) */
     offspringGroups: {
+      /** Get offspring group detail with all linked offspring, animals, waitlist, buyers */
+      get(groupId: number) {
+        return get<OffspringGroupDetail>(`/offspring/${groupId}`);
+      },
       link(groupId: number, body: { planId: number; actorId: string }) {
         return post<OffspringGroupLite>(`/offspring/groups/${groupId}/link`, body);
       },

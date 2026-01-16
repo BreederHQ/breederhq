@@ -12,6 +12,24 @@ export { SPECIES_UI, toApiSpecies, toUiSpecies } from "./utils/species";
 export { exportToCsv } from "./utils/csvExport";
 export type { CsvColumn, CsvExportOptions } from "./utils/csvExport";
 
+// Species Terminology System (STS) - Direct exports for convenience
+export { useSpeciesTerminology } from "./hooks/useSpeciesTerminology";
+export type { UseSpeciesTerminologyReturn } from "./hooks/useSpeciesTerminology";
+export {
+  getSpeciesTerminology,
+  getOffspringName,
+  getOffspringNameCap,
+  getBirthProcess,
+  getBirthVerb,
+  getGroupName,
+  getParentName,
+  speciesUsesCollars,
+  speciesEmphasizesCounts,
+  speciesShowsGroupConcept,
+  speciesUsesLitterWaitlist,
+} from "./utils/speciesTerminology";
+export type { SpeciesCode, SpeciesTerminology } from "./utils/speciesTerminology";
+
 // atoms
 export { Spinner } from "./atoms/Spinner";
 export type { SpinnerProps } from "./atoms/Spinner";

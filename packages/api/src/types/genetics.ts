@@ -115,6 +115,43 @@ export interface BreedCompositionEntry {
 }
 
 /**
+ * MHC (Major Histocompatibility Complex) diversity data
+ * Higher allele counts = more diverse immune system
+ */
+export interface MHCDiversity {
+  drb1Alleles?: number;        // DLA-DRB1 allele count (typically 1-2)
+  dqa1Dqb1Alleles?: number;    // DLA-DQA1/DQB1 allele count (typically 1-2)
+  diversityScore?: number;     // Calculated overall diversity (0-100)
+}
+
+/**
+ * Maternal and paternal lineage from DNA test
+ */
+export interface GeneticLineage {
+  // Maternal (mitochondrial) lineage - all dogs have this
+  mtHaplotype?: string;        // e.g., "A228_MT"
+  mtHaplogroup?: string;       // e.g., "A1e_MT"
+  // Paternal (Y-chromosome) lineage - males only
+  yHaplotype?: string;         // e.g., "H1a.23"
+  yHaplogroup?: string;        // e.g., "H1a"
+}
+
+/**
+ * COI risk level based on coefficient value
+ */
+export type COIRiskLevel = "excellent" | "good" | "moderate" | "high" | "critical";
+
+/**
+ * Coefficient of Inbreeding data
+ */
+export interface COIData {
+  coefficient: number;         // Raw value (e.g., 0.00178111 = 0.18%)
+  percentage: number;          // As percentage (e.g., 0.18)
+  riskLevel: COIRiskLevel;     // Interpreted risk level
+  source?: "embark" | "calculated" | "manual";  // Where this came from
+}
+
+/**
  * Overall genetic profile for an animal
  */
 export interface AnimalGeneticProfile {
@@ -136,6 +173,26 @@ export interface AnimalGeneticProfile {
     total: number;
     byCategory: Record<GeneticMarkerCategory, number>;
   };
+
+  // === NEW: Extended genetic data from Embark ===
+
+  // Coefficient of Inbreeding
+  coi?: COIData;
+
+  // MHC/Immune diversity
+  mhcDiversity?: MHCDiversity;
+
+  // Lineage/Ancestry
+  lineage?: GeneticLineage;
+
+  // Physical predictions
+  predictedAdultWeight?: {
+    value: number;             // e.g., 57.41
+    unit: "lbs" | "kg";        // Weight unit
+  };
+
+  // Life stage at time of test
+  lifeStage?: string;          // e.g., "Mature adult", "Puppy", etc.
 }
 
 /**
@@ -193,4 +250,34 @@ export interface GeneticImportResult {
     value: string;
     reason: string;
   }>;
+
+  // === NEW: Extended data extracted from import ===
+
+  // Breed composition (from "Breed mix" category)
+  breedComposition?: BreedCompositionEntry[];
+
+  // COI (from "Coefficient Of Inbreeding" field)
+  coi?: COIData;
+
+  // MHC diversity (from "MHC Class II" fields)
+  mhcDiversity?: MHCDiversity;
+
+  // Lineage (from "Lineage" category)
+  lineage?: GeneticLineage;
+
+  // Predicted weight (from "Genetic Stats" category)
+  predictedAdultWeight?: {
+    value: number;
+    unit: "lbs" | "kg";
+  };
+
+  // Life stage (from "Genetic Stats" category)
+  lifeStage?: string;
+
+  // Dog identity from file (for verification)
+  dogIdentity?: {
+    name?: string;
+    sex?: string;
+    swabCode?: string;
+  };
 }

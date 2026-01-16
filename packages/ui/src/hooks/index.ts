@@ -21,3 +21,7 @@ export * from "./useServerSort";
 export * from "./useSort";
 export * from "./useTableController";
 export * from "./useViewMode";
+
+// Species Terminology System (STS)
+export { useSpeciesTerminology } from "./useSpeciesTerminology";
+export type { UseSpeciesTerminologyReturn } from "./useSpeciesTerminology";
