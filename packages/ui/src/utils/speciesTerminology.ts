@@ -78,6 +78,85 @@ export interface SpeciesTerminology {
     /** Whether this species uses litter-based waitlist system */
     usesLitterWaitlist: boolean;
   };
+
+  /** Reproductive cycle terminology for anchor mode */
+  cycle: {
+    /** Cycle start label (e.g., "heat start" for dogs, "cycle start" for horses, "breeding" for cats) */
+    startLabel: string;
+    startLabelCap: string;
+    /** What to call the anchor date in UI */
+    anchorDateLabel: string;
+    /** Explanation text for this species' cycle characteristics */
+    cycleExplanation: string;
+    /** Species-specific guidance for cycle start observation */
+    cycleStartHelp: string;
+    /** Breeding date label (may differ from cycle anchor) */
+    breedingDateLabel: string;
+  };
+
+  /** Ovulation terminology and confirmation methods */
+  ovulation: {
+    /** Label for ovulation (usually "ovulation" for all species) */
+    label: string;
+    /** Date field label */
+    dateLabel: string;
+    /** Standard confirmation method for this species */
+    confirmationMethod: string;
+    /** Educational guidance about ovulation for this species */
+    guidanceText: string;
+    /** Available confirmation methods for this species */
+    confirmationMethods: string[];
+    /** When to start testing (species-specific) */
+    testingGuidance: string;
+  };
+
+  /** Anchor mode recommendations and metadata */
+  anchorMode: {
+    /** Available anchor options for this species */
+    options: Array<{
+      type: "CYCLE_START" | "OVULATION" | "BREEDING_DATE";
+      label: string;
+      description: string;
+      accuracy: string;
+      recommended: boolean;
+      testingAvailable: boolean;
+      confirmationMethods?: string[];
+    }>;
+    /** Recommended primary anchor for this species */
+    recommended: "CYCLE_START" | "OVULATION" | "BREEDING_DATE";
+    /** Default anchor for new plans */
+    defaultAnchor: "CYCLE_START" | "OVULATION" | "BREEDING_DATE";
+    /** Whether ovulation testing is commonly available */
+    testingAvailable: boolean;
+    /** Whether testing is standard practice (available vs common) */
+    testingCommon: boolean;
+    /** Can users upgrade from one anchor to another? */
+    supportsUpgrade: boolean;
+    /** Upgrade source anchor (if applicable) */
+    upgradeFrom?: "CYCLE_START";
+    /** Upgrade target anchor (if applicable) */
+    upgradeTo?: "OVULATION";
+    /** Is this an induced ovulator? (affects UI messaging) */
+    isInducedOvulator: boolean;
+    /** Help text shown when breeder chooses anchor mode */
+    guidanceText: string;
+  };
+
+  /** Weaning importance metadata */
+  weaning: {
+    /** Is weaning a distinct event or gradual process? */
+    weaningType: "DISTINCT_EVENT" | "GRADUAL_PROCESS";
+    /** Should weaning date be required for this species? */
+    required: boolean;
+    /** Typical weaning age in weeks */
+    estimatedDurationWeeks: number;
+    /** Veterinary guidance about weaning */
+    guidanceText: string;
+    /** Status label for weaning milestone */
+    statusLabel: string;
+    /** Actual date field label */
+    actualDateLabel: string;
+  };
 }
 
 /**
@@ -121,6 +200,66 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: true,
       usesLitterWaitlist: true,
     },
+    cycle: {
+      startLabel: "heat start",
+      startLabelCap: "Heat Start",
+      anchorDateLabel: "Heat start date",
+      cycleExplanation:
+        "First day of visible bleeding (proestrus). Note: 50% of bitches have minimal bleeding initially.",
+      cycleStartHelp:
+        "Record the first day you observe heat signs (swelling, discharge, behavioral changes)",
+      breedingDateLabel: "Breeding Date(s)",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "progesterone blood test",
+      guidanceText:
+        "Ovulation occurs 12±2 days after heat start. Progesterone testing provides ±1 day accuracy. Testing should begin day 5-6 after heat signs appear.",
+      confirmationMethods: ["Progesterone Test", "LH Test", "Vaginal Cytology"],
+      testingGuidance:
+        "Start progesterone testing on day 5-6 after heat signs appear. Test every 2-3 days until levels reach 5.0-6.0 ng/mL.",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Heat Start Date",
+          description: "Best for: Getting started quickly",
+          accuracy: "±2-3 days",
+          recommended: false,
+          testingAvailable: false,
+        },
+        {
+          type: "OVULATION",
+          label: "Ovulation Date",
+          description: "Best for: Maximum accuracy (recommended)",
+          accuracy: "±1 day",
+          recommended: true,
+          testingAvailable: true,
+          confirmationMethods: ["Progesterone Test", "LH Test", "Vaginal Cytology"],
+        },
+      ],
+      recommended: "OVULATION",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: true,
+      testingCommon: false,
+      supportsUpgrade: true,
+      upgradeFrom: "CYCLE_START",
+      upgradeTo: "OVULATION",
+      isInducedOvulator: false,
+      guidanceText:
+        "For best accuracy, use progesterone testing to confirm ovulation. Birth is 63 days from ovulation (±1 day) vs 75 days from heat start (±2-3 days).",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 8,
+      guidanceText:
+        "Weaning is a gradual 3-4 week process (weeks 3-8). Puppies benefit from staying with mother 10-12 weeks for behavioral development. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Completed",
+    },
   },
 
   CAT: {
@@ -159,6 +298,54 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       emphasizeCounts: true,
       showGroupConcept: true,
       usesLitterWaitlist: true,
+    },
+    cycle: {
+      startLabel: "breeding",
+      startLabelCap: "Breeding",
+      anchorDateLabel: "Breeding date",
+      cycleExplanation:
+        "Cats are induced ovulators - they ovulate when bred. There is no traditional heat cycle anchor.",
+      cycleStartHelp:
+        "Cats are induced ovulators - breeding triggers ovulation within 24-48 hours",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation Date (Auto-calculated)",
+      confirmationMethod: "occurs automatically when bred",
+      guidanceText:
+        "Cats ovulate within 24 hours of breeding. Breeding date IS the ovulation anchor. Birth occurs 63±2 days later.",
+      confirmationMethods: [],
+      testingGuidance: "No testing needed - breeding itself triggers ovulation",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "BREEDING_DATE",
+          label: "Breeding Date",
+          description: "Standard for cats (induced ovulators)",
+          accuracy: "±2-3 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "BREEDING_DATE",
+      defaultAnchor: "BREEDING_DATE",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: true,
+      guidanceText:
+        "Cats ovulate when bred. Enter breeding date as the anchor - this is when ovulation occurs.",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 8,
+      guidanceText:
+        "Kittens wean gradually over 4-8 weeks. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Completed (Optional)",
     },
   },
 
@@ -199,6 +386,64 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: false,
       usesLitterWaitlist: false,
     },
+    cycle: {
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
+      cycleExplanation: "First day of estrus behavior. Mares have 21-day cycles on average.",
+      cycleStartHelp: "Record the first day of estrus/heat",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "veterinary ultrasound",
+      guidanceText:
+        "Ovulation occurs 5±2 days after cycle start (highly variable). Ultrasound confirmation is standard practice for horse breeders. Foaling is 340±10 days from ovulation.",
+      confirmationMethods: ["Ultrasound", "Palpation"],
+      testingGuidance:
+        "Veterinary ultrasound monitoring typically requires 3-5 exams during heat to confirm ovulation.",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Cycle Start Date",
+          description: "Best for: Natural cover breeding",
+          accuracy: "±5-7 days",
+          recommended: false,
+          testingAvailable: false,
+        },
+        {
+          type: "OVULATION",
+          label: "Ovulation Date",
+          description: "Best for: AI breeding, maximum accuracy",
+          accuracy: "±3 days",
+          recommended: true,
+          testingAvailable: true,
+          confirmationMethods: ["Ultrasound", "Palpation"],
+        },
+      ],
+      recommended: "OVULATION",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: true,
+      testingCommon: true,
+      supportsUpgrade: true,
+      upgradeFrom: "CYCLE_START",
+      upgradeTo: "OVULATION",
+      isInducedOvulator: false,
+      guidanceText:
+        "Most horse breeders use ultrasound to confirm ovulation. This is the veterinary standard for accurate foaling date prediction.",
+    },
+    weaning: {
+      weaningType: "DISTINCT_EVENT",
+      required: true,
+      estimatedDurationWeeks: 20,
+      guidanceText:
+        "Weaning is a critical milestone for horses (4-6 months). Veterinarians recommend documenting weaning date for health monitoring (ulcers, stress, nutrition).",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date",
+    },
   },
 
   RABBIT: {
@@ -237,6 +482,54 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       emphasizeCounts: true,
       showGroupConcept: true,
       usesLitterWaitlist: true,
+    },
+    cycle: {
+      startLabel: "breeding",
+      startLabelCap: "Breeding",
+      anchorDateLabel: "Breeding date",
+      cycleExplanation:
+        "Rabbits are induced ovulators - they ovulate immediately when bred. There is no traditional heat cycle.",
+      cycleStartHelp:
+        "Rabbits are induced ovulators - breeding triggers ovulation immediately (0-day offset)",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation Date (Auto-calculated)",
+      confirmationMethod: "occurs automatically when bred",
+      guidanceText:
+        "Rabbits ovulate immediately when bred (0-day offset). Breeding date IS the ovulation anchor. Kindling occurs 31 days later.",
+      confirmationMethods: [],
+      testingGuidance: "No testing needed - breeding itself triggers ovulation",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "BREEDING_DATE",
+          label: "Breeding Date",
+          description: "Standard for rabbits (induced ovulators)",
+          accuracy: "±1 day",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "BREEDING_DATE",
+      defaultAnchor: "BREEDING_DATE",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: true,
+      guidanceText:
+        "Rabbits ovulate when bred. Enter breeding date as the anchor - this is when ovulation occurs.",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 6,
+      guidanceText:
+        "Kits wean gradually over 4-6 weeks. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Completed (Optional)",
     },
   },
 
@@ -277,6 +570,53 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: true,
       usesLitterWaitlist: true,
     },
+    cycle: {
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
+      cycleExplanation:
+        "First day of heat signs. Does have 21-day cycles on average during breeding season.",
+      cycleStartHelp: "Record when heat signs are first observed",
+      breedingDateLabel: "Breeding Date(s)",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "not commonly used",
+      guidanceText:
+        "Ovulation occurs ~2 days after cycle start. Hormone testing infrastructure is rarely available for goats. Kidding is 150 days from ovulation.",
+      confirmationMethods: [],
+      testingGuidance: "Ovulation testing not commonly used for goats",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Cycle Start Date",
+          description: "Standard for goats",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "CYCLE_START",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: false,
+      guidanceText:
+        "Cycle start is the standard anchor for goats. Ovulation testing is not commonly available.",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 8,
+      guidanceText:
+        "Kids wean gradually over 6-8 weeks. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
+    },
   },
 
   SHEEP: {
@@ -315,6 +655,53 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       emphasizeCounts: true,
       showGroupConcept: true,
       usesLitterWaitlist: true,
+    },
+    cycle: {
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
+      cycleExplanation:
+        "First day of heat signs. Ewes are seasonal breeders with 17-day cycles during breeding season (fall/winter).",
+      cycleStartHelp: "Record when heat signs are first observed",
+      breedingDateLabel: "Breeding Date(s)",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "not commonly used",
+      guidanceText:
+        "Ovulation occurs ~2 days after cycle start. Hormone testing infrastructure is rarely available for sheep. Lambing is 147 days from ovulation.",
+      confirmationMethods: [],
+      testingGuidance: "Ovulation testing not commonly used for sheep",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Cycle Start Date",
+          description: "Standard for sheep",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "CYCLE_START",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: false,
+      guidanceText:
+        "Cycle start is the standard anchor for sheep. Ovulation testing is not commonly available. Note: Sheep are seasonal breeders (fall/winter).",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 8,
+      guidanceText:
+        "Lambs wean gradually over 6-8 weeks. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
     },
   },
 
@@ -355,6 +742,53 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: true,
       usesLitterWaitlist: true,
     },
+    cycle: {
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
+      cycleExplanation:
+        "First day of standing heat. Sows have 21-day cycles on average.",
+      cycleStartHelp: "Record when standing heat is first observed",
+      breedingDateLabel: "Breeding Date(s)",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "not commonly used",
+      guidanceText:
+        "Ovulation occurs ~2 days after cycle start. Farrowing is 114 days from breeding.",
+      confirmationMethods: [],
+      testingGuidance: "Ovulation testing not commonly used for pigs",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Cycle Start Date",
+          description: "Standard for pigs",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "CYCLE_START",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: false,
+      guidanceText:
+        "Cycle start is the standard anchor for pigs. Ovulation testing is not commonly available.",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 4,
+      guidanceText:
+        "Piglets are typically weaned at 3-4 weeks. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
+    },
   },
 
   CATTLE: {
@@ -393,6 +827,53 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       emphasizeCounts: false,
       showGroupConcept: false,
       usesLitterWaitlist: false,
+    },
+    cycle: {
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
+      cycleExplanation:
+        "First day of standing heat. Cows have 21-day cycles on average.",
+      cycleStartHelp: "Record when standing heat is first observed",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation date",
+      confirmationMethod: "not commonly used",
+      guidanceText:
+        "Ovulation occurs near the end of standing heat. Calving is 283 days from breeding.",
+      confirmationMethods: [],
+      testingGuidance: "Ovulation testing not commonly used for cattle",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Cycle Start Date",
+          description: "Standard for cattle",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "CYCLE_START",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: false,
+      guidanceText:
+        "Cycle start is the standard anchor for cattle. Ovulation testing is not commonly available.",
+    },
+    weaning: {
+      weaningType: "DISTINCT_EVENT",
+      required: false,
+      estimatedDurationWeeks: 26,
+      guidanceText:
+        "Calves are typically weaned at 6-8 months. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
     },
   },
 
@@ -433,6 +914,53 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: true,
       usesLitterWaitlist: false,
     },
+    cycle: {
+      startLabel: "set date",
+      startLabelCap: "Set Date",
+      anchorDateLabel: "Set date",
+      cycleExplanation:
+        "Date eggs were set for incubation. Hatching occurs 21 days after setting.",
+      cycleStartHelp: "Record the date eggs were set for incubation",
+      breedingDateLabel: "Set Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "N/A",
+      confirmationMethod: "not applicable",
+      guidanceText:
+        "Chickens are egg layers - ovulation concept does not apply. Track set date (incubation start) for hatching predictions.",
+      confirmationMethods: [],
+      testingGuidance: "Not applicable for chickens",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "CYCLE_START",
+          label: "Set Date",
+          description: "Standard for chickens (incubation start)",
+          accuracy: "±1 day",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "CYCLE_START",
+      defaultAnchor: "CYCLE_START",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: false,
+      guidanceText:
+        "Set date (incubation start) is the anchor for chickens. Hatching is 21 days from set date.",
+    },
+    weaning: {
+      weaningType: "GRADUAL_PROCESS",
+      required: false,
+      estimatedDurationWeeks: 6,
+      guidanceText:
+        "Chicks are typically independent at 6-8 weeks. Recording is optional.",
+      statusLabel: "Independent",
+      actualDateLabel: "Independence Date (Optional)",
+    },
   },
 
   ALPACA: {
@@ -472,6 +1000,54 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       showGroupConcept: false,
       usesLitterWaitlist: false,
     },
+    cycle: {
+      startLabel: "breeding",
+      startLabelCap: "Breeding",
+      anchorDateLabel: "Breeding date",
+      cycleExplanation:
+        "Alpacas are induced ovulators - they ovulate when bred. There is no traditional heat cycle.",
+      cycleStartHelp:
+        "Alpacas are induced ovulators - breeding triggers ovulation within 24-48 hours",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation Date (Auto-calculated)",
+      confirmationMethod: "occurs automatically when bred",
+      guidanceText:
+        "Alpacas ovulate within 24-48 hours of breeding. Breeding date IS the ovulation anchor. Birth occurs ~335-345 days later.",
+      confirmationMethods: [],
+      testingGuidance: "No testing needed - breeding itself triggers ovulation",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "BREEDING_DATE",
+          label: "Breeding Date",
+          description: "Standard for alpacas (induced ovulators)",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "BREEDING_DATE",
+      defaultAnchor: "BREEDING_DATE",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: true,
+      guidanceText:
+        "Alpacas ovulate when bred. Enter breeding date as the anchor - this is when ovulation occurs.",
+    },
+    weaning: {
+      weaningType: "DISTINCT_EVENT",
+      required: false,
+      estimatedDurationWeeks: 26,
+      guidanceText:
+        "Crias are typically weaned at 5-6 months. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
+    },
   },
 
   LLAMA: {
@@ -510,6 +1086,54 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       emphasizeCounts: false,
       showGroupConcept: false,
       usesLitterWaitlist: false,
+    },
+    cycle: {
+      startLabel: "breeding",
+      startLabelCap: "Breeding",
+      anchorDateLabel: "Breeding date",
+      cycleExplanation:
+        "Llamas are induced ovulators - they ovulate when bred. There is no traditional heat cycle.",
+      cycleStartHelp:
+        "Llamas are induced ovulators - breeding triggers ovulation within 24-48 hours",
+      breedingDateLabel: "Breeding Date",
+    },
+    ovulation: {
+      label: "ovulation",
+      dateLabel: "Ovulation Date (Auto-calculated)",
+      confirmationMethod: "occurs automatically when bred",
+      guidanceText:
+        "Llamas ovulate within 24-48 hours of breeding. Breeding date IS the ovulation anchor. Birth occurs ~350 days later.",
+      confirmationMethods: [],
+      testingGuidance: "No testing needed - breeding itself triggers ovulation",
+    },
+    anchorMode: {
+      options: [
+        {
+          type: "BREEDING_DATE",
+          label: "Breeding Date",
+          description: "Standard for llamas (induced ovulators)",
+          accuracy: "±3-5 days",
+          recommended: true,
+          testingAvailable: false,
+        },
+      ],
+      recommended: "BREEDING_DATE",
+      defaultAnchor: "BREEDING_DATE",
+      testingAvailable: false,
+      testingCommon: false,
+      supportsUpgrade: false,
+      isInducedOvulator: true,
+      guidanceText:
+        "Llamas ovulate when bred. Enter breeding date as the anchor - this is when ovulation occurs.",
+    },
+    weaning: {
+      weaningType: "DISTINCT_EVENT",
+      required: false,
+      estimatedDurationWeeks: 26,
+      guidanceText:
+        "Crias are typically weaned at 5-6 months. Recording weaning date is optional.",
+      statusLabel: "Weaned",
+      actualDateLabel: "Weaning Date (Optional)",
     },
   },
 };
@@ -731,4 +1355,352 @@ export function speciesShowsGroupConcept(species: string | null | undefined): bo
 export function speciesUsesLitterWaitlist(species: string | null | undefined): boolean {
   const terms = getSpeciesTerminology(species);
   return terms.features.usesLitterWaitlist;
+}
+
+// ============================================================================
+// Anchor Mode Helper Functions
+// ============================================================================
+
+/**
+ * Get cycle start label for a species.
+ *
+ * @param species - Species code
+ * @param capitalize - Whether to capitalize (default: false)
+ * @returns Cycle start label ("heat start" for dogs, "cycle start" for horses, "breeding" for cats)
+ *
+ * @example
+ * ```ts
+ * getCycleLabel('DOG', false);   // "heat start"
+ * getCycleLabel('DOG', true);    // "Heat Start"
+ * getCycleLabel('CAT', false);   // "breeding"
+ * ```
+ */
+export function getCycleLabel(species: string | null | undefined, capitalize: boolean = false): string {
+  const terms = getSpeciesTerminology(species);
+  return capitalize ? terms.cycle.startLabelCap : terms.cycle.startLabel;
+}
+
+/**
+ * Get ovulation guidance text for a species.
+ *
+ * @param species - Species code
+ * @returns Educational guidance about ovulation for this species
+ *
+ * @example
+ * ```ts
+ * getOvulationGuidance('DOG');
+ * // "Ovulation occurs 12±2 days after heat start..."
+ * ```
+ */
+export function getOvulationGuidance(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.ovulation.guidanceText;
+}
+
+/**
+ * Get recommended anchor mode for a species.
+ *
+ * @param species - Species code
+ * @returns Recommended anchor mode for this species
+ *
+ * @example
+ * ```ts
+ * getRecommendedAnchorMode('DOG');    // "OVULATION"
+ * getRecommendedAnchorMode('HORSE');  // "OVULATION"
+ * getRecommendedAnchorMode('CAT');    // "BREEDING_DATE"
+ * getRecommendedAnchorMode('GOAT');   // "CYCLE_START"
+ * ```
+ */
+export function getRecommendedAnchorMode(
+  species: string | null | undefined
+): "CYCLE_START" | "OVULATION" | "BREEDING_DATE" {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.recommended;
+}
+
+/**
+ * Get default anchor mode for a species (used for new plans).
+ *
+ * @param species - Species code
+ * @returns Default anchor mode for new plans of this species
+ *
+ * @example
+ * ```ts
+ * getDefaultAnchorMode('DOG');   // "CYCLE_START" (start with cycle, upgrade to ovulation later)
+ * getDefaultAnchorMode('CAT');   // "BREEDING_DATE"
+ * ```
+ */
+export function getDefaultAnchorMode(
+  species: string | null | undefined
+): "CYCLE_START" | "OVULATION" | "BREEDING_DATE" {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.defaultAnchor;
+}
+
+/**
+ * Check if weaning date is required for a species.
+ *
+ * @param species - Species code
+ * @returns true if weaning is a required milestone for this species (horses)
+ *
+ * @example
+ * ```ts
+ * isWeaningRequired('HORSE');  // true (critical milestone)
+ * isWeaningRequired('DOG');    // false (gradual process)
+ * ```
+ */
+export function isWeaningRequired(species: string | null | undefined): boolean {
+  const terms = getSpeciesTerminology(species);
+  return terms.weaning.required;
+}
+
+/**
+ * Get weaning guidance text for a species.
+ *
+ * @param species - Species code
+ * @returns Veterinary guidance about weaning for this species
+ *
+ * @example
+ * ```ts
+ * getWeaningGuidance('DOG');
+ * // "Weaning is a gradual 3-4 week process..."
+ * ```
+ */
+export function getWeaningGuidance(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.weaning.guidanceText;
+}
+
+/**
+ * Get available anchor options for a species.
+ *
+ * @param species - Species code
+ * @returns Array of available anchor options with labels, descriptions, and accuracy
+ *
+ * @example
+ * ```ts
+ * getAvailableAnchors('DOG');
+ * // [{ type: 'CYCLE_START', label: 'Heat Start Date', ... }, { type: 'OVULATION', ... }]
+ * getAvailableAnchors('CAT');
+ * // [{ type: 'BREEDING_DATE', label: 'Breeding Date', ... }]
+ * ```
+ */
+export function getAvailableAnchors(species: string | null | undefined): SpeciesTerminology["anchorMode"]["options"] {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.options;
+}
+
+/**
+ * Check if a species supports upgrading from cycle start to ovulation anchor.
+ *
+ * @param species - Species code
+ * @returns true if species can upgrade anchor mode (dogs, horses)
+ *
+ * @example
+ * ```ts
+ * supportsOvulationUpgrade('DOG');    // true
+ * supportsOvulationUpgrade('HORSE');  // true
+ * supportsOvulationUpgrade('CAT');    // false (induced ovulator)
+ * supportsOvulationUpgrade('GOAT');   // false (no testing infrastructure)
+ * ```
+ */
+export function supportsOvulationUpgrade(species: string | null | undefined): boolean {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.supportsUpgrade;
+}
+
+/**
+ * Check if a species is an induced ovulator (ovulates when bred).
+ *
+ * @param species - Species code
+ * @returns true if species is an induced ovulator (cats, rabbits, alpacas, llamas)
+ *
+ * @example
+ * ```ts
+ * isInducedOvulator('CAT');    // true
+ * isInducedOvulator('RABBIT'); // true
+ * isInducedOvulator('DOG');    // false
+ * isInducedOvulator('HORSE');  // false
+ * ```
+ */
+export function isInducedOvulator(species: string | null | undefined): boolean {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.isInducedOvulator;
+}
+
+/**
+ * Get anchor mode guidance text for a species.
+ *
+ * @param species - Species code
+ * @returns Help text shown when breeder chooses anchor mode
+ *
+ * @example
+ * ```ts
+ * getAnchorModeGuidance('DOG');
+ * // "For best accuracy, use progesterone testing..."
+ * ```
+ */
+export function getAnchorModeGuidance(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.guidanceText;
+}
+
+/**
+ * Check if ovulation testing is available for a species.
+ *
+ * @param species - Species code
+ * @returns true if ovulation testing infrastructure exists for this species
+ *
+ * @example
+ * ```ts
+ * isOvulationTestingAvailable('DOG');   // true (progesterone)
+ * isOvulationTestingAvailable('HORSE'); // true (ultrasound)
+ * isOvulationTestingAvailable('GOAT');  // false
+ * ```
+ */
+export function isOvulationTestingAvailable(species: string | null | undefined): boolean {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.testingAvailable;
+}
+
+/**
+ * Check if ovulation testing is commonly used for a species.
+ *
+ * @param species - Species code
+ * @returns true if testing is standard veterinary practice for this species
+ *
+ * @example
+ * ```ts
+ * isOvulationTestingCommon('DOG');   // false (available but not all hobbyists use it)
+ * isOvulationTestingCommon('HORSE'); // true (standard practice)
+ * ```
+ */
+export function isOvulationTestingCommon(species: string | null | undefined): boolean {
+  const terms = getSpeciesTerminology(species);
+  return terms.anchorMode.testingCommon;
+}
+
+/**
+ * Get ovulation confirmation methods for a species.
+ *
+ * @param species - Species code
+ * @returns Array of available confirmation methods
+ *
+ * @example
+ * ```ts
+ * getOvulationConfirmationMethods('DOG');   // ['Progesterone Test', 'LH Test', 'Vaginal Cytology']
+ * getOvulationConfirmationMethods('HORSE'); // ['Ultrasound', 'Palpation']
+ * getOvulationConfirmationMethods('CAT');   // [] (induced ovulator)
+ * ```
+ */
+export function getOvulationConfirmationMethods(species: string | null | undefined): string[] {
+  const terms = getSpeciesTerminology(species);
+  return terms.ovulation.confirmationMethods;
+}
+
+/**
+ * Get ovulation testing guidance for a species.
+ *
+ * @param species - Species code
+ * @returns When to start testing and testing protocol
+ *
+ * @example
+ * ```ts
+ * getOvulationTestingGuidance('DOG');
+ * // "Start progesterone testing on day 5-6 after heat signs appear..."
+ * ```
+ */
+export function getOvulationTestingGuidance(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.ovulation.testingGuidance;
+}
+
+/**
+ * Get cycle explanation for a species.
+ *
+ * @param species - Species code
+ * @returns Explanation of how cycles work for this species
+ *
+ * @example
+ * ```ts
+ * getCycleExplanation('DOG');
+ * // "First day of visible bleeding (proestrus). Note: 50% of bitches have minimal bleeding initially."
+ * getCycleExplanation('CAT');
+ * // "Cats are induced ovulators - they ovulate when bred. There is no traditional heat cycle anchor."
+ * ```
+ */
+export function getCycleExplanation(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.cycle.cycleExplanation;
+}
+
+/**
+ * Get breeding date label for a species.
+ *
+ * @param species - Species code
+ * @returns Label for breeding date field
+ *
+ * @example
+ * ```ts
+ * getBreedingDateLabel('DOG');   // "Breeding Date(s)"
+ * getBreedingDateLabel('HORSE'); // "Breeding Date"
+ * ```
+ */
+export function getBreedingDateLabel(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.cycle.breedingDateLabel;
+}
+
+/**
+ * Get anchor date label for a species.
+ *
+ * @param species - Species code
+ * @returns Label for the anchor date field
+ *
+ * @example
+ * ```ts
+ * getAnchorDateLabel('DOG');   // "Heat start date"
+ * getAnchorDateLabel('HORSE'); // "Cycle start date"
+ * getAnchorDateLabel('CAT');   // "Breeding date"
+ * ```
+ */
+export function getAnchorDateLabel(species: string | null | undefined): string {
+  const terms = getSpeciesTerminology(species);
+  return terms.cycle.anchorDateLabel;
+}
+
+/**
+ * Get weaning type for a species.
+ *
+ * @param species - Species code
+ * @returns Whether weaning is a distinct event or gradual process
+ *
+ * @example
+ * ```ts
+ * getWeaningType('HORSE'); // "DISTINCT_EVENT"
+ * getWeaningType('DOG');   // "GRADUAL_PROCESS"
+ * ```
+ */
+export function getWeaningType(
+  species: string | null | undefined
+): "DISTINCT_EVENT" | "GRADUAL_PROCESS" {
+  const terms = getSpeciesTerminology(species);
+  return terms.weaning.weaningType;
+}
+
+/**
+ * Get estimated weaning duration in weeks for a species.
+ *
+ * @param species - Species code
+ * @returns Typical weaning age in weeks
+ *
+ * @example
+ * ```ts
+ * getEstimatedWeaningWeeks('DOG');   // 8
+ * getEstimatedWeaningWeeks('HORSE'); // 20 (4-6 months)
+ * ```
+ */
+export function getEstimatedWeaningWeeks(species: string | null | undefined): number {
+  const terms = getSpeciesTerminology(species);
+  return terms.weaning.estimatedDurationWeeks;
 }

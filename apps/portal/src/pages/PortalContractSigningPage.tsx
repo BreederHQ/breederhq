@@ -338,9 +338,12 @@ export default function PortalContractSigningPage({ contractId }: Props) {
         {/* Document Viewer */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">Document</h2>
-          <div className="bg-white rounded-lg border border-[var(--border-default)] p-6 max-h-[500px] overflow-y-auto shadow-inner">
+          <div className="bg-white rounded-lg border-2 border-[var(--border-default)] max-h-[500px] overflow-y-auto shadow-lg">
             <div
-              className="prose prose-sm max-w-none"
+              className="prose prose-sm max-w-none p-6 text-gray-900
+                [&_h1]:text-gray-900 [&_h2]:text-gray-900 [&_h3]:text-gray-900
+                [&_p]:text-gray-800 [&_li]:text-gray-800
+                [&_strong]:text-gray-900 [&_a]:text-blue-600"
               dangerouslySetInnerHTML={{ __html: documentHtml }}
             />
           </div>

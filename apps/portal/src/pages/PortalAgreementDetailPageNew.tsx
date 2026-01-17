@@ -185,9 +185,10 @@ export default function PortalAgreementDetailPageNew() {
       return;
     }
 
-    // Navigate to signing flow or open signing modal
-    // For now, we'll show an alert - this would be enhanced with actual signing UI
-    alert("Signing functionality would open here. This will be connected to the signing workflow.");
+    // Navigate to signing page
+    if (agreementId) {
+      window.location.href = `/t/${tenantSlug}/contracts/${agreementId}/sign`;
+    }
   };
 
   if (loading) {
