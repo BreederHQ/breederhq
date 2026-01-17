@@ -125,18 +125,38 @@ export function MarketplaceEmbedded() {
   const initialPath = React.useMemo(() => getMarketplacePath(), []);
 
   // Get tenant ID - in embedded mode (platform portal), this should always exist
-  const tenantId = React.useMemo(() => getTenantId(), []);
+  // Use state to ensure we wait for platform to set it
+  const [tenantId, setTenantId] = React.useState<string | null>(() => getTenantId());
+  const [isLoading, setIsLoading] = React.useState(() => !getTenantId());
+
+  // Wait for tenant ID from platform
+  React.useEffect(() => {
+    const checkTenantId = () => {
+      const id = getTenantId();
+      setTenantId(id);
+      setIsLoading(!id);
+    };
+
+    // Check immediately
+    checkTenantId();
+
+    // Also check after a short delay in case platform is still initializing
+    const timer = setTimeout(checkTenantId, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Gate context value - embedded mode is always seller context
+  // IMPORTANT: In embedded mode, we're ALWAYS in seller context even during loading
+  // This prevents flash of public page during HMR or initial load
   const gateContextValue = React.useMemo<GateContextValue>(
     () => ({
-      status: "entitled",
-      isEntitled: true,
+      status: isLoading ? "loading" : "entitled",
+      isEntitled: !isLoading,
       userProfile: null,
       tenantId,
-      isSeller: !!tenantId, // True when we have tenant context
+      isSeller: true, // ALWAYS true in embedded mode (platform = seller portal)
     }),
-    [tenantId]
+    [tenantId, isLoading]
   );
 
   // Dispatch module announcement to Platform

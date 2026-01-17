@@ -3,19 +3,19 @@
 
 export const TEST_USERS = {
   breeder: {
-    email: process.env.TEST_BREEDER_EMAIL || 'test.breeder@example.com',
-    password: process.env.TEST_BREEDER_PASSWORD || 'TestPassword123!',
-    name: 'Test Breeder',
+    email: process.env.TEST_BREEDER_EMAIL || 'hagrid.dev@hogwarts.local',
+    password: process.env.TEST_BREEDER_PASSWORD || 'Hogwarts123!',
+    name: 'Rubeus Hagrid',
   },
   buyer: {
-    email: process.env.TEST_PORTAL_EMAIL || 'test.buyer@example.com',
-    password: process.env.TEST_PORTAL_PASSWORD || 'TestPassword123!',
-    name: 'John Doe',
+    email: process.env.TEST_PORTAL_EMAIL || 'dumbledore.portal.dev@hogwarts.local',
+    password: process.env.TEST_PORTAL_PASSWORD || 'LemonDrop123!',
+    name: 'Albus Dumbledore',
   },
   buyer2: {
-    email: process.env.TEST_PORTAL_EMAIL_2 || 'test.buyer2@example.com',
-    password: process.env.TEST_PORTAL_PASSWORD_2 || 'TestPassword123!',
-    name: 'Jane Smith',
+    email: process.env.TEST_PORTAL_EMAIL_2 || 'hagrid.portal.dev@hogwarts.local',
+    password: process.env.TEST_PORTAL_PASSWORD_2 || 'Norbert123!',
+    name: 'Rubeus Hagrid',
   },
 };
 

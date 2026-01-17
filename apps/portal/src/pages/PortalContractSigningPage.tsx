@@ -7,6 +7,7 @@ import { Button } from "../design/Button";
 import { InlineNotice } from "../design/InlineNotice";
 import { SignatureCapture, type SignatureCaptureData } from "../components/signing";
 import { FileText, AlertTriangle, CheckCircle, XCircle, Clock, Download } from "lucide-react";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 interface ContractParty {
   id: number;
@@ -35,24 +36,8 @@ interface Props {
   contractId: number;
 }
 
-// API helper
-async function fetchWithAuth(url: string, opts?: RequestInit) {
-  const res = await fetch(url, {
-    ...opts,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...opts?.headers,
-    },
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || data.error || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
 export default function PortalContractSigningPage({ contractId }: Props) {
+  const { tenantSlug, isReady } = useTenantContext();
   const [loading, setLoading] = React.useState(true);
   const [contract, setContract] = React.useState<Contract | null>(null);
   const [documentHtml, setDocumentHtml] = React.useState<string>("");
@@ -79,17 +64,36 @@ export default function PortalContractSigningPage({ contractId }: Props) {
 
   // Fetch contract data
   React.useEffect(() => {
+    if (!isReady) return;
+
     let cancelled = false;
+    const portalFetch = createPortalFetch(tenantSlug);
 
     (async () => {
       try {
-        const [contractRes, documentRes] = await Promise.all([
-          fetchWithAuth(`/api/v1/portal/contracts/${contractId}/signing`),
-          fetchWithAuth(`/api/v1/portal/contracts/${contractId}/document`),
+        const [signingRes, documentRes] = await Promise.all([
+          portalFetch<any>(`/portal/contracts/${contractId}/signing`),
+          portalFetch<any>(`/portal/contracts/${contractId}/document`),
         ]);
 
         if (!cancelled) {
-          setContract(contractRes);
+          // Map API response to component's expected structure
+          const contractData: Contract = {
+            id: signingRes.contract.id,
+            title: signingRes.contract.title,
+            status: signingRes.contract.status,
+            expiresAt: signingRes.contract.expiresAt,
+            parties: signingRes.parties.map((p: any) => ({
+              id: p.id,
+              role: p.role,
+              name: p.name,
+              email: "", // API doesn't return email for privacy
+              signer: true, // All listed parties are signers
+              status: p.status,
+            })),
+            signatureOptions: signingRes.signatureOptions,
+          };
+          setContract(contractData);
           setDocumentHtml(documentRes.html || "");
         }
       } catch (err: any) {
@@ -106,7 +110,7 @@ export default function PortalContractSigningPage({ contractId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [contractId]);
+  }, [contractId, tenantSlug, isReady]);
 
   // Handle signature submission
   const handleSign = async () => {
@@ -116,7 +120,8 @@ export default function PortalContractSigningPage({ contractId }: Props) {
     setSubmitError(null);
 
     try {
-      await fetchWithAuth(`/api/v1/portal/contracts/${contractId}/sign`, {
+      const portalFetch = createPortalFetch(tenantSlug);
+      await portalFetch<any>(`/portal/contracts/${contractId}/sign`, {
         method: "POST",
         body: JSON.stringify({
           signatureType: signatureData.type,
@@ -140,7 +145,8 @@ export default function PortalContractSigningPage({ contractId }: Props) {
   const handleDecline = async () => {
     setDeclining(true);
     try {
-      await fetchWithAuth(`/api/v1/portal/contracts/${contractId}/decline`, {
+      const portalFetch = createPortalFetch(tenantSlug);
+      await portalFetch<any>(`/portal/contracts/${contractId}/decline`, {
         method: "POST",
         body: JSON.stringify({ reason: declineReason }),
       });

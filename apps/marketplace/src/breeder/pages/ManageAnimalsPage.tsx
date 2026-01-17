@@ -10,6 +10,7 @@ import {
   Users,
   Plus,
   Eye,
+  EyeOff,
   Pencil,
   Trash2,
   Filter,
@@ -187,7 +188,7 @@ export function ManageAnimalsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/marketplace"
+            to="/"
             className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
@@ -343,6 +344,14 @@ export function ManageAnimalsPage() {
               setSelectedListing(null);
               fetchListings();
             }}
+            onListingUpdated={(updatedListing) => {
+              // Update the listings array with the new data so reopening shows correct state
+              setListings((prev) =>
+                prev.map((l) => (l.id === updatedListing.id ? updatedListing : l))
+              );
+              // Also update selectedListing so current drawer has latest data
+              setSelectedListing(updatedListing);
+            }}
           />
         )}
       </div>
@@ -370,11 +379,13 @@ function ListingDetailDrawer({
   listing,
   onClose,
   onSaved,
+  onListingUpdated,
 }: {
   tenantId: string;
   listing: DirectAnimalListing;
   onClose: () => void;
   onSaved: () => void;
+  onListingUpdated: (updatedListing: DirectAnimalListing) => void;
 }) {
   const [activeTab, setActiveTab] = React.useState<DrawerTab>("overview");
   const [saving, setSaving] = React.useState(false);
@@ -397,7 +408,7 @@ function ListingDetailDrawer({
     priceMaxCents: listing.priceMaxCents ?? null,
     locationCity: listing.locationCity || "",
     locationRegion: listing.locationRegion || "",
-    locationCountry: listing.locationCountry || "USA",
+    locationCountry: listing.locationCountry || "US", // ISO 2-letter country code
     status: listing.status,
     listed: listing.listed ?? true,
     dataDrawerConfig: listing.dataDrawerConfig as DataDrawerConfig || {},
@@ -409,12 +420,17 @@ function ListingDetailDrawer({
     setHasChanges(true);
   };
 
-  // Auto-save draft changes every 3 seconds
-  React.useEffect(() => {
-    if (!hasChanges || saving) return;
+  // Track previous dataDrawerConfig to detect changes
+  const prevDataDrawerConfigRef = React.useRef<DataDrawerConfig>(form.dataDrawerConfig);
 
-    const timeoutId = setTimeout(async () => {
-      try {
+  // IMMEDIATE save for dataDrawerConfig changes (no debounce)
+  React.useEffect(() => {
+    const configChanged = JSON.stringify(form.dataDrawerConfig) !== JSON.stringify(prevDataDrawerConfigRef.current);
+
+    if (configChanged && !saving) {
+      prevDataDrawerConfigRef.current = form.dataDrawerConfig;
+
+      const saveConfig = async () => {
         const input: DirectAnimalListingCreate = {
           id: listing.id,
           animalId: listing.animalId,
@@ -435,13 +451,57 @@ function ListingDetailDrawer({
           locationCountry: form.locationCountry || undefined,
           dataDrawerConfig: form.dataDrawerConfig,
         };
+
+        try {
+          const savedListing = await saveDirectListing(tenantId, input);
+          setHasChanges(false);
+          // Update the parent's listings array so reopening the drawer shows correct data
+          onListingUpdated(savedListing);
+        } catch (err: any) {
+          console.error("DataDrawerConfig save failed:", err);
+        }
+      };
+
+      saveConfig();
+    }
+  }, [form.dataDrawerConfig, saving, form, listing, tenantId, onListingUpdated]);
+
+  // Auto-save OTHER changes with debounce (not dataDrawerConfig)
+  React.useEffect(() => {
+    if (!hasChanges || saving) return;
+
+    const timeoutId = setTimeout(async () => {
+      const input: DirectAnimalListingCreate = {
+        id: listing.id,
+        animalId: listing.animalId,
+        slug: form.slug.trim(),
+        templateType: listing.templateType,
+        status: form.status as DirectListingStatus,
+        listed: form.listed,
+        headline: form.headline.trim() || undefined,
+        title: form.title.trim() || undefined,
+        summary: form.summary.trim() || undefined,
+        description: form.description.trim() || undefined,
+        priceModel: form.priceModel as "fixed" | "range" | "inquire",
+        priceCents: form.priceModel === "fixed" ? form.priceCents : undefined,
+        priceMinCents: form.priceModel === "range" ? form.priceMinCents : undefined,
+        priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : undefined,
+        locationCity: form.locationCity.trim() || undefined,
+        locationRegion: form.locationRegion.trim() || undefined,
+        locationCountry: form.locationCountry || undefined,
+        dataDrawerConfig: form.dataDrawerConfig,
+      };
+
+      try {
+        console.log("Auto-saving other changes");
         await saveDirectListing(tenantId, input);
         setHasChanges(false);
       } catch (err: any) {
         console.error("Auto-save failed:", err);
+        console.error("Failed payload:", input);
         // Silent fail - user can still manually save
       }
-    }, 3000); // 3 second debounce
+    }, 500); // 500ms debounce for other fields
 
     return () => clearTimeout(timeoutId);
   }, [hasChanges, saving, form, listing, tenantId]);
@@ -1219,31 +1279,25 @@ function DataPreview({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Identity Section */}
-          {isSectionEnabled('identity') && (
+          {/* Registry Section */}
+          {isSectionEnabled('registry') && animalData.registrations.length > 0 && (
             <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <span>🪪</span> Identity
+                <span>📋</span> Registry
               </h3>
-              <div className="grid grid-cols-2 gap-4">
-                {config.identity?.showName && (
-                  <div>
-                    <p className="text-xs text-text-tertiary mb-1">Name</p>
-                    <p className="text-white font-medium">{animal?.name || 'Unknown'}</p>
-                  </div>
-                )}
-                {config.identity?.showPhoto && animal?.photoUrl && (
-                  <div>
-                    <p className="text-xs text-text-tertiary mb-1">Photo</p>
-                    <img src={animal.photoUrl} alt={animal.name} className="w-20 h-20 rounded-lg object-cover" />
-                  </div>
-                )}
-                {config.identity?.showDob && animal?.birthDate && (
-                  <div>
-                    <p className="text-xs text-text-tertiary mb-1">Birth Date</p>
-                    <p className="text-white">{new Date(animal.birthDate).toLocaleDateString()}</p>
-                  </div>
-                )}
+              <div className="space-y-2">
+                {animalData.registrations
+                  .filter(reg =>
+                    !config.registry?.registryIds ||
+                    config.registry.registryIds.length === 0 ||
+                    config.registry.registryIds.includes(reg.id)
+                  )
+                  .map(reg => (
+                    <div key={reg.id} className="flex justify-between items-center py-2 border-b border-border-subtle last:border-0">
+                      <span className="text-sm text-text-secondary">{reg.registryName}</span>
+                      <span className="text-sm font-medium text-white">{reg.identifier}</span>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -1267,6 +1321,47 @@ function DataPreview({
                       <span className="text-sm font-medium text-white">{String(trait.value)}</span>
                     </div>
                   ))}
+              </div>
+            </div>
+          )}
+
+          {/* Genetics Section */}
+          {isSectionEnabled('genetics') && animalData.genetics.data && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>🧬</span> Genetics
+              </h3>
+              <div className="space-y-3">
+                {config.genetics?.showBreedComposition && animalData.genetics.data.breedComposition && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Breed Composition</p>
+                    <p className="text-sm text-white">{JSON.stringify(animalData.genetics.data.breedComposition)}</p>
+                  </div>
+                )}
+                {config.genetics?.showCoatColor && animalData.genetics.data.coatColorData && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Coat Color</p>
+                    <p className="text-sm text-white">{JSON.stringify(animalData.genetics.data.coatColorData)}</p>
+                  </div>
+                )}
+                {config.genetics?.showHealthGenetics && animalData.genetics.data.healthGeneticsData && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Health Genetics</p>
+                    <p className="text-sm text-white">{JSON.stringify(animalData.genetics.data.healthGeneticsData)}</p>
+                  </div>
+                )}
+                {config.genetics?.showCOI && animalData.genetics.data.coi && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Coefficient of Inbreeding (COI)</p>
+                    <p className="text-sm text-white">{animalData.genetics.data.coi}%</p>
+                  </div>
+                )}
+                {config.genetics?.showPredictedWeight && animalData.genetics.data.predictedAdultWeight && (
+                  <div>
+                    <p className="text-xs text-text-tertiary mb-1">Predicted Adult Weight</p>
+                    <p className="text-sm text-white">{animalData.genetics.data.predictedAdultWeight} lbs</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1356,6 +1451,29 @@ function DataPreview({
               <p className="text-sm text-text-secondary">
                 {config.media?.mediaIds?.length || animalData.media.items.length} photo{(config.media?.mediaIds?.length || animalData.media.items.length) !== 1 ? 's' : ''} will be shown
               </p>
+            </div>
+          )}
+
+          {/* Documents Section */}
+          {isSectionEnabled('documents') && animalData.documents.items.length > 0 && (
+            <div className="bg-portal-card border border-border-subtle rounded-lg p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span>📄</span> Documents
+              </h3>
+              <div className="space-y-2">
+                {animalData.documents.items
+                  .filter(doc =>
+                    !config.documents?.documentIds ||
+                    config.documents.documentIds.length === 0 ||
+                    config.documents.documentIds.includes(doc.id)
+                  )
+                  .map(doc => (
+                    <div key={doc.id} className="flex justify-between items-center py-2 border-b border-border-subtle last:border-0">
+                      <span className="text-sm text-text-secondary">{doc.title}</span>
+                      <span className="text-xs text-text-tertiary">{doc.kind}</span>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
 

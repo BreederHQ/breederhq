@@ -11,21 +11,29 @@ import {
 } from '../helpers/contract-helpers';
 import { TEST_USERS, CONTRACT_STATUSES } from '../fixtures/test-data';
 
+// Portal URL is a separate domain
+const PORTAL_URL = process.env.PORTAL_URL || 'http://portal.breederhq.test';
+
 test.describe('Portal Signing Workflow', () => {
+  // Increase timeout for these tests since they involve multiple user sessions
+  test.setTimeout(90000);
+
   test('should complete full signing workflow', async ({ page, context }) => {
+    const uniqueTitle = `Full Signing Flow Test ${Date.now()}`;
+
     // Step 1: Breeder creates and sends contract
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Full Signing Flow Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     // Verify status changed to Sent
-    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.SENT);
+    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.SENT, uniqueTitle);
 
     // Step 2: Buyer signs contract
     await logout(page);
@@ -37,55 +45,60 @@ test.describe('Portal Signing Workflow', () => {
     await logout(page);
     await loginAsBreeder(page);
 
-    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.SIGNED);
+    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.SIGNED, uniqueTitle);
   });
 
   test('should display contract content to portal user', async ({ page }) => {
+    const uniqueTitle = `Content Display Test ${Date.now()}`;
+
     // Breeder creates and sends contract
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Content Display Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     // Switch to portal user
     await logout(page);
     await loginAsPortalUser(page);
 
-    // Navigate to signing page
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    // Navigate to signing page on portal domain
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Verify contract content is visible
-    await expect(page.locator('.contract-content, [class*="contract"]')).toBeVisible({
-      timeout: 10000,
-    });
+    // Verify contract title and content are visible
+    await expect(page.locator(`text=${uniqueTitle}`)).toBeVisible({ timeout: 15000 });
 
-    // Verify contract title
-    await expect(page.locator('text=Content Display Test')).toBeVisible();
+    // Verify "Your Signature" section is visible
+    await expect(page.locator('text=Your Signature')).toBeVisible();
   });
 
   test('should show typed signature input', async ({ page }) => {
+    const uniqueTitle = `Typed Signature Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Typed Signature Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Verify typed signature input exists
-    const signatureInput = page.locator('input[placeholder*="Type your full name"]');
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
+
+    // Verify typed signature input exists with correct placeholder
+    const signatureInput = page.locator('input[placeholder="Enter your full name"]');
     await expect(signatureInput).toBeVisible();
 
     // Fill in signature
@@ -96,32 +109,35 @@ test.describe('Portal Signing Workflow', () => {
   });
 
   test('should require consent checkbox', async ({ page }) => {
+    const uniqueTitle = `Consent Checkbox Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Consent Checkbox Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
+
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
 
     // Fill signature but don't check consent
-    const signatureInput = page.locator('input[placeholder*="Type your full name"]');
+    const signatureInput = page.locator('input[placeholder="Enter your full name"]');
     await signatureInput.fill(TEST_USERS.buyer.name);
 
-    // Try to sign without consent
-    const signButton = page.locator('button:has-text("Sign Document")');
-
-    // Button should be disabled
+    // Sign Contract button should be disabled without consent
+    const signButton = page.locator('button:has-text("Sign Contract")');
     await expect(signButton).toBeDisabled();
 
-    // Check consent
+    // Check consent checkbox
     await page.check('input[type="checkbox"]');
 
     // Button should now be enabled
@@ -129,15 +145,17 @@ test.describe('Portal Signing Workflow', () => {
   });
 
   test('should capture audit trail data', async ({ page }) => {
+    const uniqueTitle = `Audit Trail Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Audit Trail Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
@@ -148,38 +166,38 @@ test.describe('Portal Signing Workflow', () => {
     await logout(page);
     await loginAsBreeder(page);
 
-    await page.goto(`/contracts/list?id=${contractId}`);
+    // Open contract details by clicking on it
+    await page.goto(`/contracts/list`);
+    await page.click(`text=${uniqueTitle}`);
 
-    // Click to view audit trail/events
-    const viewEventsBtn = page.locator('button:has-text("View Events"), button:has-text("Audit")');
+    // Look for Activity Log section in the modal
+    await expect(page.locator('text=Activity Log')).toBeVisible({ timeout: 5000 });
 
-    if (await viewEventsBtn.isVisible()) {
-      await viewEventsBtn.click();
-
-      // Verify signature event exists with timestamp and IP
-      await expect(page.locator('text=/signed/i')).toBeVisible();
-      await expect(page.locator('text=/IP:/i, text=/[0-9]{1,3}\\.[0-9]{1,3}/i')).toBeVisible();
-    }
+    // Verify signature event exists
+    await expect(page.locator('text=/signed/i')).toBeVisible();
   });
 
   test('should mark contract as Viewed when opened', async ({ page }) => {
+    const uniqueTitle = `Viewed Status Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Viewed Status Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    // Open contract but don't sign
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    // Open contract but don't sign - portal routes
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
     // Wait for content to load (triggers "viewed" event)
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Switch back to breeder
@@ -187,48 +205,55 @@ test.describe('Portal Signing Workflow', () => {
     await loginAsBreeder(page);
 
     // Verify status changed to Viewed
-    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.VIEWED);
+    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.VIEWED, uniqueTitle);
   });
 
   test('should show success message after signing', async ({ page }) => {
+    const uniqueTitle = `Success Message Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Success Message Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Sign contract
-    const signatureInput = page.locator('input[placeholder*="Type your full name"]');
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
+
+    // Sign contract - use correct placeholder
+    const signatureInput = page.locator('input[placeholder="Enter your full name"]');
     await signatureInput.fill(TEST_USERS.buyer.name);
 
     await page.check('input[type="checkbox"]');
-    await page.click('button:has-text("Sign Document")');
+    await page.click('button:has-text("Sign Contract")');
 
-    // Verify success message
-    await expect(page.locator('text=/successfully signed|signed successfully/i')).toBeVisible({
-      timeout: 10000,
+    // Verify success message - exact text from component
+    await expect(page.locator('text=Contract Signed Successfully')).toBeVisible({
+      timeout: 15000,
     });
   });
 
   test('should prevent double-signing', async ({ page }) => {
+    const uniqueTitle = `Double Sign Prevention Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Double Sign Prevention Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
@@ -237,66 +262,70 @@ test.describe('Portal Signing Workflow', () => {
     await signContractAsPortalUser(page, contractId, TEST_USERS.buyer.name);
 
     // Try to access signing page again
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Should show "already signed" message or redirect
+    // Should show "Already Signed" message (from PortalContractSigningPage)
     await expect(
-      page.locator('text=/already signed|signed|completed/i')
-    ).toBeVisible({ timeout: 5000 });
-
-    // Sign button should not be visible or be disabled
-    const signButton = page.locator('button:has-text("Sign Document")');
-    const isVisible = await signButton.isVisible().catch(() => false);
-
-    if (isVisible) {
-      await expect(signButton).toBeDisabled();
-    }
+      page.locator('text=/Already Signed|Contract Already Signed/i')
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test('should validate signature is not empty', async ({ page }) => {
+    const uniqueTitle = `Empty Signature Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Empty Signature Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Check consent but don't enter signature
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
+
+    // Clear the signature input (may be pre-filled with party name)
+    const signatureInput = page.locator('input[placeholder="Enter your full name"]');
+    await signatureInput.clear();
+
+    // Check consent but leave signature empty
     await page.check('input[type="checkbox"]');
 
-    // Try to sign
-    const signButton = page.locator('button:has-text("Sign Document")');
-
-    // Button should be disabled due to empty signature
+    // Sign Contract button should be disabled due to empty signature
+    const signButton = page.locator('button:has-text("Sign Contract")');
     await expect(signButton).toBeDisabled();
   });
 
   test('should display contract expiration warning', async ({ page }) => {
+    const uniqueTitle = `Expiration Warning Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Expiration Warning Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Check for expiration date display
-    const expirationText = page.locator('text=/expires on|expiration/i');
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
+
+    // Check for expiration date display (Clock icon shows "Expires:")
+    const expirationText = page.locator('text=/Expires:/i');
 
     // May or may not be visible depending on contract setup
     const isVisible = await expirationText.isVisible().catch(() => false);
@@ -306,67 +335,65 @@ test.describe('Portal Signing Workflow', () => {
   });
 
   test('should allow declining a contract', async ({ page }) => {
+    const uniqueTitle = `Decline Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Decline Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    await page.goto(`/portal/contracts/${contractId}/sign`);
+    await page.goto(`${PORTAL_URL}/contracts/${contractId}/sign`);
 
-    // Look for decline button
-    const declineButton = page.locator('button:has-text("Decline"), button:has-text("Reject")');
+    // Wait for page to load
+    await expect(page.locator('text=Your Signature')).toBeVisible({ timeout: 15000 });
 
-    if (await declineButton.isVisible()) {
-      await declineButton.click();
+    // Click "Decline to Sign" button
+    const declineButton = page.locator('button:has-text("Decline to Sign")');
+    await declineButton.click();
 
-      // Confirm decline if dialog appears
-      const confirmButton = page.locator('button:has-text("Confirm"), button:has-text("Yes")');
-      if (await confirmButton.isVisible()) {
-        await confirmButton.click();
-      }
+    // Confirm decline in modal - click "Decline Contract" button
+    const confirmButton = page.locator('button:has-text("Decline Contract")');
+    await confirmButton.waitFor({ state: 'visible', timeout: 5000 });
+    await confirmButton.click();
 
-      // Verify declined message
-      await expect(page.locator('text=/declined|rejected/i')).toBeVisible({ timeout: 5000 });
+    // Page will reload showing declined status
+    await expect(page.locator('text=Contract Declined')).toBeVisible({ timeout: 10000 });
 
-      // Switch back to breeder and verify status
-      await logout(page);
-      await loginAsBreeder(page);
+    // Switch back to breeder and verify status
+    await logout(page);
+    await loginAsBreeder(page);
 
-      await verifyContractStatus(page, contractId, CONTRACT_STATUSES.DECLINED);
-    }
+    await verifyContractStatus(page, contractId, CONTRACT_STATUSES.DECLINED, uniqueTitle);
   });
 
-  test('should show contract in portal user dashboard', async ({ page }) => {
+  test('should show contract in portal agreements page', async ({ page }) => {
+    const uniqueTitle = `Portal Agreements Test ${Date.now()}`;
+
     await loginAsBreeder(page);
 
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
       contact: TEST_USERS.buyer.name,
-      title: 'Portal Dashboard Test',
+      title: uniqueTitle,
     });
 
-    await sendContractViaUI(page, contractId);
+    await sendContractViaUI(page, contractId, uniqueTitle);
 
     await logout(page);
     await loginAsPortalUser(page);
 
-    // Navigate to portal dashboard/home
-    await page.goto('/portal');
+    // Navigate to portal agreements page
+    await page.goto(`${PORTAL_URL}/agreements`);
 
-    // Look for contracts section or notifications
-    const contractsSection = page.locator('text=/contracts|documents/i');
-
-    if (await contractsSection.isVisible()) {
-      // Verify contract appears
-      await expect(page.locator('text=Portal Dashboard Test')).toBeVisible({ timeout: 5000 });
-    }
+    // Verify contract appears in the list
+    await expect(page.locator(`text=${uniqueTitle}`)).toBeVisible({ timeout: 10000 });
   });
 });

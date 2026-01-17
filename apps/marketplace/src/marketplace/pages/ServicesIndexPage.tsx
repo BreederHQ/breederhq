@@ -505,9 +505,9 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
   const imageUrl = service.images?.[0] ?? null;
 
   return (
-    <div className="group rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
-      {/* Image area - 4:3 aspect ratio to match other cards */}
-      <div className="relative aspect-[4/3] overflow-hidden flex-shrink-0">
+    <div className="group rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
+      {/* Image area - video aspect ratio to match other cards */}
+      <div className="relative aspect-video overflow-hidden flex-shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -526,7 +526,7 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
       </div>
 
       {/* Content area */}
-      <div className="p-4 flex-1 flex flex-col">
+      <div className="p-4">
         {/* Service title */}
         <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-2">
           {service.title}
@@ -550,7 +550,7 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
         </div>
 
         {/* Price and CTA */}
-        <div className="pt-3 border-t border-border-subtle flex items-center justify-between mt-auto">
+        <div className="flex items-center justify-between text-sm">
           <span className="text-[15px] text-[hsl(var(--brand-orange))] font-semibold">
             {priceText}
           </span>
@@ -768,7 +768,7 @@ function ServiceListRow({ service }: { service: PublicServiceListing }) {
 function SkeletonCard() {
   return (
     <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
-      <div className="aspect-[4/3] bg-border-default" />
+      <div className="aspect-video bg-border-default" />
       <div className="p-4 space-y-3">
         <div className="h-5 bg-border-default rounded w-3/4" />
         <div className="h-4 bg-border-default rounded w-full" />
@@ -1387,7 +1387,7 @@ export function ServicesIndexPage() {
             {/* Results Grid/List */}
             {loading ? (
               <div className={displayMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                 : "flex flex-col gap-3"
               }>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -1418,7 +1418,7 @@ export function ServicesIndexPage() {
                 )}
 
                 <div className={displayMode === "grid"
-                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                   : "flex flex-col gap-3"
                 }>
                   {paginatedServices.map((service) => (

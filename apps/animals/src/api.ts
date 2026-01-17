@@ -719,6 +719,46 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
           json: { updates },
         });
       },
+      // History endpoints for traits that support multiple entries
+      history: {
+        async list(animalId: string | number, traitKey: string) {
+          return reqWithExtra<any>(
+            `/animals/${encodeURIComponent(String(animalId))}/traits/${encodeURIComponent(traitKey)}/history`
+          );
+        },
+        async add(animalId: string | number, traitKey: string, entry: {
+          recordedAt: string;
+          data: any;
+          performedBy?: string;
+          location?: string;
+          notes?: string;
+          documentId?: number;
+        }) {
+          return reqWithExtra<any>(
+            `/animals/${encodeURIComponent(String(animalId))}/traits/${encodeURIComponent(traitKey)}/history`,
+            { method: "POST", json: entry }
+          );
+        },
+        async update(animalId: string | number, traitKey: string, entryId: number, entry: {
+          recordedAt?: string;
+          data?: any;
+          performedBy?: string;
+          location?: string;
+          notes?: string;
+          documentId?: number | null;
+        }) {
+          return reqWithExtra<any>(
+            `/animals/${encodeURIComponent(String(animalId))}/traits/${encodeURIComponent(traitKey)}/history/${entryId}`,
+            { method: "PUT", json: entry }
+          );
+        },
+        async delete(animalId: string | number, traitKey: string, entryId: number) {
+          return reqWithExtra<any>(
+            `/animals/${encodeURIComponent(String(animalId))}/traits/${encodeURIComponent(traitKey)}/history/${entryId}`,
+            { method: "DELETE" }
+          );
+        },
+      },
     },
 
     /* documents parity */

@@ -10,12 +10,14 @@ import {
   getBreederOffspringGroups,
   getBreederServices,
   getBreederInquiries,
-  getPrograms,
   getPublicOffspringGroups,
+  apiGet,
 } from "../../api/client";
-import { useIsSeller, useTenantId } from "../../gate/MarketplaceGate";
+import { useIsSeller, useTenantId, useGateStatus } from "../../gate/MarketplaceGate";
 import { updateSEO, addStructuredData, getOrganizationStructuredData } from "../../utils/seo";
 import logo from "@bhq/ui/assets/logo.png";
+import { StorefrontDrawer } from "../../breeder/components/StorefrontDrawer";
+import { MarketplaceManagePortal } from "../../breeder/pages/MarketplaceManagePortal";
 
 // ============================================================================
 // ICONS
@@ -317,11 +319,11 @@ function BrowseSection() {
 // ============================================================================
 
 interface FeaturedBreeder {
-  name: string;
-  slug: string;
-  species: string[];
+  businessName: string;
+  tenantSlug: string;
+  breeds: Array<{ name: string; species: string | null }>;
   location: string | null;
-  photoUrl: string | null;
+  logoAssetId: string | null;
 }
 
 interface FeaturedListing {
@@ -349,12 +351,12 @@ function FeaturedSection() {
     async function fetchData() {
       try {
         const [breedersRes, listingsRes] = await Promise.all([
-          getPrograms({ limit: 4 }),
+          apiGet<{ items: FeaturedBreeder[] }>("/api/v1/marketplace/breeders?limit=4"),
           getPublicOffspringGroups({ limit: 4 }),
         ]);
         if (dead) return;
 
-        setBreeders(breedersRes.items || []);
+        setBreeders(breedersRes.data?.items ?? []);
         setListings(listingsRes.items || []);
       } catch (err) {
         console.error("Failed to fetch featured data:", err);
@@ -401,33 +403,36 @@ function FeaturedSection() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {breeders.map((breeder) => (
-                  <Link
-                    key={breeder.slug}
-                    to={`/programs/${breeder.slug}`}
-                    className="bg-white rounded-xl p-4 border border-gray-200 hover:border-[hsl(var(--brand-orange))] hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 rounded-full bg-[hsl(var(--brand-blue))]/10 flex items-center justify-center overflow-hidden">
-                        {breeder.photoUrl ? (
-                          <img src={breeder.photoUrl} alt={breeder.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-lg font-bold text-[hsl(var(--brand-blue))]">{breeder.name[0]}</span>
-                        )}
+                {breeders.map((breeder, index) => {
+                  const uniqueSpecies = [...new Set(breeder.breeds.map(b => b.species).filter(Boolean))];
+                  return (
+                    <Link
+                      key={`${breeder.tenantSlug}-${index}`}
+                      to={`/breeders/${breeder.tenantSlug}`}
+                      className="bg-white rounded-xl p-4 border border-gray-200 hover:border-[hsl(var(--brand-orange))] hover:shadow-md transition-all group"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 rounded-full bg-[hsl(var(--brand-blue))]/10 flex items-center justify-center overflow-hidden">
+                          {breeder.logoAssetId ? (
+                            <img src={`/api/assets/${breeder.logoAssetId}`} alt={breeder.businessName} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-lg font-bold text-[hsl(var(--brand-blue))]">{breeder.businessName[0]}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 group-hover:text-[hsl(var(--brand-orange))] truncate">{breeder.businessName}</h3>
+                          <p className="text-sm text-gray-500 truncate">
+                            {uniqueSpecies.join(", ") || "Breeder"} {breeder.location && `· ${breeder.location}`}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 group-hover:text-[hsl(var(--brand-orange))] truncate">{breeder.name}</h3>
-                        <p className="text-sm text-gray-500 truncate">
-                          {breeder.species?.join(", ") || "Breeder"} {breeder.location && `· ${breeder.location}`}
-                        </p>
+                      <div className="flex items-center gap-1 text-xs text-green-600">
+                        <ShieldCheckIcon className="w-3 h-3" />
+                        <span>Verified</span>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-green-600">
-                      <ShieldCheckIcon className="w-3 h-3" />
-                      <span>Verified</span>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -655,6 +660,7 @@ function SellerHomePage() {
   const tenantId = useTenantId();
   const [stats, setStats] = React.useState<SellerStats | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [storefrontDrawerOpen, setStorefrontDrawerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!tenantId) return;
@@ -740,22 +746,23 @@ function SellerHomePage() {
           </div>
         </div>
 
-        {/* Primary Action */}
-        <Link
-          to="/manage/breeder"
+        {/* Primary Action - Opens Storefront Settings Drawer */}
+        <button
+          type="button"
+          onClick={() => setStorefrontDrawerOpen(true)}
           className="block w-full bg-gradient-to-br from-emerald-900/20 to-portal-card border-l-4 border-l-emerald-500 rounded-xl hover:border-l-emerald-400 transition-all group shadow-sm hover:shadow-md"
         >
           <div className="p-6 flex items-center gap-6">
             <div className="p-4 bg-emerald-500/20 rounded-xl group-hover:bg-emerald-500/30 transition-colors">
               <StorefrontIcon className="w-10 h-10 text-emerald-400" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 text-left">
               <h3 className="text-xl font-bold text-white mb-1">Breeding Program Storefront</h3>
               <p className="text-sm text-text-muted">Set up your business profile, location, and breeding programs</p>
             </div>
             <ChevronRightIcon className="w-5 h-5 text-emerald-400 group-hover:translate-x-1 transition-transform" />
           </div>
-        </Link>
+        </button>
 
         {/* Management Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -839,6 +846,11 @@ function SellerHomePage() {
           </Link>
         </div>
       </div>
+
+      {/* Storefront Settings Drawer */}
+      <StorefrontDrawer open={storefrontDrawerOpen} onClose={() => setStorefrontDrawerOpen(false)}>
+        <MarketplaceManagePortal embedded />
+      </StorefrontDrawer>
     </div>
   );
 }
@@ -1004,6 +1016,7 @@ function SEOContentSection() {
 // ============================================================================
 
 export function HomePage() {
+  const gateStatus = useGateStatus();
   const isSeller = useIsSeller();
   const [renderError, setRenderError] = React.useState<Error | null>(null);
 
@@ -1328,6 +1341,18 @@ export function HomePage() {
           >
             Reload Page
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Wait for gate context to determine user type (prevents flash of wrong page)
+  if (gateStatus?.status === "loading") {
+    return (
+      <div className="min-h-screen bg-portal-bg flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-text-muted">Loading marketplace...</p>
         </div>
       </div>
     );

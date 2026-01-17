@@ -168,7 +168,7 @@ export function AnimalProgramsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/marketplace"
+            to="/"
             className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />

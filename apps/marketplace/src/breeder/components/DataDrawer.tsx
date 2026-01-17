@@ -30,7 +30,6 @@ type SectionKey =
   | "documents"
   | "genetics"
   | "health"
-  | "identity"
   | "lineage"
   | "media"
   | "registry";
@@ -48,7 +47,6 @@ const SECTIONS: SectionInfo[] = [
   { key: "documents", label: "Documents", icon: "📄", description: "Certificates, health records, contracts" },
   { key: "genetics", label: "Genetics", icon: "🧬", description: "DNA test results and genetic data" },
   { key: "health", label: "Health", icon: "❤️", description: "Health testing and clearances" },
-  { key: "identity", label: "Identity", icon: "🪪", description: "Name, photo, birth date" },
   { key: "lineage", label: "Lineage", icon: "🌳", description: "Sire and dam information" },
   { key: "media", label: "Media", icon: "📸", description: "Photos and videos" },
   { key: "registry", label: "Registry", icon: "📋", description: "Registration numbers" },
@@ -58,16 +56,45 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
   const [config, setConfig] = React.useState<DataDrawerConfig>(initialConfig || {});
   const [activeSection, setActiveSection] = React.useState<SectionKey | null>(null);
 
-  // Reset config when animalData changes
+  // Track the last config we sent to parent (for embedded mode auto-save)
+  const lastSavedConfigRef = React.useRef<string>(JSON.stringify(initialConfig || {}));
+
+  // Track whether we're in the middle of a save cycle to prevent re-initialization
+  const isSavingRef = React.useRef(false);
+
+  // Sync local state when initialConfig prop changes from parent
+  // This handles: drawer open/close, external data refresh, etc.
   React.useEffect(() => {
-    if (initialConfig) {
-      setConfig(initialConfig);
+    const newConfigStr = JSON.stringify(initialConfig || {});
+    const currentConfigStr = JSON.stringify(config);
+
+    // Skip if we're in a save cycle (our own changes propagating back)
+    if (isSavingRef.current) {
+      // Check if the incoming config matches what we saved
+      if (newConfigStr === lastSavedConfigRef.current) {
+        isSavingRef.current = false;
+      }
+      return;
     }
-  }, [initialConfig]);
+
+    // Reinitialize if parent's config is different from our local state
+    if (newConfigStr !== currentConfigStr) {
+      setConfig(initialConfig || {});
+      lastSavedConfigRef.current = newConfigStr;
+    }
+  }, [initialConfig]); // Intentionally excluding config to avoid loops
 
   // In embedded mode, automatically call onSave when config changes
   React.useEffect(() => {
-    if (embedded && config) {
+    if (!embedded) return;
+
+    const currentConfigStr = JSON.stringify(config);
+
+    // Only save if the current config is different from what we last saved
+    if (currentConfigStr !== lastSavedConfigRef.current) {
+      // Mark that we're saving to prevent the sync effect from overwriting
+      isSavingRef.current = true;
+      lastSavedConfigRef.current = currentConfigStr;
       onSave(config);
     }
   }, [config, embedded, onSave]);
@@ -88,14 +115,54 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
         return animalData.documents.enabled;
       case "breeding":
         return animalData.breeding.enabled;
-      case "identity":
-        return true; // Always available
       case "lineage":
-        return true; // Always available if parents exist
+        // Lineage doesn't have a privacy toggle - it's available if parents exist
+        return !!(animalData.lineage.sire || animalData.lineage.dam);
       case "registry":
-        return animalData.registrations.length > 0;
+        // Registry requires privacy to be enabled (data check is separate for "empty" state)
+        return animalData.privacySettings.showRegistryFull;
       default:
         return false;
+    }
+  };
+
+  // Helper to get the reason why a section is disabled
+  const getDisabledReason = (key: SectionKey): string | null => {
+    if (!animalData) return null;
+
+    switch (key) {
+      case "registry":
+        if (!animalData.privacySettings.showRegistryFull) {
+          return "Enable in Privacy tab";
+        }
+        // If privacy is enabled but no data, section shows as "empty" not "disabled"
+        return null;
+      case "lineage":
+        // Lineage has no privacy toggle, so if disabled it means no parents
+        if (!animalData.lineage.sire && !animalData.lineage.dam) {
+          return "No parents linked";
+        }
+        return null;
+      case "health":
+        if (!animalData.health.enabled) return "Enable in Privacy tab";
+        return null;
+      case "genetics":
+        if (!animalData.genetics.enabled) return "Enable in Privacy tab";
+        return null;
+      case "media":
+        if (!animalData.media.enabled) return "Enable in Privacy tab";
+        return null;
+      case "documents":
+        if (!animalData.documents.enabled) return "Enable in Privacy tab";
+        return null;
+      case "breeding":
+        if (!animalData.breeding.enabled) return "Enable in Privacy tab";
+        return null;
+      case "achievements":
+        if (!animalData.titles.enabled && !animalData.competitions.enabled) return "Enable in Privacy tab";
+        return null;
+      default:
+        return "Enable in Privacy tab";
     }
   };
 
@@ -115,8 +182,6 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
         return animalData.documents.items.length;
       case "breeding":
         return 1; // Offspring count
-      case "identity":
-        return 2 + (animalData.privacySettings.showFullDob ? 1 : 0); // Name, photo, DOB (if enabled)
       case "lineage":
         return (animalData.lineage.sire ? 1 : 0) + (animalData.lineage.dam ? 1 : 0);
       case "registry":
@@ -254,17 +319,6 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
           },
         }));
         break;
-      case "identity":
-        setConfig((prev) => ({
-          ...prev,
-          identity: {
-            enabled: true,
-            showName: true,
-            showPhoto: true,
-            showDob: animalData.privacySettings.showFullDob,
-          },
-        }));
-        break;
     }
   };
 
@@ -322,9 +376,8 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
                   const isEmpty = enabled && count === 0;
 
                   return (
-                    <button
+                    <div
                       key={section.key}
-                      type="button"
                       className={[
                         "data-drawer__section-item",
                         activeSection === section.key ? "active" : "",
@@ -333,7 +386,7 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
                         isEmpty ? "empty" : "",
                       ].join(" ")}
                       onClick={() => enabled && setActiveSection(section.key)}
-                      disabled={!enabled}
+                      style={{ cursor: enabled ? "pointer" : "not-allowed" }}
                     >
                       <button
                         type="button"
@@ -363,11 +416,14 @@ export function DataDrawer({ open, onClose, animalData, initialConfig, onSave, e
                         </div>
                         {!enabled && (
                           <div className="data-drawer__section-locked">
-                            <span className="text-xs text-muted">🔒 Enable in Privacy tab</span>
+                            <span className="text-xs text-muted">
+                              {getDisabledReason(section.key)?.includes("Privacy") ? "🔒" : "📭"}{" "}
+                              {getDisabledReason(section.key)}
+                            </span>
                           </div>
                         )}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -541,7 +597,6 @@ function SectionDetail({ sectionKey, animalData, config, setConfig, onSelectAll,
             {sectionKey === "registry" && <RegistrySection animalData={animalData} config={config} setConfig={setConfig} />}
             {sectionKey === "lineage" && <LineageSection animalData={animalData} config={config} setConfig={setConfig} />}
             {sectionKey === "breeding" && <BreedingSection animalData={animalData} config={config} setConfig={setConfig} />}
-            {sectionKey === "identity" && <IdentitySection animalData={animalData} config={config} setConfig={setConfig} />}
           </>
         )}
       </div>
@@ -553,6 +608,7 @@ function SectionDetail({ sectionKey, animalData, config, setConfig, onSelectAll,
 
 function HealthSection({ animalData, config, setConfig }: Omit<SectionDetailProps, "sectionKey" | "onSelectAll" | "onDeselectAll">) {
   const selectedIds = config.health?.traitIds || [];
+  const traitHistoryEnabled = config.health?.traitHistoryEnabled || {};
 
   const toggleTrait = (id: number) => {
     setConfig((prev) => {
@@ -560,7 +616,24 @@ function HealthSection({ animalData, config, setConfig }: Omit<SectionDetailProp
       const updated = current.includes(id) ? current.filter((i) => i !== id) : [...current, id];
       return {
         ...prev,
-        health: { enabled: true, traitIds: updated },
+        health: { ...prev.health, enabled: true, traitIds: updated },
+      };
+    });
+  };
+
+  const toggleTraitHistory = (traitId: number) => {
+    setConfig((prev) => {
+      const currentHistory = prev.health?.traitHistoryEnabled || {};
+      return {
+        ...prev,
+        health: {
+          ...prev.health,
+          enabled: true,
+          traitHistoryEnabled: {
+            ...currentHistory,
+            [traitId]: !currentHistory[traitId],
+          },
+        },
       };
     });
   };
@@ -578,17 +651,43 @@ function HealthSection({ animalData, config, setConfig }: Omit<SectionDetailProp
 
   return (
     <div className="section-items">
-      {animalData.health.eligibleTraits.map((trait) => (
-        <label key={trait.id} className="section-item">
-          <input type="checkbox" checked={selectedIds.includes(trait.id)} onChange={() => toggleTrait(trait.id)} />
-          <div className="section-item__info">
-            <div className="section-item__label">{trait.displayName}</div>
-            <div className="section-item__value text-sm text-muted">
-              {String(trait.value)} {trait.verified && "✓"}
-            </div>
+      {animalData.health.eligibleTraits.map((trait) => {
+        const isSelected = selectedIds.includes(trait.id);
+        const hasHistory = trait.supportsHistory && (trait.historyCount ?? 0) > 0;
+        const showHistory = traitHistoryEnabled[trait.id] ?? false;
+
+        return (
+          <div key={trait.id} className="section-item-wrapper">
+            <label className="section-item">
+              <input type="checkbox" checked={isSelected} onChange={() => toggleTrait(trait.id)} />
+              <div className="section-item__info">
+                <div className="section-item__label">{trait.displayName}</div>
+                <div className="section-item__value text-sm text-muted">
+                  {String(trait.value)} {trait.verified && "✓"}
+                </div>
+              </div>
+            </label>
+            {/* Show history toggle for traits that support it and have history */}
+            {isSelected && hasHistory && (
+              <div className="section-item__history-toggle">
+                <label className="history-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showHistory}
+                    onChange={() => toggleTraitHistory(trait.id)}
+                  />
+                  <span className="history-toggle__label">
+                    Show all {trait.historyCount} records
+                  </span>
+                  <span className="history-toggle__hint text-xs text-muted">
+                    {showHistory ? "(Full history will be displayed)" : "(Only latest shown)"}
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
-        </label>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -927,44 +1026,3 @@ function BreedingSection({ animalData, config, setConfig }: Omit<SectionDetailPr
   );
 }
 
-function IdentitySection({ animalData, config, setConfig }: Omit<SectionDetailProps, "sectionKey" | "onSelectAll" | "onDeselectAll">) {
-  const identityConfig = config.identity || {};
-
-  const toggleField = (field: keyof NonNullable<DataDrawerConfig["identity"]>) => {
-    setConfig((prev) => ({
-      ...prev,
-      identity: {
-        ...prev.identity,
-        enabled: true,
-        [field]: !identityConfig[field],
-      },
-    }));
-  };
-
-  return (
-    <div className="section-items">
-      <label className="section-item">
-        <input type="checkbox" checked={identityConfig.showName ?? true} onChange={() => toggleField("showName")} />
-        <div className="section-item__info">
-          <div className="section-item__label">Name</div>
-          <div className="section-item__value text-sm text-muted">{animalData.animal.name}</div>
-        </div>
-      </label>
-      <label className="section-item">
-        <input type="checkbox" checked={identityConfig.showPhoto ?? true} onChange={() => toggleField("showPhoto")} />
-        <div className="section-item__info">
-          <div className="section-item__label">Photo</div>
-        </div>
-      </label>
-      {animalData.privacySettings.showFullDob && (
-        <label className="section-item">
-          <input type="checkbox" checked={identityConfig.showDob ?? false} onChange={() => toggleField("showDob")} />
-          <div className="section-item__info">
-            <div className="section-item__label">Birth Date</div>
-            <div className="section-item__value text-sm text-muted">{animalData.animal.birthDate}</div>
-          </div>
-        </label>
-      )}
-    </div>
-  );
-}

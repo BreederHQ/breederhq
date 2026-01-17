@@ -26,7 +26,7 @@ test.describe('Documents Tab Integration', () => {
     // Create contracts with different statuses
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Draft Status Test',
     });
 
@@ -49,7 +49,7 @@ test.describe('Documents Tab Integration', () => {
     // Create and send contract
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Sent Status Test',
     });
 
@@ -73,7 +73,7 @@ test.describe('Documents Tab Integration', () => {
   test('should show correct icons for each status', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Icon Test',
     });
 
@@ -89,7 +89,7 @@ test.describe('Documents Tab Integration', () => {
   test('should display template name below title', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Template Display Test',
     });
 
@@ -107,7 +107,7 @@ test.describe('Documents Tab Integration', () => {
   test('should show hover effects on contract cards', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Hover Effect Test',
     });
 
@@ -140,7 +140,7 @@ test.describe('Documents Tab Integration', () => {
   test('should show quick actions on hover', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Quick Actions Test',
     });
 
@@ -214,13 +214,13 @@ test.describe('Documents Tab Integration', () => {
     // Create multiple contracts
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Count Test 1',
     });
 
     await createContractViaUI(page, {
       template: 'Stud Service Contract',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Count Test 2',
     });
 
@@ -235,7 +235,7 @@ test.describe('Documents Tab Integration', () => {
   test('should format dates correctly', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Date Format Test',
     });
 
@@ -253,7 +253,7 @@ test.describe('Documents Tab Integration', () => {
     // Create and send contract (which sets expiration)
     const contractId = await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Expiration Test',
     });
 
@@ -273,7 +273,7 @@ test.describe('Documents Tab Integration', () => {
 
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Signed Expiration Test',
     });
 
@@ -302,7 +302,7 @@ test.describe('Documents Tab Integration', () => {
   test('should truncate long contract titles', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'This is an extremely long contract title that should be truncated to fit within the card layout without breaking the design',
     });
 
@@ -321,7 +321,7 @@ test.describe('Documents Tab Integration', () => {
   test('should maintain consistent card styling', async ({ page }) => {
     await createContractViaUI(page, {
       template: 'Animal Sales Agreement',
-      contact: 'John Doe',
+      contact: 'Albus Dumbledore',
       title: 'Styling Test',
     });
 

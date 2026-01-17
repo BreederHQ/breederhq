@@ -408,6 +408,11 @@ function CreateContractModal({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Manual entry mode (for entering buyer details directly instead of searching)
+  const [useManualEntry, setUseManualEntry] = React.useState(false);
+  const [buyerName, setBuyerName] = React.useState("");
+  const [buyerEmail, setBuyerEmail] = React.useState("");
+
   // Search parties with debounce
   React.useEffect(() => {
     if (!partySearchQuery) {

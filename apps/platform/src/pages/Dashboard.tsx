@@ -17,6 +17,8 @@ import ActivityFeed from "../components/ActivityFeed";
 import ContactFollowUps from "../components/ContactFollowUps";
 import { api } from "../api";
 import logoUrl from "@bhq/ui/assets/logo.png";
+import { FoalingDashboardWidget, type FoalingPlanItem } from "../../../marketplace/src/breeder/components/FoalingDashboardWidget";
+import { RecordFoalingModal } from "../../../breeding/src/components/RecordFoalingModal";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOCAL STYLES - Warm animations and vibes
@@ -680,6 +682,46 @@ export default function Dashboard() {
   const hasKpis = Array.isArray(data.kpis) && data.kpis.length > 0;
   const hasFeed = Array.isArray(data.feed) && data.feed.length > 0;
 
+  // Foaling Dashboard - only show for breeders with HORSE species
+  const hasHorseBreeds = data.plans.some((p) => p.species?.toUpperCase() === "HORSE");
+
+  // Convert plans to foaling widget format
+  const foalingPlans: FoalingPlanItem[] = React.useMemo(() => {
+    return data.plans.map((p) => ({
+      id: typeof p.id === "string" ? parseInt(p.id, 10) : p.id,
+      name: p.name || "Untitled Plan",
+      damName: null, // PlanRow doesn't have dam name directly
+      sireName: null, // PlanRow doesn't have sire name directly
+      expectedBirthDate: p.expectedDue ?? p.lockedDueDate ?? null,
+      birthDateActual: null, // PlanRow doesn't have this field
+      breedDateActual: p.lockedCycleStart ?? null,
+      species: p.species || "",
+    }));
+  }, [data.plans]);
+
+  // State for recording foaling modal
+  const [foalingPlan, setFoalingPlan] = React.useState<FoalingPlanItem | null>(null);
+
+  const handleFoalingSubmit = async (payload: {
+    actualBirthDate: string;
+    foals: Array<{ sex: "MALE" | "FEMALE"; color?: string; name?: string }>;
+  }) => {
+    if (!foalingPlan) return;
+    try {
+      const res = await fetch(`/api/v1/breeding/plans/${foalingPlan.id}/record-foaling`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to record foaling");
+      setFoalingPlan(null);
+      data.refresh();
+    } catch (err) {
+      console.error("Error recording foaling:", err);
+    }
+  };
+
   return (
     <div
       style={{
@@ -803,6 +845,18 @@ export default function Dashboard() {
           </SectionCard>
         </div>
 
+        {/* Foaling Dashboard - Only shown for breeders with HORSE species */}
+        {hasHorseBreeds && (
+          <div style={{ marginBottom: "2rem" }}>
+            <FoalingDashboardWidget
+              plans={foalingPlans}
+              loading={data.loading}
+              onRecordFoaling={(plan) => setFoalingPlan(plan)}
+              calendarLink="/breeding"
+            />
+          </div>
+        )}
+
         {/* Three Column Detail Section */}
         <div
           style={{
@@ -855,6 +909,18 @@ export default function Dashboard() {
           </SectionCard>
         </div>
       </div>
+
+      {/* Record Foaling Modal */}
+      <RecordFoalingModal
+        open={foalingPlan !== null}
+        planId={foalingPlan?.id ?? 0}
+        damName={foalingPlan?.damName || foalingPlan?.name}
+        sireName={foalingPlan?.sireName}
+        expectedBirthDate={foalingPlan?.expectedBirthDate}
+        breedDateActual={foalingPlan?.breedDateActual}
+        onClose={() => setFoalingPlan(null)}
+        onSubmit={handleFoalingSubmit}
+      />
     </div>
   );
 }

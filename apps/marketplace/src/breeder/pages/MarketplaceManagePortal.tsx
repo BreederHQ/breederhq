@@ -162,14 +162,8 @@ function toUiSpecies(api: string): BreedsSpeciesUI {
 // CREDENTIAL OPTIONS (from SettingsPanel)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const REGISTRATION_OPTIONS = [
-  "AKC Breeder of Merit",
-  "AKC Bred with H.E.A.R.T.",
-  "GANA Member",
-  "GRCA Member",
-  "UKC Registered",
-  "CKC Registered",
-];
+// Registry options are now fetched dynamically from the database
+// See fetchRegistries() in CredentialsSection component
 
 const HEALTH_PRACTICE_OPTIONS = [
   "OFA Hip/Elbow",
@@ -202,9 +196,13 @@ const CARE_PRACTICE_OPTIONS = [
 // MAIN PORTAL COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-type ActiveSection = "business" | "breeds" | "credentials" | "policies" | "programs";
+type ActiveSection = "business" | "breeds" | "credentials" | "policies";
 
-export function MarketplaceManagePortal() {
+export interface MarketplaceManagePortalProps {
+  embedded?: boolean; // If true, renders without page header (for use in drawer)
+}
+
+export function MarketplaceManagePortal({ embedded = false }: MarketplaceManagePortalProps = {}) {
   const tenantId = getTenantId();
   const [profileData, setProfileData] = React.useState<MarketplaceProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -217,6 +215,10 @@ export function MarketplaceManagePortal() {
   const [form, setForm] = React.useState<MarketplaceProfileDraft>({});
   const [originalForm, setOriginalForm] = React.useState<MarketplaceProfileDraft>({});
   const [hasChanges, setHasChanges] = React.useState(false);
+
+  // Foaling dashboard state
+  const [breedingPlans, setBreedingPlans] = React.useState<BreederBreedingPlanItem[]>([]);
+  const [loadingPlans, setLoadingPlans] = React.useState(false);
 
   // Fetch profile data on mount
   React.useEffect(() => {
@@ -348,6 +350,39 @@ export function MarketplaceManagePortal() {
     return () => { dead = true; };
   }, [tenantId]);
 
+  // Fetch breeding plans for foaling dashboard (only for HORSE species)
+  React.useEffect(() => {
+    if (!tenantId || embedded) return; // Skip if embedded in drawer
+
+    let cancelled = false;
+    setLoadingPlans(true);
+
+    getBreederBreedingPlans(tenantId, { limit: 100 })
+      .then((res) => {
+        if (cancelled) return;
+        // Only include HORSE species plans
+        const horsePlans = (res.items || []).filter(
+          (p) => p.species?.toUpperCase() === "HORSE"
+        );
+        setBreedingPlans(horsePlans);
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) setLoadingPlans(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [tenantId, embedded]);
+
+  // Check if breeder has any horse breeds (for showing foaling widget)
+  const hasHorseBreeds = React.useMemo(() => {
+    const breeds = form.breeds || [];
+    return breeds.some((b: any) =>
+      b.species?.toUpperCase() === "HORSE" ||
+      b.species?.toLowerCase() === "horse"
+    );
+  }, [form.breeds]);
+
   // Track changes - compare against original to detect real changes
   const updateForm = (updates: Partial<MarketplaceProfileDraft>) => {
     setForm((prev) => {
@@ -464,15 +499,17 @@ export function MarketplaceManagePortal() {
   const isPublished = !!profileData?.publishedAt;
 
   return (
-    <div className="min-h-screen bg-portal-surface">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Marketplace Storefront</h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Configure your breeder profile for the marketplace
-          </p>
-        </div>
+    <div className={embedded ? "" : "min-h-screen bg-portal-surface"}>
+      <div className={embedded ? "p-6" : "max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8"}>
+        {/* Header - Hide when embedded in drawer */}
+        {!embedded && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-white">Marketplace Storefront</h1>
+            <p className="text-sm text-text-secondary mt-1">
+              Configure your breeder profile for the marketplace
+            </p>
+          </div>
+        )}
 
         {/* Status Banner */}
         <div className={`rounded-lg p-4 border mb-6 ${
@@ -583,13 +620,12 @@ export function MarketplaceManagePortal() {
                     </p>
                     <p className="text-xs text-red-400/80 mt-0.5">
                       Your storefront won't be visible to shoppers without at least one breeding program.
-                      <button
-                        type="button"
-                        onClick={() => setActiveSection("programs")}
+                      <Link
+                        to="/manage/breeding-programs"
                         className="ml-1 underline hover:text-red-300 transition-colors"
                       >
                         Add a breeding program now →
-                      </button>
+                      </Link>
                     </p>
                   </div>
                 </div>
@@ -598,30 +634,32 @@ export function MarketplaceManagePortal() {
           </div>
         )}
 
-        {/* Manage Storefront Banner */}
-        <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/20 rounded-xl p-6 mb-8">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-accent/20 rounded-xl">
-              <Store className="w-6 h-6 text-accent" />
+        {/* Manage Storefront Banner - Only show when NOT embedded in drawer */}
+        {!embedded && (
+          <>
+            <div className="bg-gradient-to-r from-accent/10 via-accent/5 to-transparent border border-accent/20 rounded-xl p-6 mb-8">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-accent/20 rounded-xl">
+                  <Store className="w-6 h-6 text-accent" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-2">Manage Your Storefront</h3>
+                  <p className="text-sm text-text-secondary mb-4">
+                    Configure your business profile, breeds, credentials, policies, and breeding programs
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setActiveSection("business")}
+                  >
+                    Edit Storefront Settings
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-white mb-2">Manage Your Storefront</h3>
-              <p className="text-sm text-text-secondary mb-4">
-                Configure your business profile, breeds, credentials, policies, and breeding programs
-              </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setActiveSection("business")}
-              >
-                Edit Storefront Settings
-              </Button>
-            </div>
-          </div>
-        </div>
 
-        {/* 4 Hero Cards - Main Navigation */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* 4 Hero Cards - Main Navigation */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Direct Listings Card */}
           <Link
             to="/manage/individual-animals"
@@ -721,10 +759,13 @@ export function MarketplaceManagePortal() {
               </div>
             </div>
           </Link>
-        </div>
+            </div>
 
-        {/* Expandable Storefront Settings Sections (Shown when "Edit Storefront Settings" is clicked) */}
-        {activeSection !== "business" && activeSection !== "breeds" && activeSection !== "credentials" && activeSection !== "policies" && activeSection !== "programs" ? null : (
+          </>
+        )}
+
+        {/* Expandable Storefront Settings Sections (Shown when "Edit Storefront Settings" is clicked or when embedded in drawer) */}
+        {(embedded || (activeSection === "business" || activeSection === "breeds" || activeSection === "credentials" || activeSection === "policies")) && (
           <>
             {/* Section Tabs */}
             <div className="flex flex-wrap gap-1 border-b border-border-subtle mb-6">
@@ -784,26 +825,6 @@ export function MarketplaceManagePortal() {
                 <Shield size={14} className="inline mr-2" />
                 Placement Policies
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveSection("programs")}
-                className={`px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px relative ${
-                  activeSection === "programs"
-                    ? "text-white border-accent"
-                    : (form.listedPrograms?.length || 0) === 0
-                      ? "text-amber-400 hover:text-amber-300 border-amber-500/50"
-                      : "text-text-secondary hover:text-white border-transparent"
-                }`}
-              >
-                <PawPrint size={14} className="inline mr-2" />
-                Breeding Programs
-                {(form.listedPrograms?.length || 0) === 0 && activeSection !== "programs" && (
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-                  </span>
-                )}
-              </button>
             </div>
 
             {/* Business Profile Section */}
@@ -824,11 +845,6 @@ export function MarketplaceManagePortal() {
             {/* Placement Policies Section */}
             {activeSection === "policies" && (
               <PoliciesSection form={form} updateForm={updateForm} />
-            )}
-
-            {/* Breeding Programs Section */}
-            {activeSection === "programs" && (
-              <BreedingProgramsSection form={form} updateForm={updateForm} />
             )}
           </>
         )}
@@ -1097,7 +1113,7 @@ function BusinessProfileSection({
                   onClick={() => updateForm({ publicLocationMode: opt.value as any })}
                   className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
                     form.publicLocationMode === opt.value
-                      ? "bg-accent/20 border-accent text-accent"
+                      ? "bg-blue-500/20 border-blue-400 text-blue-300"
                       : "bg-portal-surface border-border-subtle text-text-secondary hover:border-border-default"
                   }`}
                 >
@@ -1484,7 +1500,35 @@ function CredentialsSection({
   form: MarketplaceProfileDraft;
   updateForm: (updates: Partial<MarketplaceProfileDraft>) => void;
 }) {
+  const [registries, setRegistries] = React.useState<Array<{ id: number; name: string; code: string; species: string | null; country: string | null }>>([]);
+  const [registriesLoading, setRegistriesLoading] = React.useState(true);
+  const [registrySearchTerm, setRegistrySearchTerm] = React.useState("");
+  const [selectedSpecies, setSelectedSpecies] = React.useState<string>("ALL");
+
   const creds = form.standardsAndCredentials || {};
+
+  // Fetch registries on mount
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setRegistriesLoading(true);
+        const res = await fetch("/api/v1/registries", { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to load registries");
+        const json = await res.json();
+        const items = json?.items || [];
+        if (alive) {
+          setRegistries(items);
+        }
+      } catch (e: any) {
+        console.error("Failed to load registries:", e);
+        if (alive) setRegistries([]);
+      } finally {
+        if (alive) setRegistriesLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const updateCreds = (key: string, value: any) => {
     updateForm({
@@ -1515,7 +1559,7 @@ function CredentialsSection({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-accent" />
-            <h3 className="text-base font-semibold text-white">Registrations and Affiliations</h3>
+            <h3 className="text-base font-semibold text-white">Registry Memberships & Breeder Credentials</h3>
           </div>
           <VisibilityToggle
             isPublic={creds.showRegistrations ?? false}
@@ -1523,25 +1567,103 @@ function CredentialsSection({
             disabled={(creds.registrations || []).length === 0}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {REGISTRATION_OPTIONS.map((item) => (
-            <label key={item} className="flex items-center gap-2 cursor-pointer">
+
+        {registriesLoading ? (
+          <div className="text-sm text-text-tertiary text-center py-4">Loading registries...</div>
+        ) : (
+          <>
+            {/* Species filter tabs */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {["ALL", "HORSE", "DOG", "CAT", "GOAT", "SHEEP", "RABBIT"].map((species) => (
+                <button
+                  key={species}
+                  type="button"
+                  onClick={() => setSelectedSpecies(species)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    selectedSpecies === species
+                      ? "bg-accent text-white"
+                      : "bg-portal-surface text-text-secondary hover:bg-portal-surface/80 hover:text-white border border-border-subtle"
+                  }`}
+                >
+                  {species === "ALL" ? "All Species" : species.charAt(0) + species.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Search bar */}
+            <div className="mb-4">
               <input
-                type="checkbox"
-                checked={(creds.registrations || []).includes(item)}
-                onChange={() => toggleItem("registrations", item)}
-                className="w-4 h-4 rounded border-border-subtle bg-portal-surface accent-accent"
+                type="text"
+                placeholder="Search registries (e.g., AQHA, Jockey Club, USEF)..."
+                value={registrySearchTerm}
+                onChange={(e) => setRegistrySearchTerm(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-portal-surface border border-border-subtle rounded-lg focus:border-accent focus:outline-none"
               />
-              <span className="text-sm text-text-secondary">{item}</span>
-            </label>
-          ))}
-        </div>
+            </div>
+
+            {/* Registry checkboxes */}
+            <div className="grid grid-cols-2 gap-3 mb-4 max-h-96 overflow-y-auto">
+              {registries
+                .filter((reg) => {
+                  // Species filter
+                  if (selectedSpecies !== "ALL" && reg.species !== selectedSpecies) {
+                    // Include global registries (species: null) in all species tabs
+                    if (reg.species !== null) return false;
+                  }
+                  // Search filter
+                  if (!registrySearchTerm) return true;
+                  const search = registrySearchTerm.toLowerCase();
+                  return (
+                    reg.name.toLowerCase().includes(search) ||
+                    reg.code.toLowerCase().includes(search) ||
+                    (reg.country && reg.country.toLowerCase().includes(search))
+                  );
+                })
+                .map((reg) => (
+                  <label key={reg.code} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(creds.registrations || []).includes(reg.name)}
+                      onChange={() => toggleItem("registrations", reg.name)}
+                      className="w-4 h-4 rounded border-border-subtle bg-portal-surface accent-accent"
+                    />
+                    <span className="text-sm text-text-secondary" title={`${reg.name}${reg.country ? ` (${reg.country})` : ''}`}>
+                      {reg.name}
+                      {reg.country && reg.country !== 'US' && (
+                        <span className="text-xs text-text-tertiary ml-1">({reg.country})</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+            </div>
+
+            {registries.filter((reg) => {
+              // Species filter
+              if (selectedSpecies !== "ALL" && reg.species !== selectedSpecies) {
+                if (reg.species !== null) return false;
+              }
+              // Search filter
+              if (!registrySearchTerm) return true;
+              const search = registrySearchTerm.toLowerCase();
+              return (
+                reg.name.toLowerCase().includes(search) ||
+                reg.code.toLowerCase().includes(search) ||
+                (reg.country && reg.country.toLowerCase().includes(search))
+              );
+            }).length === 0 && (
+              <div className="text-sm text-text-tertiary text-center py-4">
+                No registries found{registrySearchTerm ? ` matching "${registrySearchTerm}"` : ` for ${selectedSpecies.toLowerCase()}`}
+              </div>
+            )}
+          </>
+        )}
+
         <div>
           <label className="block text-xs text-text-tertiary mb-1">Notes</label>
           <textarea
             value={creds.registrationsNote || ""}
             onChange={(e) => updateCreds("registrationsNote", e.target.value.slice(0, 200))}
-            placeholder="Optional notes..."
+            placeholder="Optional notes (e.g., 'AQHA Certified Breeder since 2015')..."
             rows={2}
             className="w-full px-3 py-2 text-sm bg-portal-surface border border-border-subtle rounded-lg resize-none focus:border-accent focus:outline-none"
           />
@@ -1770,10 +1892,14 @@ function PoliciesSection({
                 type="checkbox"
                 checked={policies.requireDeposit ?? false}
                 onChange={(e) => {
-                  updatePolicies("requireDeposit", e.target.checked);
-                  if (e.target.checked) {
-                    updatePolicies("requireReservationFee", false);
-                  }
+                  // Update both values in single call to avoid stale closure issue
+                  updateForm({
+                    placementPolicies: {
+                      ...policies,
+                      requireDeposit: e.target.checked,
+                      requireReservationFee: e.target.checked ? false : policies.requireReservationFee,
+                    },
+                  });
                 }}
                 className="w-4 h-4 rounded border-border-subtle bg-portal-surface accent-accent"
               />
@@ -1784,10 +1910,14 @@ function PoliciesSection({
                 type="checkbox"
                 checked={policies.requireReservationFee ?? false}
                 onChange={(e) => {
-                  updatePolicies("requireReservationFee", e.target.checked);
-                  if (e.target.checked) {
-                    updatePolicies("requireDeposit", false);
-                  }
+                  // Update both values in single call to avoid stale closure issue
+                  updateForm({
+                    placementPolicies: {
+                      ...policies,
+                      requireReservationFee: e.target.checked,
+                      requireDeposit: e.target.checked ? false : policies.requireDeposit,
+                    },
+                  });
                 }}
                 className="w-4 h-4 rounded border-border-subtle bg-portal-surface accent-accent"
               />
@@ -2333,196 +2463,5 @@ function ProgramEditor({
   );
 }
 
-/** Summary stats for a breeding program based on linked plans and offspring groups */
-interface ProgramSummaryStats {
-  totalPlans: number;
-  activePlans: number;
-  upcomingLitters: number;
-  nextExpectedBirth: string | null;
-  availableCount: number;
-}
-
-function BreedingProgramsSection({
-  form,
-  updateForm,
-}: {
-  form: MarketplaceProfileDraft;
-  updateForm: (updates: Partial<MarketplaceProfileDraft>) => void;
-}) {
-  const tenantId = getTenantId();
-  const programs = form.listedPrograms || [];
-  const [expandedIndex, setExpandedIndex] = React.useState<number | null>(null);
-
-  // Fetch breeding plans and offspring groups for summary stats
-  const [breedingPlans, setBreedingPlans] = React.useState<BreederBreedingPlanItem[]>([]);
-  const [offspringGroups, setOffspringGroups] = React.useState<BreederOffspringGroupItem[]>([]);
-  const [loadingStats, setLoadingStats] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!tenantId) return;
-    setLoadingStats(true);
-    Promise.all([
-      getBreederBreedingPlans(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
-      getBreederOffspringGroups(tenantId, { limit: 100 }).catch(() => ({ items: [] })),
-    ])
-      .then(([plansRes, groupsRes]) => {
-        setBreedingPlans(plansRes.items || []);
-        setOffspringGroups(groupsRes.items || []);
-      })
-      .finally(() => setLoadingStats(false));
-  }, [tenantId]);
-
-  // Compute summary stats for a program by matching species/breed
-  const getProgramStats = React.useCallback(
-    (program: ListedProgramItem): ProgramSummaryStats => {
-      const species = program.species?.toUpperCase();
-      const breedText = program.breedText?.toLowerCase();
-
-      // Match plans by species and optionally breed
-      const matchingPlans = breedingPlans.filter((plan) => {
-        if (!species) return false;
-        const planSpecies = plan.species?.toUpperCase();
-        if (planSpecies !== species) return false;
-        // If breed is specified, try to match
-        if (breedText && plan.breedText) {
-          return plan.breedText.toLowerCase().includes(breedText) ||
-                 breedText.includes(plan.breedText.toLowerCase());
-        }
-        return true;
-      });
-
-      // Match offspring groups by species
-      const matchingGroups = offspringGroups.filter((group) => {
-        if (!species) return false;
-        const groupSpecies = group.species?.toUpperCase();
-        if (groupSpecies !== species) return false;
-        // If breed is specified, try to match
-        if (breedText && group.breed) {
-          return group.breed.toLowerCase().includes(breedText) ||
-                 breedText.includes(group.breed.toLowerCase());
-        }
-        return true;
-      });
-
-      const now = new Date();
-      const activePlans = matchingPlans.filter(
-        (p) => p.status && !["COMPLETED", "CANCELLED", "ARCHIVED"].includes(p.status)
-      );
-
-      // Upcoming litters: expected birth in future, not yet born
-      const upcomingGroups = matchingGroups.filter((g) => {
-        const expected = g.expectedBirthOn ? new Date(g.expectedBirthOn) : null;
-        return expected && expected > now && !g.actualBirthOn;
-      });
-
-      // Next expected birth date
-      const nextExpected = upcomingGroups
-        .map((g) => g.expectedBirthOn)
-        .filter(Boolean)
-        .sort((a, b) => new Date(a!).getTime() - new Date(b!).getTime())[0] || null;
-
-      // Available offspring: born but not all placed
-      const availableCount = matchingGroups
-        .filter((g) => g.actualBirthOn)
-        .reduce((sum, g) => sum + (g.availableCount || 0), 0);
-
-      return {
-        totalPlans: matchingPlans.length,
-        activePlans: activePlans.length,
-        upcomingLitters: upcomingGroups.length,
-        nextExpectedBirth: nextExpected,
-        availableCount,
-      };
-    },
-    [breedingPlans, offspringGroups]
-  );
-
-  const addProgram = () => {
-    const newPrograms = [...programs, createEmptyProgram()];
-    updateForm({ listedPrograms: newPrograms });
-    // Auto-expand the new program
-    setExpandedIndex(newPrograms.length - 1);
-  };
-
-  const updateProgram = (index: number, updates: Partial<ListedProgramItem>) => {
-    const updated = [...programs];
-    updated[index] = { ...updated[index], ...updates };
-    updateForm({ listedPrograms: updated });
-  };
-
-  const removeProgram = (index: number) => {
-    if (expandedIndex === index) {
-      setExpandedIndex(null);
-    } else if (expandedIndex !== null && expandedIndex > index) {
-      setExpandedIndex(expandedIndex - 1);
-    }
-    updateForm({ listedPrograms: programs.filter((_, i) => i !== index) });
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Info */}
-      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <PawPrint className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-200">
-            <p className="font-medium mb-1">
-              Breeding Programs are the first thing shoppers see when they visit your storefront.
-            </p>
-            <p className="text-amber-300/70">
-              Click on a program to expand and edit its details, including species, breed, pricing, and more.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Programs List */}
-      {programs.length === 0 ? (
-        <div className="text-center py-12 bg-portal-card rounded-lg border border-border-subtle">
-          <PawPrint className="w-12 h-12 mx-auto text-text-tertiary mb-4" />
-          <p className="text-text-secondary mb-2">No program listings yet</p>
-          <p className="text-sm text-text-tertiary mb-4">
-            Add your breeding programs to let buyers know what you offer.
-          </p>
-          <Button variant="primary" onClick={addProgram}>
-            <Plus size={16} className="mr-1.5" />
-            Add Program
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {programs.map((program, index) => (
-            expandedIndex === index ? (
-              <ProgramEditor
-                key={index}
-                program={program}
-                index={index}
-                onChange={(updates) => updateProgram(index, updates)}
-                onCollapse={() => setExpandedIndex(null)}
-                onRemove={() => removeProgram(index)}
-                breederBreeds={form.breeds || []}
-              />
-            ) : (
-              <ProgramListCard
-                key={index}
-                program={program}
-                index={index}
-                stats={getProgramStats(program)}
-                loadingStats={loadingStats}
-                onEdit={() => setExpandedIndex(index)}
-                onRemove={() => removeProgram(index)}
-              />
-            )
-          ))}
-
-          <Button variant="secondary" onClick={addProgram} className="w-full">
-            <Plus size={16} className="mr-1.5" />
-            Add Another Program
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default MarketplaceManagePortal;

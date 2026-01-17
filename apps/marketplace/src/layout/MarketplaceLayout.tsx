@@ -3,7 +3,7 @@
 // Includes TopNav for desktop, BottomTabBar for mobile, and footer
 
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { joinApi } from "../api/client";
 import { useUnreadCounts, useWaitlistRequests } from "../messages/hooks";
 import { useUserProfile, type MarketplaceUserProfile } from "../gate/MarketplaceGate";
@@ -212,6 +212,7 @@ interface MarketplaceLayoutProps {
  * - Footer with legal links
  */
 export function MarketplaceLayout({ authenticated, children }: MarketplaceLayoutProps) {
+  const location = useLocation();
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
   const { totalUnread, refresh: refreshUnread } = useUnreadCounts(authenticated);
@@ -296,6 +297,11 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
     }
   };
 
+  // Determine which banner to show based on current route
+  const showAnimalsBanner = location.pathname === "/animals";
+  const showBreedersBanner = location.pathname === "/breeders";
+  const showServicesBanner = location.pathname === "/services";
+
   return (
     <div className={`min-h-screen flex flex-col relative font-sans antialiased ${
       isLightMode
@@ -309,6 +315,65 @@ export function MarketplaceLayout({ authenticated, children }: MarketplaceLayout
       >
         Skip to main content
       </a>
+
+      {/* CTA Banners - Above TopNav */}
+      {showAnimalsBanner && (
+        <div className="bg-blue-600 border-b border-blue-500">
+          <div className="container mx-auto px-4 md:px-8 lg:px-12 xl:px-16 py-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap text-center">
+              <p className="text-white text-sm font-medium">
+                Want to see your breeding program's animals and offspring listed here?
+              </p>
+              <a
+                href="https://www.breederhq.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 text-sm bg-white hover:bg-gray-100 text-blue-600 rounded font-semibold transition-colors whitespace-nowrap"
+              >
+                Start a Free Trial of Breeder<span className="text-[hsl(var(--brand-orange))]">HQ</span> Today!
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBreedersBanner && (
+        <div className="bg-blue-600 border-b border-blue-500">
+          <div className="container mx-auto px-4 md:px-8 lg:px-12 xl:px-16 py-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap text-center">
+              <p className="text-white text-sm font-medium">
+                Want to see your breeding business here?
+              </p>
+              <a
+                href="https://www.breederhq.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 text-sm bg-white hover:bg-gray-100 text-blue-600 rounded font-semibold transition-colors whitespace-nowrap"
+              >
+                Start a Free Trial of Breeder<span className="text-[hsl(var(--brand-orange))]">HQ</span> Today!
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showServicesBanner && (
+        <div className="bg-[hsl(var(--brand-orange))] border-b border-orange-500">
+          <div className="container mx-auto px-4 md:px-8 lg:px-12 xl:px-16 py-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap text-center">
+              <p className="text-white text-sm font-medium">
+                Do you offer animal services?
+              </p>
+              <Link
+                to="/provider"
+                className="px-3 py-1 text-sm bg-white hover:bg-gray-100 text-[hsl(var(--brand-orange))] rounded font-semibold transition-colors whitespace-nowrap"
+              >
+                List Your Services FOR FREE!
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Navigation (desktop) */}
       <TopNav

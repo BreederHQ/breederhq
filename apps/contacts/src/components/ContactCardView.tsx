@@ -2,7 +2,7 @@
 // Experimental card-based view for contacts
 
 import * as React from "react";
-import { Building2, Mail, Phone, MapPin } from "lucide-react";
+import { Building2, Mail, Phone, MapPin, User } from "lucide-react";
 import { TagChip } from "@bhq/ui";
 import type { PartyTableRow } from "../App-Contacts";
 
@@ -18,16 +18,6 @@ type ContactCardViewProps = {
   error: string | null;
   onRowClick?: (row: PartyTableRow) => void;
 };
-
-/**
- * Get initials from a display name (max 2 characters)
- */
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 /**
  * Generate a consistent color from a string (for avatar backgrounds)
@@ -74,7 +64,7 @@ function ContactCard({ row, onClick }: { row: PartyTableRow; onClick?: () => voi
           {isOrg ? (
             <Building2 className="w-5 h-5" />
           ) : (
-            getInitials(row.displayName)
+            <User className="w-5 h-5" />
           )}
         </div>
 

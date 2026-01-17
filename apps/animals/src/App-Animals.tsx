@@ -5122,6 +5122,8 @@ function HealthTab({
   const [traitDrafts, setTraitDrafts] = React.useState<Record<string, TraitDraft>>({});
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
   const [enableHealthSharing, setEnableHealthSharing] = React.useState(false);
+  // Track which traits have been explicitly overridden by the user (vs inheriting from section)
+  const [visibilityOverrides, setVisibilityOverrides] = React.useState<Set<string>>(new Set());
 
   // Vaccination tracking state
   const [vaccinationRecords, setVaccinationRecords] = React.useState<VaccinationRecord[]>([]);
@@ -5276,7 +5278,10 @@ function HealthTab({
         items: (cat.items || []).filter((t: any) => {
           const key = t.traitKey || "";
           // Exclude identity traits (*.id.* and *.registry.*)
-          return !key.includes(".id.") && !key.includes(".registry.");
+          if (key.includes(".id.") || key.includes(".registry.")) return false;
+          // Exclude vaccinations trait - now handled by dedicated Vaccinations tracker
+          if (key.endsWith(".vaccinationsUpToDate")) return false;
+          return true;
         }),
       }));
 
@@ -5308,7 +5313,27 @@ function HealthTab({
 
   const handleSaveTrait = async (traitKey: string, draftKey: string, update: any) => {
     try {
-      await api?.animals?.traits?.update(animal.id, [{ traitKey, ...update }]);
+      // Transform nested value object to flat API format
+      // Frontend sends: { value: { json: {...} } } or { value: { boolean: true } } etc.
+      // API expects: { valueJson: {...} } or { valueBoolean: true } etc.
+      const apiPayload: any = { traitKey };
+
+      if (update.value) {
+        if (update.value.json !== undefined) apiPayload.valueJson = update.value.json;
+        if (update.value.boolean !== undefined) apiPayload.valueBoolean = update.value.boolean;
+        if (update.value.text !== undefined) apiPayload.valueText = update.value.text;
+        if (update.value.number !== undefined) apiPayload.valueNumber = update.value.number;
+        if (update.value.date !== undefined) apiPayload.valueDate = update.value.date;
+      }
+
+      // Pass through other fields
+      if (update.marketplaceVisible !== undefined) apiPayload.marketplaceVisible = update.marketplaceVisible;
+      if (update.networkVisible !== undefined) apiPayload.networkVisible = update.networkVisible;
+      if (update.performedAt !== undefined) apiPayload.performedAt = update.performedAt;
+      if (update.source !== undefined) apiPayload.source = update.source;
+      if (update.status !== undefined) apiPayload.status = update.status;
+
+      await api?.animals?.traits?.update(animal.id, [apiPayload]);
       toast.success("Trait saved");
       clearTraitDraft(draftKey);
       await fetchTraits();
@@ -5319,32 +5344,87 @@ function HealthTab({
   };
 
   const handleVisibilityToggle = async (traitKey: string, networkVisible: boolean) => {
+    // Mark this trait as explicitly overridden by the user
+    setVisibilityOverrides((prev) => new Set(prev).add(traitKey));
+
+    // Optimistically update local state immediately (no reload)
+    setCategories((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        items: cat.items?.map((t: any) =>
+          t.traitKey === traitKey ? { ...t, networkVisible } : t
+        ),
+      }))
+    );
+
     try {
-      // Find the existing trait data to include required fields
-      let existingTrait: any = null;
-      for (const cat of categories) {
-        const found = cat.items?.find((t: any) => t.traitKey === traitKey);
-        if (found) {
-          existingTrait = found;
-          break;
-        }
-      }
-
-      // Build update payload with existing values + new visibility
-      const updatePayload: any = { traitKey, networkVisible };
-      if (existingTrait) {
-        // Include the existing value fields so API validation passes
-        if (existingTrait.valueText !== undefined) updatePayload.valueText = existingTrait.valueText;
-        if (existingTrait.valueDate !== undefined) updatePayload.valueDate = existingTrait.valueDate;
-        if (existingTrait.valueNumeric !== undefined) updatePayload.valueNumeric = existingTrait.valueNumeric;
-        if (existingTrait.valueBool !== undefined) updatePayload.valueBool = existingTrait.valueBool;
-      }
-
-      await api?.animals?.traits?.update(animal.id, [updatePayload]);
-      await fetchTraits();
+      // Just send the visibility update - API now handles metadata-only updates
+      await api?.animals?.traits?.update(animal.id, [{ traitKey, networkVisible }]);
     } catch (err: any) {
       console.error("[HealthTab] Visibility toggle failed", err);
-      toast.error(err?.data?.message || "Failed to update visibility");
+      // Revert optimistic update on failure
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          items: cat.items?.map((t: any) =>
+            t.traitKey === traitKey ? { ...t, networkVisible: !networkVisible } : t
+          ),
+        }))
+      );
+      toast.error("Failed to update visibility. Please try again.");
+    }
+  };
+
+  // Section-level visibility toggle - updates all non-overridden items in the section
+  const handleSectionVisibilityToggle = async (category: string, networkVisible: boolean) => {
+    // Find all items in this category that haven't been explicitly overridden
+    const categoryData = categories.find((c) => c.category === category);
+    if (!categoryData?.items) return;
+
+    const itemsToUpdate = categoryData.items.filter(
+      (t: any) => !visibilityOverrides.has(t.traitKey)
+    );
+
+    if (itemsToUpdate.length === 0) {
+      toast("All items in this section have individual overrides");
+      return;
+    }
+
+    // Optimistically update local state
+    setCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.category !== category) return cat;
+        return {
+          ...cat,
+          items: cat.items?.map((t: any) =>
+            visibilityOverrides.has(t.traitKey) ? t : { ...t, networkVisible }
+          ),
+        };
+      })
+    );
+
+    try {
+      // Build batch update for all non-overridden items
+      const updates = itemsToUpdate.map((t: any) => ({
+        traitKey: t.traitKey,
+        networkVisible,
+      }));
+      await api?.animals?.traits?.update(animal.id, updates);
+    } catch (err: any) {
+      console.error("[HealthTab] Section visibility toggle failed", err);
+      // Revert optimistic update on failure
+      setCategories((prev) =>
+        prev.map((cat) => {
+          if (cat.category !== category) return cat;
+          return {
+            ...cat,
+            items: cat.items?.map((t: any) =>
+              visibilityOverrides.has(t.traitKey) ? t : { ...t, networkVisible: !networkVisible }
+            ),
+          };
+        })
+      );
+      toast.error("Failed to update section visibility. Please try again.");
     }
   };
 
@@ -5493,13 +5573,23 @@ function HealthTab({
 
         const isCollapsed = collapsedCategories.has(cat.category);
         const completedCount = items.filter((t: any) => {
-          const hasValue = t.value?.boolean !== undefined ||
+          const hasValue = t.value?.boolean !== undefined && t.value?.boolean !== null ||
                           t.value?.text ||
-                          t.value?.number !== undefined ||
+                          t.value?.number !== undefined && t.value?.number !== null ||
                           t.value?.date ||
                           t.value?.json;
           return hasValue;
         }).length;
+
+        // Calculate section visibility state for the toggle
+        const publicCount = items.filter((t: any) => t.networkVisible).length;
+        const nonOverriddenItems = items.filter((t: any) => !visibilityOverrides.has(t.traitKey));
+        const nonOverriddenPublicCount = nonOverriddenItems.filter((t: any) => t.networkVisible).length;
+        // Section is "on" if all non-overridden items are public, "off" if none, "mixed" otherwise
+        const sectionVisibility: "all" | "none" | "mixed" =
+          nonOverriddenItems.length === 0 ? "mixed" : // All items overridden
+          nonOverriddenPublicCount === nonOverriddenItems.length ? "all" :
+          nonOverriddenPublicCount === 0 ? "none" : "mixed";
 
         return (
           <div
@@ -5532,14 +5622,26 @@ function HealthTab({
                   {cat.category}
                 </span>
               </div>
-              <span className="text-xs text-secondary font-normal">
-                {completedCount} of {items.length} provided
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-secondary font-normal">
+                  {completedCount} of {items.length} provided
+                </span>
+                {/* Section visibility toggle */}
+                {enableHealthSharing && items.length > 0 && (
+                  <SectionVisibilityToggle
+                    state={sectionVisibility}
+                    publicCount={publicCount}
+                    totalCount={items.length}
+                    onToggle={(visible) => handleSectionVisibilityToggle(cat.category, visible)}
+                  />
+                )}
+              </div>
             </div>
             {!isCollapsed && (
               <div className="space-y-2">
                 {items.map((trait: any) => {
                   const draftKey = getTraitDraftKey(trait);
+                  const isOverridden = visibilityOverrides.has(trait.traitKey);
                   return (
                     <TraitRow
                       key={trait.traitKey}
@@ -5548,6 +5650,10 @@ function HealthTab({
                       isExpanded={expandedTraitKey === draftKey}
                       editMode={mode === "edit"}
                       enableNetworkSharing={enableHealthSharing}
+                      isVisibilityOverridden={isOverridden}
+                      animalId={animal.id}
+                      api={api}
+                      onRefresh={fetchTraits}
                       onExpand={() => {
                         if (mode === "edit") {
                           const nextKey = ensureTraitDraft(trait);
@@ -5609,17 +5715,38 @@ function VisibilityToggle({
   disabled,
   readOnly,
   inactive,
+  noValue,
+  isOverridden,
 }: {
   isPublic: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
   readOnly?: boolean;
   inactive?: boolean; // Master toggle is off - show greyed out "Private"
+  noValue?: boolean; // Trait has no value recorded - can't share yet
+  isOverridden?: boolean; // Item has been individually overridden (differs from section default)
 }) {
   // Inactive state: master toggle is off, show greyed-out indicator
   if (inactive) {
     return (
       <Tooltip content="Enable sharing in Privacy tab to configure" side="top">
+        <span
+          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium bg-zinc-800/40 text-zinc-500/50 border border-zinc-700/30 cursor-help"
+        >
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+          </svg>
+          Private
+        </span>
+      </Tooltip>
+    );
+  }
+
+  // No value state: trait has no data recorded yet - can't share nothing
+  if (noValue) {
+    return (
+      <Tooltip content="Record a value first before sharing" side="top">
         <span
           className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium bg-zinc-800/40 text-zinc-500/50 border border-zinc-700/30 cursor-help"
         >
@@ -5666,7 +5793,7 @@ function VisibilityToggle({
     );
   }
 
-  return (
+  const buttonContent = (
     <button
       type="button"
       onClick={(e) => {
@@ -5681,6 +5808,7 @@ function VisibilityToggle({
           ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
           : "bg-red-500/15 text-red-400 hover:bg-red-500/25"
         }
+        ${isOverridden ? "ring-1 ring-amber-400/50 ring-offset-1 ring-offset-transparent" : ""}
       `}
     >
       {isPublic ? (
@@ -5702,6 +5830,77 @@ function VisibilityToggle({
       )}
     </button>
   );
+
+  if (isOverridden) {
+    return (
+      <Tooltip content="Individually set (won't change with section toggle)" side="top">
+        {buttonContent}
+      </Tooltip>
+    );
+  }
+
+  return buttonContent;
+}
+
+// Section-level visibility toggle with indeterminate/mixed state support
+function SectionVisibilityToggle({
+  state,
+  publicCount,
+  totalCount,
+  onToggle,
+}: {
+  state: "all" | "none" | "mixed";
+  publicCount: number;
+  totalCount: number;
+  onToggle: (visible: boolean) => void;
+}) {
+  const tooltipContent = state === "mixed"
+    ? `${publicCount} of ${totalCount} public. Click to make all public.`
+    : state === "all"
+    ? `All ${totalCount} public. Click to make all private.`
+    : `All ${totalCount} private. Click to make all public.`;
+
+  return (
+    <Tooltip content={tooltipContent} side="top">
+      <button
+        onClick={() => onToggle(state !== "all")}
+        className={`
+          inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium transition-all cursor-pointer
+          ${state === "all"
+            ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+            : state === "none"
+            ? "bg-red-500/15 text-red-400 hover:bg-red-500/25"
+            : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
+          }
+        `}
+      >
+        {state === "all" ? (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+              <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+            </svg>
+            All
+          </>
+        ) : state === "none" ? (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+              <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+            </svg>
+            None
+          </>
+        ) : (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clipRule="evenodd" />
+            </svg>
+            {publicCount}/{totalCount}
+          </>
+        )}
+      </button>
+    </Tooltip>
+  );
 }
 
 function TraitRow({
@@ -5710,6 +5909,10 @@ function TraitRow({
   isExpanded,
   editMode,
   enableNetworkSharing,
+  isVisibilityOverridden,
+  animalId,
+  api,
+  onRefresh,
   onExpand,
   onCollapse,
   onSave,
@@ -5723,6 +5926,10 @@ function TraitRow({
   isExpanded: boolean;
   editMode: boolean;
   enableNetworkSharing?: boolean;
+  isVisibilityOverridden?: boolean;
+  animalId: number;
+  api: any;
+  onRefresh: () => void;
   onExpand: () => void;
   onCollapse: () => void;
   onSave: (update: any) => void;
@@ -5732,6 +5939,8 @@ function TraitRow({
   onVisibilityToggle?: (networkVisible: boolean) => void;
 }) {
   const [saving, setSaving] = React.useState(false);
+  const [showAddEntry, setShowAddEntry] = React.useState(false);
+  const [newEntryData, setNewEntryData] = React.useState<any>({});
   const localDraft = draft ?? {};
 
   React.useEffect(() => {
@@ -5740,7 +5949,13 @@ function TraitRow({
     }
   }, [isExpanded, draft, onDraftReset]);
 
-  const currentValue = localDraft.value !== undefined ? localDraft.value : trait.value;
+  // Sanitize trait.value to filter out literal "null" strings (bad data from API)
+  const sanitizedTraitValue = trait.value ? {
+    ...trait.value,
+    text: trait.value.text === "null" ? null : trait.value.text,
+    json: trait.value.json === "null" ? null : trait.value.json,
+  } : trait.value;
+  const currentValue = localDraft.value !== undefined ? localDraft.value : sanitizedTraitValue;
   const currentMarketplace = localDraft.marketplaceVisible !== undefined
     ? localDraft.marketplaceVisible
     : trait.marketplaceVisible;
@@ -5753,13 +5968,19 @@ function TraitRow({
   const currentSource = localDraft.source !== undefined ? localDraft.source : trait.source;
   const valueType = String(trait.valueType || "").toUpperCase();
   const isPennHip = trait.traitKey === "dog.hips.pennhip";
+  const isVetWellnessExam = trait.traitKey?.endsWith(".general.vetWellnessExam");
+  const isWeight = trait.traitKey?.endsWith(".general.weight");
+  const isBodyConditionScore = trait.traitKey?.endsWith(".general.bodyConditionScore");
+  const isDentalCleaning = trait.traitKey?.endsWith(".general.dentalCleaning");
+  const isGeneralTrait = trait.traitKey?.includes(".general.");
   const isBoolean = valueType === "BOOLEAN" || valueType === "BOOL";
   const isEnum = valueType === "ENUM";
   const isNumber = valueType === "NUMBER";
   const isDate = valueType === "DATE";
   const isText = valueType === "TEXT";
-  const isJsonValue =
-    valueType.includes("JSON") || valueType === "OBJECT" || trait.value?.json !== undefined;
+  // Only treat as JSON type if the valueType explicitly says so
+  // Don't use trait.value?.json as a fallback - it causes ENUM traits to be misidentified
+  const isJsonValue = valueType === "JSON" || valueType.includes("JSON") || valueType === "OBJECT";
   const booleanLabel = trait.displayName?.toLowerCase().includes("completed") ? "Completed" : "Yes";
   const displayName = formatTraitDisplayName(trait.displayName, trait.traitKey);
 
@@ -5768,32 +5989,17 @@ function TraitRow({
     try {
       const update: any = {};
 
-      if (isJsonValue && !isPennHip) {
-        const hasJsonSource =
-          localDraft.jsonText !== undefined ||
-          trait.value?.json !== undefined ||
-          currentValue?.json !== undefined;
-        if (hasJsonSource) {
-          const jsonText =
-            localDraft.jsonText ??
-            (trait.value?.json !== undefined
-              ? JSON.stringify(trait.value.json, null, 2)
-              : currentValue?.json !== undefined
-                ? JSON.stringify(currentValue.json, null, 2)
-                : "");
-          if (!jsonText.trim()) {
-            update.value = { json: null };
-          } else {
-            try {
-              update.value = { json: JSON.parse(jsonText) };
-            } catch {
-              toast.error("Invalid JSON format");
-              return false;
-            }
-          }
-        }
-      } else if (isPennHip && currentValue?.json !== undefined) {
-        update.value = { json: currentValue.json };
+      // Custom JSON editors - handle these first before generic JSON textarea
+      if (isPennHip) {
+        update.value = { json: currentValue?.json || {} };
+      } else if (isVetWellnessExam) {
+        update.value = { json: currentValue?.json || {} };
+      } else if (isWeight) {
+        update.value = { json: currentValue?.json || {} };
+      } else if (isBodyConditionScore) {
+        update.value = { json: currentValue?.json || {} };
+      } else if (isDentalCleaning) {
+        update.value = { json: currentValue?.json || {} };
       } else if (isBoolean && currentValue?.boolean !== undefined) {
         update.value = { boolean: currentValue.boolean };
       } else if (isText && currentValue?.text !== undefined) {
@@ -5802,8 +6008,12 @@ function TraitRow({
         update.value = { number: currentValue.number };
       } else if (isDate && currentValue?.date !== undefined) {
         update.value = { date: currentValue.date };
-      } else if (isEnum && currentValue?.text !== undefined) {
-        update.value = { text: currentValue.text };
+      } else if (isEnum) {
+        // Always send text for ENUM, even if empty string
+        update.value = { text: currentValue?.text || "" };
+      } else if (isText) {
+        // Always send text for TEXT type, even if empty
+        update.value = { text: currentValue?.text || "" };
       } else if (isJsonValue && currentValue?.json !== undefined) {
         update.value = { json: currentValue.json };
       }
@@ -5812,6 +6022,11 @@ function TraitRow({
       if (currentNetworkVisible !== undefined) update.networkVisible = currentNetworkVisible;
       if (currentPerformedAt !== undefined) update.performedAt = currentPerformedAt;
       if (currentSource !== undefined) update.source = currentSource;
+
+      // Auto-set status to PROVIDED when saving a value
+      if (update.value) {
+        update.status = "PROVIDED";
+      }
 
       await onSave(update);
       return true;
@@ -5841,9 +6056,11 @@ function TraitRow({
     }
 
     if (isEnum) {
+      // Filter out literal "null" string (bad data from API)
+      const enumValue = currentValue?.text === "null" ? "" : (currentValue?.text || "");
       return (
         <select
-          value={currentValue?.text || ""}
+          value={enumValue}
           onChange={(e) =>
             onDraftChange({
               ...localDraft,
@@ -5952,10 +6169,221 @@ function TraitRow({
       );
     }
 
+    if (isVetWellnessExam) {
+      const json = currentValue?.json || {};
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Exam Date</label>
+            <DatePicker
+              value={json.date || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, date: e.currentTarget.value } },
+                })
+              }
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Outcome</label>
+            <select
+              value={json.outcome || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, outcome: e.target.value } },
+                })
+              }
+              className="text-sm border border-hairline rounded px-2 py-1.5 bg-card text-inherit w-full"
+            >
+              <option value="">Select outcome...</option>
+              <option value="Normal">Normal - No issues</option>
+              <option value="Abnormal">Abnormal - Issues found</option>
+              <option value="Follow-up">Follow-up needed</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Notes</label>
+            <textarea
+              value={json.notes || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, notes: e.target.value } },
+                })
+              }
+              className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+              rows={3}
+              placeholder="Any notes, recommendations, or concerns..."
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (isWeight) {
+      const json = currentValue?.json || {};
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Pounds</label>
+              <Input
+                type="number"
+                size="sm"
+                value={json.lbs ?? ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    value: { json: { ...json, lbs: e.target.value ? parseInt(e.target.value) : null } },
+                  })
+                }
+                className="w-full"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Ounces</label>
+              <Input
+                type="number"
+                size="sm"
+                value={json.oz ?? ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    value: { json: { ...json, oz: e.target.value ? parseInt(e.target.value) : null } },
+                  })
+                }
+                className="w-full"
+                min="0"
+                max="15"
+              />
+            </div>
+          </div>
+          <div className="text-xs text-secondary">
+            Enter weight in pounds and ounces (e.g., 45 lbs 8 oz)
+          </div>
+        </div>
+      );
+    }
+
+    if (isBodyConditionScore) {
+      const json = currentValue?.json || {};
+      // Determine scale based on species in trait key
+      // Dogs, cats, horses use 1-9; goats, sheep, rabbits use 1-5
+      const species = trait.traitKey?.split(".")[0] || "";
+      const uses5Scale = ["goat", "sheep", "rabbit"].includes(species.toLowerCase());
+      const maxScore = uses5Scale ? 5 : 9;
+      const scoreOptions = Array.from({ length: maxScore }, (_, i) => i + 1);
+
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Score (1-{maxScore})</label>
+              <select
+                value={json.score ?? ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    value: { json: { ...json, score: e.target.value ? parseInt(e.target.value) : null } },
+                  })
+                }
+                className="text-sm border border-hairline rounded px-2 py-1.5 bg-card text-inherit w-full"
+              >
+                <option value="">Select...</option>
+                {scoreOptions.map((score) => (
+                  <option key={score} value={score}>
+                    {score}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Date Recorded</label>
+              <DatePicker
+                value={json.date || ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    value: { json: { ...json, date: e.currentTarget.value } },
+                  })
+                }
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isDentalCleaning) {
+      const json = currentValue?.json || {};
+      // Dental cleaning for dogs/cats is "cleaning", for horses is "float", for small animals is "check"
+      const species = trait.traitKey?.split(".")[0] || "";
+      const procedureLabel = species.toLowerCase() === "horse" ? "Float" :
+                             ["goat", "sheep", "rabbit"].includes(species.toLowerCase()) ? "Check" : "Cleaning";
+
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Date of {procedureLabel}</label>
+            <DatePicker
+              value={json.date || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, date: e.currentTarget.value } },
+                })
+              }
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Performed By</label>
+            <Input
+              size="sm"
+              value={json.performedBy || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, performedBy: e.target.value } },
+                })
+              }
+              className="w-full"
+              placeholder="Veterinarian or clinic name"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Location</label>
+            <Input
+              size="sm"
+              value={json.location || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, location: e.target.value } },
+                })
+              }
+              className="w-full"
+              placeholder="Clinic or facility location"
+            />
+          </div>
+        </div>
+      );
+    }
+
     if (isJsonValue) {
+      // Filter out "null" string and empty objects
+      const rawJson = trait.value?.json;
+      const validJson = rawJson && rawJson !== "null" && !(typeof rawJson === "object" && Object.keys(rawJson).length === 0)
+        ? rawJson
+        : undefined;
       const jsonText =
         localDraft.jsonText ??
-        (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+        (validJson !== undefined ? JSON.stringify(validJson, null, 2) : "");
       return (
         <textarea
           className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
@@ -5972,10 +6400,12 @@ function TraitRow({
     }
 
     if (isText) {
+      // Filter out literal "null" string (bad data from API)
+      const textValue = currentValue?.text === "null" ? "" : (currentValue?.text || "");
       return (
         <Input
           size="sm"
-          value={currentValue?.text || ""}
+          value={textValue}
           onChange={(e) =>
             onDraftChange({
               ...localDraft,
@@ -5991,7 +6421,7 @@ function TraitRow({
   };
 
   const showValueLabel = !isBoolean;
-  const valueLabel = isJsonValue && !isPennHip ? "Details" : "Value";
+  const valueLabel = isDate ? "Date" : isJsonValue && !isPennHip ? "Details" : "Value";
 
   // Helper to format value for display (returns null if no value)
   const getDisplayValue = (): string | null => {
@@ -6002,92 +6432,517 @@ function TraitRow({
       const notesLabel = json.notes ? " (notes)" : "";
       return `DI: ${json.di}${sideLabel}${notesLabel}`;
     }
+    if (isVetWellnessExam) {
+      const json = trait.value?.json;
+      if (!json || !json.date) return null;
+      const dateStr = new Date(json.date).toLocaleDateString();
+      const outcomeStr = json.outcome ? ` - ${json.outcome}` : "";
+      return `${dateStr}${outcomeStr}`;
+    }
+    if (isWeight) {
+      const json = trait.value?.json;
+      if (!json || (json.lbs === undefined && json.oz === undefined) || (json.lbs === null && json.oz === null)) return null;
+      const lbsStr = json.lbs !== undefined && json.lbs !== null ? `${json.lbs} lbs` : "";
+      const ozStr = json.oz !== undefined && json.oz !== null && json.oz > 0 ? `${json.oz} oz` : "";
+      return [lbsStr, ozStr].filter(Boolean).join(" ") || null;
+    }
+    if (isBodyConditionScore) {
+      const json = trait.value?.json;
+      if (!json || json.score === undefined || json.score === null) return null;
+      const dateStr = json.date ? ` - ${new Date(json.date).toLocaleDateString()}` : "";
+      return `Score: ${json.score}${dateStr}`;
+    }
+    if (isDentalCleaning) {
+      const json = trait.value?.json;
+      if (!json || !json.date) return null;
+      const dateStr = new Date(json.date).toLocaleDateString();
+      const byStr = json.performedBy ? ` by ${json.performedBy}` : "";
+      return `${dateStr}${byStr}`;
+    }
     if (isBoolean) {
       if (trait.value?.boolean === undefined) return null;
       return trait.value.boolean ? "Yes" : "No";
     }
     if (isText || isEnum) {
-      return trait.value?.text || null;
+      const textVal = trait.value?.text;
+      // Check for null, empty, or literal "null" string (bad data)
+      if (!textVal || textVal === "null") return null;
+      return textVal;
     }
     if (isNumber) {
-      return trait.value?.number !== undefined ? String(trait.value.number) : null;
+      return trait.value?.number !== undefined && trait.value?.number !== null ? String(trait.value.number) : null;
     }
     if (isDate) {
       return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : null;
     }
-    if (isJsonValue || trait.value?.json !== undefined) {
-      return trait.value?.json != null ? "Provided" : null;
+    if (isJsonValue) {
+      // Check for null, "null" string, or empty object
+      const json = trait.value?.json;
+      if (json == null || json === "null" || (typeof json === "object" && Object.keys(json).length === 0)) {
+        return null;
+      }
+      return "Provided";
     }
     return null;
   };
 
-  const hasValue = trait.value?.boolean !== undefined ||
-                   trait.value?.text ||
-                   trait.value?.number !== undefined ||
+  const hasValue = (trait.value?.boolean !== undefined && trait.value?.boolean !== null) ||
+                   (trait.value?.text && trait.value?.text !== "null") ||
+                   (trait.value?.number !== undefined && trait.value?.number !== null) ||
                    trait.value?.date ||
-                   trait.value?.json;
+                   (trait.value?.json && trait.value?.json !== "null" &&
+                    !(typeof trait.value?.json === "object" && Object.keys(trait.value?.json).length === 0));
+
+  // For traits that support history, show count of entries
+  const supportsHistory = trait.supportsHistory === true;
+  const historyEntries = trait.history || [];
+  const historyCount = trait.historyCount || historyEntries.length;
+
+  // Get most recent entry for display (if supports history)
+  const getMostRecentEntryDisplay = (): string | null => {
+    if (!supportsHistory || historyEntries.length === 0) return null;
+    const latest = historyEntries[0]; // Already sorted desc by recordedAt
+    const date = new Date(latest.recordedAt).toLocaleDateString();
+
+    // Format based on trait type
+    if (isVetWellnessExam) {
+      const outcome = latest.data?.outcome ? ` - ${latest.data.outcome}` : "";
+      return `${date}${outcome}`;
+    }
+    if (isWeight) {
+      const lbs = latest.data?.lbs;
+      const oz = latest.data?.oz;
+      if (lbs !== undefined && lbs !== null) {
+        const ozStr = oz && oz > 0 ? ` ${oz} oz` : "";
+        return `${lbs} lbs${ozStr} (${date})`;
+      }
+      return date;
+    }
+    if (isBodyConditionScore) {
+      const score = latest.data?.score;
+      return score !== undefined ? `Score: ${score} (${date})` : date;
+    }
+    if (isDentalCleaning) {
+      const by = latest.performedBy ? ` by ${latest.performedBy}` : "";
+      return `${date}${by}`;
+    }
+    return date;
+  };
 
   // COLLAPSED STATE (default)
   if (!isExpanded) {
-    const displayValue = getDisplayValue();
+    const displayValue = supportsHistory ? getMostRecentEntryDisplay() : getDisplayValue();
     return (
       <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium truncate">{displayName}</span>
-              {!displayValue && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  Pending
-                </span>
-              )}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium truncate">{displayName}</span>
+          {displayValue && (
+            <div className="text-xs text-secondary truncate">{displayValue}</div>
+          )}
+          {/* Show history count for traits that support it */}
+          {supportsHistory && historyCount > 0 && (
+            <div className="text-xs text-secondary">
+              {historyCount} {historyCount === 1 ? "entry" : "entries"}
             </div>
-            {displayValue && (
-              <div className="text-xs text-secondary truncate">{displayValue}</div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {trait.documents && trait.documents.length > 0 && (
-              <span className="text-xs text-secondary" title={`${trait.documents.length} document(s)`}>
-                {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
-              </span>
-            )}
-            {/* Edit button (pencil icon) - before visibility toggle */}
-            {editMode && (
-              <button
-                onClick={onExpand}
-                className="p-1.5 rounded hover:bg-white/10 text-secondary hover:text-primary transition-colors"
-                title="Edit"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-              </button>
-            )}
-            {/* Network visibility toggle - always show, greyed out when master toggle is off */}
-            {onVisibilityToggle ? (
-              <VisibilityToggle
-                isPublic={trait.networkVisible || false}
-                onChange={onVisibilityToggle}
-                disabled={!editMode}
-                readOnly={!editMode}
-                inactive={!enableNetworkSharing}
-              />
-            ) : (
-              <VisibilityToggle
-                isPublic={false}
-                onChange={() => {}}
-                inactive={true}
-              />
-            )}
-          </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {trait.documents && trait.documents.length > 0 && (
+            <span className="text-xs text-secondary" title={`${trait.documents.length} document(s)`}>
+              {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
+            </span>
+          )}
+          {/* Pending status indicator - only for non-history traits or history traits with no entries */}
+          {!displayValue && (!supportsHistory || historyCount === 0) && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              Pending
+            </span>
+          )}
+          {/* Edit button (pencil icon) - before visibility toggle */}
+          {editMode && (
+            <button
+              onClick={onExpand}
+              className="p-1.5 rounded hover:bg-white/10 text-secondary hover:text-primary transition-colors"
+              title={supportsHistory ? "View/Add Entries" : "Edit"}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          )}
+          {/* Network visibility toggle - always clickable, greyed out when master toggle is off or no value */}
+          {onVisibilityToggle ? (
+            <VisibilityToggle
+              isPublic={trait.networkVisible || false}
+              onChange={onVisibilityToggle}
+              disabled={false}
+              readOnly={false}
+              inactive={!enableNetworkSharing}
+              isOverridden={isVisibilityOverridden}
+            />
+          ) : (
+            <VisibilityToggle
+              isPublic={false}
+              onChange={() => {}}
+              inactive={true}
+            />
+          )}
         </div>
       </div>
     );
   }
 
-  // EXPANDED STATE (editing)
+  // Handler for adding a new history entry
+  const handleAddHistoryEntry = async () => {
+    if (!newEntryData.recordedAt) {
+      toast.error("Please enter a date");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api?.animals?.traits?.history?.add(animalId, trait.traitKey, {
+        recordedAt: newEntryData.recordedAt,
+        data: newEntryData.data || {},
+        performedBy: newEntryData.performedBy,
+        location: newEntryData.location,
+        notes: newEntryData.notes,
+      });
+      toast.success("Entry added");
+      setNewEntryData({});
+      setShowAddEntry(false);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err?.data?.message || "Failed to add entry");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handler for deleting a history entry
+  const handleDeleteHistoryEntry = async (entryId: number) => {
+    if (!confirm("Delete this entry?")) return;
+    try {
+      await api?.animals?.traits?.history?.delete(animalId, trait.traitKey, entryId);
+      toast.success("Entry deleted");
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err?.data?.message || "Failed to delete entry");
+    }
+  };
+
+  // Render the add entry form based on trait type
+  const renderAddEntryForm = () => {
+    const data = newEntryData.data || {};
+
+    if (isVetWellnessExam) {
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Exam Date *</label>
+            <DatePicker
+              value={newEntryData.recordedAt || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Outcome</label>
+            <select
+              value={data.outcome || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, outcome: e.target.value } })}
+              className="text-sm border border-hairline rounded px-2 py-1.5 bg-card text-inherit w-full"
+            >
+              <option value="">Select outcome...</option>
+              <option value="Normal">Normal - No issues</option>
+              <option value="Abnormal">Abnormal - Issues found</option>
+              <option value="Follow-up">Follow-up needed</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Performed By</label>
+            <Input size="sm" value={newEntryData.performedBy || ""} onChange={(e) => setNewEntryData({ ...newEntryData, performedBy: e.target.value })} placeholder="Veterinarian name" />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Location</label>
+            <Input size="sm" value={newEntryData.location || ""} onChange={(e) => setNewEntryData({ ...newEntryData, location: e.target.value })} placeholder="Clinic name" />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Notes</label>
+            <textarea
+              value={data.notes || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, notes: e.target.value } })}
+              className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+              rows={2}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (isWeight) {
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Date Recorded *</label>
+            <DatePicker
+              value={newEntryData.recordedAt || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+              className="w-40"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Pounds</label>
+              <Input type="number" size="sm" value={data.lbs ?? ""} onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, lbs: e.target.value ? parseInt(e.target.value) : null } })} min="0" />
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Ounces</label>
+              <Input type="number" size="sm" value={data.oz ?? ""} onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, oz: e.target.value ? parseInt(e.target.value) : null } })} min="0" max="15" />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isBodyConditionScore) {
+      const species = trait.traitKey?.split(".")[0] || "";
+      const uses5Scale = ["goat", "sheep", "rabbit"].includes(species.toLowerCase());
+      const maxScore = uses5Scale ? 5 : 9;
+      const scoreOptions = Array.from({ length: maxScore }, (_, i) => i + 1);
+
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Score (1-{maxScore}) *</label>
+              <select
+                value={data.score ?? ""}
+                onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, score: e.target.value ? parseInt(e.target.value) : null } })}
+                className="text-sm border border-hairline rounded px-2 py-1.5 bg-card text-inherit w-full"
+              >
+                <option value="">Select...</option>
+                {scoreOptions.map((score) => <option key={score} value={score}>{score}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Date Recorded *</label>
+              <DatePicker
+                value={newEntryData.recordedAt || ""}
+                onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isDentalCleaning) {
+      const species = trait.traitKey?.split(".")[0] || "";
+      const procedureLabel = species.toLowerCase() === "horse" ? "Float" : ["goat", "sheep", "rabbit"].includes(species.toLowerCase()) ? "Check" : "Cleaning";
+
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Date of {procedureLabel} *</label>
+            <DatePicker
+              value={newEntryData.recordedAt || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Performed By</label>
+            <Input size="sm" value={newEntryData.performedBy || ""} onChange={(e) => setNewEntryData({ ...newEntryData, performedBy: e.target.value })} placeholder="Veterinarian or clinic name" />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Location</label>
+            <Input size="sm" value={newEntryData.location || ""} onChange={(e) => setNewEntryData({ ...newEntryData, location: e.target.value })} placeholder="Clinic or facility location" />
+          </div>
+        </div>
+      );
+    }
+
+    // ENUM type traits with history (Eye Exam, Cardiac Exam, Infectious tests)
+    if (isEnum && trait.enumValues?.length > 0) {
+      return (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">Exam Date *</label>
+            <DatePicker
+              value={newEntryData.recordedAt || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Result *</label>
+            <select
+              value={data.result || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, result: e.target.value } })}
+              className="text-sm border border-hairline rounded px-2 py-1.5 bg-card text-inherit w-full"
+            >
+              <option value="">Select result...</option>
+              {(trait.enumValues || []).map((opt: string) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Performed By</label>
+            <Input size="sm" value={newEntryData.performedBy || ""} onChange={(e) => setNewEntryData({ ...newEntryData, performedBy: e.target.value })} placeholder="Veterinarian name" />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Location</label>
+            <Input size="sm" value={newEntryData.location || ""} onChange={(e) => setNewEntryData({ ...newEntryData, location: e.target.value })} placeholder="Clinic name" />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Notes</label>
+            <textarea
+              value={data.notes || ""}
+              onChange={(e) => setNewEntryData({ ...newEntryData, data: { ...data, notes: e.target.value } })}
+              className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+              rows={2}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // Fallback generic form
+    return (
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-secondary block mb-1">Date *</label>
+          <DatePicker
+            value={newEntryData.recordedAt || ""}
+            onChange={(e) => setNewEntryData({ ...newEntryData, recordedAt: e.currentTarget.value })}
+            className="w-40"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-secondary block mb-1">Notes</label>
+          <textarea
+            value={newEntryData.notes || ""}
+            onChange={(e) => setNewEntryData({ ...newEntryData, notes: e.target.value })}
+            className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+            rows={2}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Format history entry for display
+  const formatHistoryEntry = (entry: any) => {
+    const date = new Date(entry.recordedAt).toLocaleDateString();
+
+    if (isVetWellnessExam) {
+      const outcome = entry.data?.outcome || "";
+      return { date, summary: outcome || "Exam recorded", by: entry.performedBy };
+    }
+    if (isWeight) {
+      const lbs = entry.data?.lbs;
+      const oz = entry.data?.oz;
+      const weightStr = lbs !== undefined && lbs !== null
+        ? `${lbs} lbs${oz && oz > 0 ? ` ${oz} oz` : ""}`
+        : "Weight recorded";
+      return { date, summary: weightStr, by: null };
+    }
+    if (isBodyConditionScore) {
+      const score = entry.data?.score;
+      return { date, summary: score !== undefined ? `Score: ${score}` : "Score recorded", by: null };
+    }
+    if (isDentalCleaning) {
+      return { date, summary: "Dental completed", by: entry.performedBy };
+    }
+    // ENUM type traits (Eye Exam, Cardiac Exam, Infectious tests)
+    if (isEnum) {
+      const result = entry.data?.result || "";
+      return { date, summary: result || "Result recorded", by: entry.performedBy };
+    }
+    return { date, summary: "Entry recorded", by: entry.performedBy };
+  };
+
+  // EXPANDED STATE - History traits
+  if (supportsHistory) {
+    return (
+      <div className="border border-hairline rounded-lg p-4 bg-subtle">
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-medium text-sm">{displayName}</div>
+          <Button size="sm" variant="outline" onClick={onCollapse}>Close</Button>
+        </div>
+
+        {/* Existing entries */}
+        {historyEntries.length > 0 && (
+          <div className="space-y-2 mb-4">
+            {historyEntries.map((entry: any) => {
+              const { date, summary, by } = formatHistoryEntry(entry);
+              return (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-sm bg-surface"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{date}</div>
+                    <div className="text-xs text-secondary">
+                      {summary}
+                      {by && <span className="ml-2">• {by}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteHistoryEntry(entry.id)}
+                    className="p-1 rounded hover:bg-red-500/20 text-secondary hover:text-red-400 transition-colors"
+                    title="Delete entry"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add entry form */}
+        {showAddEntry ? (
+          <div className="border border-hairline rounded-lg p-3 bg-card">
+            <div className="text-sm font-medium mb-3">Add New Entry</div>
+            {renderAddEntryForm()}
+            <div className="flex items-center gap-2 mt-4">
+              <Button size="sm" variant="primary" onClick={handleAddHistoryEntry} disabled={saving}>
+                {saving ? "Adding..." : "Add Entry"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setShowAddEntry(false); setNewEntryData({}); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setShowAddEntry(true)} className="w-full">
+            + Add Entry
+          </Button>
+        )}
+
+        {/* Visibility toggle */}
+        {enableNetworkSharing && (
+          <div className="border-t border-hairline pt-4 mt-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-secondary">Share on Network</div>
+              <VisibilityToggle
+                isPublic={trait.networkVisible || false}
+                inactive={false}
+                readOnly={false}
+                onChange={() => onVisibilityToggle?.(!trait.networkVisible)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // EXPANDED STATE - Regular traits (editing)
   return (
     <div className="border border-hairline rounded-lg p-4 bg-subtle">
       <div className="mb-4">
@@ -6114,7 +6969,7 @@ function TraitRow({
                 isPublic={currentNetworkVisible || false}
                 inactive={false}
                 readOnly={false}
-                onClick={() =>
+                onChange={() =>
                   onDraftChange({
                     ...localDraft,
                     networkVisible: !currentNetworkVisible,
@@ -6125,43 +6980,45 @@ function TraitRow({
           </div>
         )}
 
-        {/* Performed Date & Source */}
-        <div className="border-t border-hairline pt-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-secondary block mb-1">Performed Date</label>
-              <DatePicker
-                value={currentPerformedAt?.slice(0, 10) || ""}
-                onChange={(e) =>
-                  onDraftChange({
-                    ...localDraft,
-                    performedAt: e.currentTarget.value,
-                  })
-                }
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-secondary block mb-1">Source</label>
-              <select
-                value={currentSource || ""}
-                onChange={(e) =>
-                  onDraftChange({
-                    ...localDraft,
-                    source: e.target.value,
-                  })
-                }
-                className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
-              >
-                <option value="">Select source...</option>
-                <option value="BREEDER_ENTERED">Breeder</option>
-                <option value="VETERINARY_RECORD">Vet</option>
-                <option value="LAB_RESULT">Lab</option>
-                <option value="REGISTRY_DATA">Registry</option>
-              </select>
+        {/* Performed Date & Source - hide for General traits */}
+        {!isGeneralTrait && (
+          <div className="border-t border-hairline pt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-secondary block mb-1">Performed Date</label>
+                <DatePicker
+                  value={currentPerformedAt?.slice(0, 10) || ""}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...localDraft,
+                      performedAt: e.currentTarget.value,
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-secondary block mb-1">Source</label>
+                <select
+                  value={currentSource || ""}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...localDraft,
+                      source: e.target.value,
+                    })
+                  }
+                  className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
+                >
+                  <option value="">Select source...</option>
+                  <option value="SELF_REPORTED">Breeder</option>
+                  <option value="VET">Vet</option>
+                  <option value="LAB">Lab</option>
+                  <option value="REGISTRY">Registry</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Evidence / Documents */}
         <div className="border-t border-hairline pt-4">

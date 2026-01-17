@@ -3,7 +3,7 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
-import { makeApi, type AgreementDTO, type ContractStatus } from "@bhq/api";
+import { makeApi, type AgreementDTO, type AgreementsResponse, type ContractStatus } from "@bhq/api";
 import { SubjectHeader } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
@@ -503,6 +503,9 @@ export default function PortalAgreementsPageNew() {
   }, [tenantSlug, isReady]);
 
   const fetchAgreements = React.useCallback(async () => {
+    // Wait for tenant context to be ready before fetching
+    if (!isReady) return;
+
     setLoading(true);
     setError(false);
 
@@ -526,9 +529,10 @@ export default function PortalAgreementsPageNew() {
       return;
     }
 
-    // Normal API fetch
+    // Normal API fetch using tenant-aware portalFetch
     try {
-      const data = await api.portalData.getAgreements();
+      const portalFetch = createPortalFetch(tenantSlug);
+      const data = await portalFetch<AgreementsResponse>("/portal/agreements");
       setAgreements(data.agreements || []);
     } catch (err: any) {
       console.error("[PortalAgreementsPageNew] Failed to fetch agreements:", err);
@@ -536,7 +540,7 @@ export default function PortalAgreementsPageNew() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenantSlug, isReady]);
 
   React.useEffect(() => {
     fetchAgreements();

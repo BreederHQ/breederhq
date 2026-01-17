@@ -42,6 +42,10 @@ import {
   UserPlus,
 } from "lucide-react";
 
+// Foaling components
+import { FoalingCountdownBadge, calculateFoalingStatus } from "../../../../breeding/src/components/FoalingCountdownBadge";
+import { RecordFoalingModal } from "../../../../breeding/src/components/RecordFoalingModal";
+
 // API imports
 import {
   getMarketplaceProfile,
@@ -384,6 +388,7 @@ function ProgramDashboardCard({
   onRemove,
   onOffspringGroupClick,
   onBreedingPlanClick,
+  onRecordFoaling,
 }: {
   program: ListedProgramItem;
   index: number;
@@ -397,6 +402,7 @@ function ProgramDashboardCard({
   onRemove: () => void;
   onOffspringGroupClick: (group: BreederOffspringGroupItem) => void;
   onBreedingPlanClick: (plan: BreederBreedingPlanItem) => void;
+  onRecordFoaling: (plan: BreederBreedingPlanItem) => void;
 }) {
   const isMissingRequired = !program.name?.trim() || !program.breedText?.trim();
 
@@ -605,6 +611,15 @@ function ProgramDashboardCard({
                           <span className={`text-xs px-2.5 py-1 rounded border font-medium ${statusStyle.badge}`}>
                             {STATUS_LABELS[plan.status] || plan.status}
                           </span>
+                          {/* Foaling Countdown Badge - shows for HORSE species with expected birth */}
+                          {plan.species?.toUpperCase() === "HORSE" && plan.expectedBirthDate && (
+                            <FoalingCountdownBadge
+                              expectedBirthDate={plan.expectedBirthDate}
+                              birthDateActual={plan.birthDateActual}
+                              breedDateActual={plan.breedDateActual}
+                              size="sm"
+                            />
+                          )}
                         </div>
 
                         {/* Parent Animals with Photos */}
@@ -675,6 +690,20 @@ function ProgramDashboardCard({
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        {/* Record Foaling Button - for HORSE species with expected birth but no actual birth */}
+                        {plan.species?.toUpperCase() === "HORSE" &&
+                          plan.expectedBirthDate &&
+                          !plan.birthDateActual &&
+                          plan.breedDateActual && (
+                          <button
+                            onClick={() => onRecordFoaling(plan)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition-colors"
+                            title="Record foaling event"
+                          >
+                            <Baby size={14} />
+                            Record Foaling
+                          </button>
+                        )}
                         <button
                           className="p-1.5 text-text-secondary hover:text-white hover:bg-portal-surface rounded transition-colors"
                           title="Manage plan visibility"
@@ -1448,6 +1477,10 @@ export function ManageBreedingProgramsPage() {
   const [selectedBreedingPlan, setSelectedBreedingPlan] = React.useState<BreederBreedingPlanItem | null>(null);
   const [planTab, setPlanTab] = React.useState<'details' | 'rules'>('details');
 
+  // Foaling modal state
+  const [foalingPlan, setFoalingPlan] = React.useState<BreederBreedingPlanItem | null>(null);
+  const [foalingSubmitting, setFoalingSubmitting] = React.useState(false);
+
   // Analytics state
   const [analytics, setAnalytics] = React.useState<ProgramAnalyticsResponse | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
@@ -1484,6 +1517,48 @@ export function ManageBreedingProgramsPage() {
       return programStatsMap.get(program.name.toLowerCase());
     },
     [programStatsMap]
+  );
+
+  // Handle foaling submission
+  const handleFoalingSubmit = React.useCallback(
+    async (data: {
+      actualBirthDate: string;
+      foals: Array<{ sex: "MALE" | "FEMALE"; color?: string; name?: string }>;
+    }) => {
+      if (!foalingPlan || !tenantId) return;
+
+      setFoalingSubmitting(true);
+      try {
+        // Call the record-foaling API
+        const response = await fetch(`/api/v1/breeding/plans/${foalingPlan.id}/record-foaling`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Tenant-ID": tenantId,
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+        }
+
+        // Refresh breeding plans to show updated status
+        const plansRes = await getBreederBreedingPlans(tenantId, { limit: 100 }).catch(() => ({ items: [] }));
+        setBreedingPlans(plansRes.items || []);
+
+        // Also refresh offspring groups
+        const groupsRes = await getBreederOffspringGroups(tenantId, { limit: 100 }).catch(() => ({ items: [] }));
+        setOffspringGroups(groupsRes.items || []);
+
+        // Close modal
+        setFoalingPlan(null);
+      } finally {
+        setFoalingSubmitting(false);
+      }
+    },
+    [foalingPlan, tenantId]
   );
 
   // Load profile on mount
@@ -1772,7 +1847,7 @@ export function ManageBreedingProgramsPage() {
       <div className="min-h-screen bg-portal-bg flex items-center justify-center">
         <div className="text-center">
           <p className="text-text-secondary mb-4">Failed to load profile</p>
-          <Link to="/marketplace">
+          <Link to="/">
             <Button variant="secondary">Back to Marketplace</Button>
           </Link>
         </div>
@@ -1786,7 +1861,7 @@ export function ManageBreedingProgramsPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            to="/marketplace"
+            to="/"
             className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors mb-4"
           >
             <ArrowLeft size={16} />
@@ -1910,6 +1985,7 @@ export function ManageBreedingProgramsPage() {
                   onRemove={() => removeProgram(originalIndex)}
                   onOffspringGroupClick={setSelectedOffspringGroup}
                   onBreedingPlanClick={setSelectedBreedingPlan}
+                  onRecordFoaling={setFoalingPlan}
                 />
               ))}
           </div>
@@ -2420,6 +2496,18 @@ export function ManageBreedingProgramsPage() {
             </div>
           </div>
       )}
+
+      {/* Record Foaling Modal */}
+      <RecordFoalingModal
+        open={!!foalingPlan}
+        onClose={() => setFoalingPlan(null)}
+        planId={foalingPlan?.id ?? 0}
+        damName={foalingPlan?.dam?.name}
+        sireName={foalingPlan?.sire?.name}
+        expectedBirthDate={foalingPlan?.expectedBirthDate}
+        breedDateActual={foalingPlan?.breedDateActual}
+        onSubmit={handleFoalingSubmit}
+      />
     </div>
   );
 }

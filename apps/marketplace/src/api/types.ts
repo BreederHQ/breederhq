@@ -318,3 +318,55 @@ export interface AnimalProgramsResponse {
   limit: number;
   offset: number;
 }
+
+/**
+ * Direct Animal Listing types - for V2 individual animal listings on marketplace
+ * These are distinct from the legacy AnimalPublicListing model.
+ */
+export type DirectListingTemplateType =
+  | "STUD_SERVICES"
+  | "GUARDIAN"
+  | "TRAINED"
+  | "REHOME"
+  | "CO_OWNERSHIP"
+  | "CUSTOM";
+
+export interface PublicDirectListingBreeder {
+  id: number;
+  slug: string | null;
+  name: string;
+  location: string | null;
+}
+
+export interface PublicDirectListingDTO extends MonetizationFields {
+  id: number;
+  slug: string;
+  templateType: DirectListingTemplateType;
+  headline: string | null;
+  title: string | null;
+  summary: string | null;
+  priceModel: "fixed" | "range" | "inquire";
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  publishedAt: string | null;
+  // Animal details
+  animalId: number;
+  animalName: string | null;
+  animalPhotoUrl: string | null;
+  animalSpecies: string | null;
+  animalBreed: string | null;
+  animalSex: string | null;
+  animalBirthDate: string | null;
+  // Breeder details
+  breeder: PublicDirectListingBreeder;
+}
+
+export interface DirectListingsResponse {
+  items: PublicDirectListingDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}

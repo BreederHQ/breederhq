@@ -10,6 +10,8 @@ import type {
   AnimalProgramsResponse,
   PublicAnimalProgramSummaryDTO,
   PublicAnimalProgramDetailDTO,
+  DirectListingsResponse,
+  PublicDirectListingDTO,
 } from "./types";
 
 export type { GetAnimalProgramsParams };
@@ -305,6 +307,56 @@ export async function getAnimalListing(
   const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}`;
   devLogFetch(path);
   const { data } = await apiGet<PublicAnimalListingDTO>(path);
+  return data;
+}
+
+// ============================================================================
+// Direct Animal Listings (V2 Individual Listings)
+// ============================================================================
+
+export interface GetDirectListingsParams {
+  search?: string;
+  species?: string;
+  breed?: string;
+  templateType?: string;
+  location?: string;
+  priceMin?: string;
+  priceMax?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Get all ACTIVE direct animal listings across all breeders.
+ * This is the V2 endpoint for individual animal listings (not legacy AnimalPublicListing).
+ */
+export async function getPublicDirectListings(params: GetDirectListingsParams = {}): Promise<DirectListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.species) query.set("species", params.species);
+  if (params.breed) query.set("breed", params.breed);
+  if (params.templateType) query.set("templateType", params.templateType);
+  if (params.location) query.set("location", params.location);
+  if (params.priceMin) query.set("priceMin", params.priceMin);
+  if (params.priceMax) query.set("priceMax", params.priceMax);
+  if (params.limit != null) query.set("limit", String(params.limit));
+  if (params.offset != null) query.set("offset", String(params.offset));
+
+  const queryStr = query.toString();
+  const path = `/api/v2/marketplace/listings${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<DirectListingsResponse>(path);
+  return data;
+}
+
+/**
+ * Get a single direct animal listing by slug.
+ */
+export async function getPublicDirectListing(slug: string): Promise<PublicDirectListingDTO> {
+  const path = `/api/v2/marketplace/listings/${encodeURIComponent(slug)}`;
+  devLogFetch(path);
+  const { data } = await apiGet<PublicDirectListingDTO>(path);
   return data;
 }
 
@@ -3844,12 +3896,8 @@ export async function getTenantAnimals(
  * This config is saved to DirectAnimalListing.dataDrawerConfig field.
  */
 export interface DataDrawerConfig {
-  identity?: {
-    enabled: boolean;
-    showName?: boolean;
-    showPhoto?: boolean;
-    showDob?: boolean;
-  };
+  // Note: Identity (name, photo, DOB) is always included based on animal-level privacy settings
+  // The Data Drawer controls only optional data sections
   registry?: {
     enabled: boolean;
     registryIds?: number[];
@@ -3857,6 +3905,8 @@ export interface DataDrawerConfig {
   health?: {
     enabled: boolean;
     traitIds?: number[];
+    /** Per-trait setting to show full history instead of just latest value */
+    traitHistoryEnabled?: Record<number, boolean>;
   };
   genetics?: {
     enabled: boolean;
@@ -3915,6 +3965,18 @@ export interface AnimalPrivacySettings {
 }
 
 /**
+ * Historical entry for a health trait
+ */
+export interface HealthTraitHistoryEntry {
+  id: number;
+  recordedAt: string;
+  data: any;
+  performedBy: string | null;
+  location: string | null;
+  notes: string | null;
+}
+
+/**
  * Health trait eligible for marketplace listing
  */
 export interface HealthTrait {
@@ -3927,6 +3989,12 @@ export interface HealthTrait {
   status: string | null;
   performedAt: string | null;
   verified: boolean;
+  /** Whether this trait supports historical entries (e.g., weight, wellness exams) */
+  supportsHistory: boolean;
+  /** Historical entries for this trait (only populated if supportsHistory is true) */
+  history?: HealthTraitHistoryEntry[];
+  /** Total count of historical entries */
+  historyCount?: number;
 }
 
 /**

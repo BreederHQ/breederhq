@@ -9,9 +9,10 @@ import {
   getAnimalListings,
   getPublicOffspringGroups,
   getPublicAnimalPrograms,
+  getPublicDirectListings,
   type PublicOffspringGroupListing,
 } from "../../api/client";
-import type { PublicAnimalListingDTO, PublicAnimalProgramSummaryDTO } from "../../api/types";
+import type { PublicAnimalListingDTO, PublicAnimalProgramSummaryDTO, PublicDirectListingDTO } from "../../api/types";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useSaveButton } from "../../hooks/useSavedListings";
 import { AnimalProgramTile } from "../components/AnimalProgramTile";
@@ -568,6 +569,7 @@ interface AnimalCardProps {
   breederName: string | null;
   href: string;
   listingType: "animal" | "offspring";
+  badge?: string;
 }
 
 function AnimalCard({
@@ -587,6 +589,7 @@ function AnimalCard({
   breederName,
   href,
   listingType,
+  badge,
 }: AnimalCardProps) {
   // Use the save hook - map listingType to savedListingType
   const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
@@ -617,9 +620,9 @@ function AnimalCard({
 
   return (
     <Link to={href} className="group block">
-      <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
+      <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
         {/* Image */}
-        <div className="relative aspect-[4/3] bg-border-default">
+        <div className="relative aspect-video bg-border-default">
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -636,7 +639,12 @@ function AnimalCard({
 
           {/* Left badges */}
           <div className="absolute top-2 left-2 flex flex-wrap gap-1.5">
-            {listingType === "offspring" && (
+            {badge && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-500/90 text-white">
+                {badge}
+              </span>
+            )}
+            {listingType === "offspring" && !badge && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/90 text-white">
                 {terms.group.singularCap}
               </span>
@@ -667,19 +675,19 @@ function AnimalCard({
 
         {/* Content */}
         <div className="p-4">
-          <h3 className="text-[15px] font-semibold text-white mb-1 line-clamp-1 group-hover:text-accent transition-colors">
+          <h3 className="text-base font-semibold text-white line-clamp-1 group-hover:text-accent transition-colors">
             {title}
           </h3>
 
           {breed && (
-            <p className="text-sm text-text-secondary mb-1">{breed}</p>
+            <p className="text-sm text-text-secondary">{breed}</p>
           )}
 
           {breederName && (
-            <p className="text-[13px] text-text-tertiary mb-2">{breederName}</p>
+            <p className="text-sm text-text-tertiary">{breederName}</p>
           )}
 
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between text-sm">
             {priceDisplay && (
               <span className="text-[15px] font-semibold text-accent">{priceDisplay}</span>
             )}
@@ -831,6 +839,7 @@ function AnimalListRow({
   breederName,
   href,
   listingType,
+  badge,
 }: AnimalCardProps) {
   const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
   const { isSaved, toggleSave } = useSaveButton(savedListingType, id);
@@ -880,7 +889,12 @@ function AnimalListRow({
             <h3 className="font-medium text-white group-hover:text-accent transition-colors truncate">
               {title}
             </h3>
-            {listingType === "offspring" && (
+            {badge && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/20 text-indigo-400 whitespace-nowrap">
+                {badge}
+              </span>
+            )}
+            {listingType === "offspring" && !badge && (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/20 text-blue-400 whitespace-nowrap">
                 {terms.group.singularCap}
               </span>
@@ -967,8 +981,8 @@ function AnimalListRow({
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
-      <div className="aspect-[4/3] bg-border-default" />
+    <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
+      <div className="aspect-video bg-border-default" />
       <div className="p-4 space-y-3">
         <div className="h-4 bg-border-default rounded w-3/4" />
         <div className="h-3 bg-border-default rounded w-1/2" />
@@ -1164,6 +1178,7 @@ export function AnimalsIndexPage() {
   >([]);
   const [animalListings, setAnimalListings] = React.useState<PublicAnimalListingDTO[]>([]);
   const [animalPrograms, setAnimalPrograms] = React.useState<PublicAnimalProgramSummaryDTO[]>([]);
+  const [directListings, setDirectListings] = React.useState<PublicDirectListingDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [totalCount, setTotalCount] = React.useState(0);
 
@@ -1280,7 +1295,23 @@ export function AnimalsIndexPage() {
         promises.push(Promise.resolve({ items: [], total: 0, limit: 0, offset: 0 }));
       }
 
-      const [offspringResult, animalResult, programsResult] = await Promise.allSettled(promises);
+      // Also fetch V2 direct listings (individual animals) - always fetch alongside animals view
+      if (fetchAnimals) {
+        promises.push(
+          getPublicDirectListings({
+            search: filters.search || undefined,
+            species: filters.species || undefined,
+            breed: filters.breed || undefined,
+            location: filters.location || undefined,
+            limit: ITEMS_PER_PAGE,
+            offset,
+          })
+        );
+      } else {
+        promises.push(Promise.resolve({ items: [], total: 0, limit: 0, offset: 0 }));
+      }
+
+      const [offspringResult, animalResult, programsResult, directListingsResult] = await Promise.allSettled(promises);
 
       if (!dead) {
         // Handle offspring groups
@@ -1307,6 +1338,14 @@ export function AnimalsIndexPage() {
           setAnimalPrograms([]);
         }
 
+        // Handle V2 direct listings
+        if (directListingsResult.status === "fulfilled") {
+          setDirectListings(directListingsResult.value?.items || []);
+        } else {
+          console.error("Failed to fetch direct listings:", directListingsResult.reason);
+          setDirectListings([]);
+        }
+
         // Calculate total count (for pagination)
         const offspringTotal =
           offspringResult.status === "fulfilled" ? offspringResult.value.total || 0 : 0;
@@ -1314,7 +1353,9 @@ export function AnimalsIndexPage() {
           animalResult.status === "fulfilled" ? animalResult.value?.total || 0 : 0;
         const programsTotal =
           programsResult.status === "fulfilled" ? programsResult.value?.total || 0 : 0;
-        setTotalCount(offspringTotal + animalTotal + programsTotal);
+        const directListingsTotal =
+          directListingsResult.status === "fulfilled" ? directListingsResult.value?.total || 0 : 0;
+        setTotalCount(offspringTotal + animalTotal + programsTotal + directListingsTotal);
 
         setLoading(false);
       }
@@ -1355,6 +1396,8 @@ export function AnimalsIndexPage() {
   const filteredOffspring = filters.view === "animals" || filters.view === "programs" ? [] : offspringGroupListings;
   const filteredAnimals = filters.view === "offspring" || filters.view === "programs" ? [] : animalListings;
   const filteredPrograms = filters.view === "offspring" || filters.view === "animals" ? [] : animalPrograms;
+  // Direct listings show alongside "animals" view (individual animals)
+  const filteredDirectListings = filters.view === "offspring" || filters.view === "programs" ? [] : directListings;
 
   // Apply client-side price filtering if set
   const applyPriceFilter = <T extends { priceCents?: number | null; priceMinCents?: number | null }>(
@@ -1373,8 +1416,9 @@ export function AnimalsIndexPage() {
   const displayedOffspring = applyPriceFilter(filteredOffspring);
   const displayedAnimals = applyPriceFilter(filteredAnimals);
   const displayedPrograms = applyPriceFilter(filteredPrograms);
+  const displayedDirectListings = applyPriceFilter(filteredDirectListings);
 
-  const totalDisplayed = displayedOffspring.length + displayedAnimals.length + displayedPrograms.length;
+  const totalDisplayed = displayedOffspring.length + displayedAnimals.length + displayedPrograms.length + displayedDirectListings.length;
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
@@ -1528,7 +1572,7 @@ export function AnimalsIndexPage() {
           {/* Results Grid/List */}
           {loading ? (
             <div className={displayMode === "grid"
-              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
               : "flex flex-col gap-2"
             }>
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1592,10 +1636,10 @@ export function AnimalsIndexPage() {
               )}
 
               <div className={displayMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                 : "flex flex-col gap-2"
               }>
-                {/* Individual Animal Listings */}
+                {/* Individual Animal Listings (Legacy) */}
                 {displayedAnimals.map((listing) => {
                   const locationParts = [
                     listing.locationCity,
@@ -1620,6 +1664,40 @@ export function AnimalsIndexPage() {
                       breederName={listing.programName}
                       href={`/programs/${listing.programSlug}/animals/${listing.urlSlug}`}
                       listingType="animal"
+                    />
+                  );
+                })}
+
+                {/* Direct Animal Listings (V2) */}
+                {displayedDirectListings.map((listing) => {
+                  const locationParts = [
+                    listing.locationCity,
+                    listing.locationRegion,
+                  ].filter(Boolean);
+
+                  const CardComponent = displayMode === "grid" ? AnimalCard : AnimalListRow;
+
+                  return (
+                    <CardComponent
+                      key={`direct-${listing.id}`}
+                      id={String(listing.id)}
+                      title={listing.title || listing.animalName || "Animal Listing"}
+                      imageUrl={listing.animalPhotoUrl}
+                      price={listing.priceCents}
+                      priceType={listing.priceModel || "fixed"}
+                      priceMin={listing.priceMinCents}
+                      priceMax={listing.priceMaxCents}
+                      location={locationParts.length > 0 ? locationParts.join(", ") : null}
+                      breed={listing.animalBreed}
+                      species={listing.animalSpecies}
+                      breederName={listing.breeder?.name || null}
+                      href={`/listings/${listing.slug}`}
+                      listingType="animal"
+                      badge={listing.templateType === "STUD_SERVICES" ? "Stud Services" :
+                             listing.templateType === "GUARDIAN" ? "Guardian" :
+                             listing.templateType === "CO_OWNERSHIP" ? "Co-Own" :
+                             listing.templateType === "REHOME" ? "Rehome" :
+                             listing.templateType === "TRAINED" ? "Trained" : undefined}
                     />
                   );
                 })}

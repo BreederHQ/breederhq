@@ -639,7 +639,7 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
   if (!hasValidSlug) {
     return (
       <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden opacity-50 cursor-not-allowed">
-        <div className="relative aspect-[4/3] bg-border-default flex items-center justify-center">
+        <div className="relative aspect-video bg-border-default flex items-center justify-center">
           <div className="h-20 w-20 rounded-full bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
             <span className="text-2xl font-bold text-[hsl(var(--brand-orange))]">
               {getInitials(breeder.businessName)}
@@ -656,9 +656,9 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
 
   return (
     <Link to={`/breeders/${breeder.tenantSlug}`} className="block group">
-      <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden h-full flex flex-col transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
         {/* Image area - using logo or default */}
-        <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
+        <div className="relative aspect-video bg-border-default overflow-hidden">
           {breeder.logoAssetId ? (
             <img
               src={`/api/assets/${breeder.logoAssetId}`}
@@ -682,7 +682,7 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
         </div>
 
         {/* Content area */}
-        <div className="p-4 flex-1 flex flex-col">
+        <div className="p-4">
           {/* Breeder name */}
           <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-1">
             {breeder.businessName}
@@ -695,7 +695,7 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
 
           {/* Breeds */}
           {visibleBreeds.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-auto">
+            <div className="flex flex-wrap gap-1.5 mb-2">
               {visibleBreeds.map((breed, i) => (
                 <span
                   key={i}
@@ -713,7 +713,7 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
           )}
 
           {/* Footer - availability or CTA */}
-          <div className="pt-3 border-t border-border-subtle flex items-center justify-between mt-auto">
+          <div className="flex items-center justify-between text-sm">
             {breeder.availabilityStatus?.availableNowCount > 0 ? (
               <span className="text-[13px] text-green-400 font-medium">
                 {breeder.availabilityStatus.availableNowCount} Available
@@ -1746,7 +1746,7 @@ export function BreedersIndexPage() {
           {/* Results Grid/List */}
           {loading ? (
             <div className={displayMode === "grid"
-              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
               : "flex flex-col gap-2"
             }>
               {Array.from({ length: 12 }).map((_, i) => (
@@ -1777,7 +1777,7 @@ export function BreedersIndexPage() {
               )}
 
               <div className={displayMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                 : "flex flex-col gap-2"
               }>
                 {breeders.map((breeder) => (

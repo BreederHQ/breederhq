@@ -1,6 +1,8 @@
 // packages/ui/src/atoms/Toast.tsx
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Check, AlertCircle, Info } from "lucide-react";
+import { getFlyoutRoot } from "../overlay";
 
 export type ToastKind = "success" | "error" | "info";
 export type ToastItem = { id: number; kind: ToastKind; msg: string };
@@ -36,8 +38,9 @@ export function ToastViewport() {
     };
   }, []);
 
-  return (
-    <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-[9999]">
+  // Portal toasts to flyout root so they appear above all overlays
+  const toastContent = (
+    <div className="fixed bottom-4 right-4 flex flex-col gap-2 pointer-events-auto">
       {items.map((t) => (
         <div
           key={t.id}
@@ -49,6 +52,16 @@ export function ToastViewport() {
       ))}
     </div>
   );
+
+  // Only render if we have items to show (avoids unnecessary portal)
+  if (items.length === 0) return null;
+
+  // Use portal to render above all overlays
+  if (typeof document !== "undefined") {
+    return createPortal(toastContent, getFlyoutRoot());
+  }
+
+  return toastContent;
 }
 
 export type ToastFn = (msg: string, opts?: { duration?: number }) => void;
