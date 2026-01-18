@@ -13,6 +13,9 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Run tests serially to avoid overwhelming the API
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Cycle Info Tab UI Display', () => {
   // ============================================================================
   // Test 1: Cycle history displays correctly
@@ -99,21 +102,29 @@ test.describe('Cycle Info Tab UI Display', () => {
     testAnimalIds,
   }) => {
     const overrideDays = 195;
+    // Create animal first, then set override via update (override can't be set during creation)
     const animal = await createTestAnimal(apiContext, hogwartsConfig, {
       name: `UI Test Dog ${Date.now()}`,
       species: 'DOG',
       sex: 'FEMALE',
       dateOfBirth: '2020-01-01',
-      femaleCycleLenOverrideDays: overrideDays,
     });
     testAnimalIds.push(animal.id);
+
+    // Set the override via API update
+    await updateAnimal(apiContext, hogwartsConfig, animal.id, {
+      femaleCycleLenOverrideDays: overrideDays,
+    });
 
     await navigateToCycleTab(authenticatedPage, hogwartsConfig.frontendUrl, animal.id);
 
     // Should show the override value in the UI
-    // This could be in an input, a display field, or a badge
+    // The override is shown as "Current cycle length: X days (override)"
+    // Check for the override value displayed anywhere on the page
     await expect(
-      authenticatedPage.locator(`input[value="${overrideDays}"], text=${overrideDays}`)
+      authenticatedPage.getByText(`${overrideDays} days`).or(
+        authenticatedPage.getByText(String(overrideDays))
+      ).first()
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -151,8 +162,9 @@ test.describe('Cycle Info Tab UI Display', () => {
     await navigateToCycleTab(authenticatedPage, hogwartsConfig.frontendUrl, animal.id);
 
     // Should show "Short Cycler" badge or text (±14 days threshold for dogs)
+    // Use .first() since there may be multiple matching elements (badge + description text)
     await expect(
-      authenticatedPage.locator('text=/short cycler|shorter than/i')
+      authenticatedPage.locator('text=/short cycler|shorter than/i').first()
     ).toBeVisible({ timeout: 10000 });
   });
 

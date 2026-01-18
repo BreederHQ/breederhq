@@ -132,11 +132,24 @@ export async function navigateToCycleTab(
   frontendUrl: string,
   animalId: number
 ): Promise<void> {
-  await page.goto(`${frontendUrl}/platform/animals/${animalId}`);
-  await page.waitForLoadState('networkidle');
+  // Animals are opened via query parameter: /animals?animalId=123
+  await page.goto(`${frontendUrl}/animals?animalId=${animalId}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000,
+  });
+
+  // Wait for the animal detail drawer/panel to open
+  // Look for tab elements that would appear in the animal detail view
+  await page.waitForSelector('[role="tablist"], [data-testid="animal-tabs"]', {
+    timeout: 15000,
+  }).catch(async () => {
+    // Fallback: wait for any content that indicates the detail panel loaded
+    await page.waitForTimeout(2000);
+  });
 
   // Click the Cycle Info tab
   const cycleTab = page.locator('button, a, [role="tab"]').filter({ hasText: /cycle\s*info/i });
+  await cycleTab.waitFor({ state: 'visible', timeout: 10000 });
   await cycleTab.click();
   await page.waitForTimeout(500); // Wait for tab transition
 }
