@@ -82,7 +82,7 @@ export function OvulationSummary({
   const markerPosition = Math.max(0, Math.min(100, ((avgOffsetDays - spectrumMin) / spectrumRange) * 100));
   const avgMarkerPosition = ((speciesDefault - spectrumMin) / spectrumRange) * 100;
 
-  // Color based on classification
+  // Color based on classification - amber for late, blue for early, green for average
   const classificationColor = isEarly ? "#3b82f6" : isLate ? "#f59e0b" : "#22c55e";
   const classificationBg = isEarly ? "rgba(59, 130, 246, 0.15)" : isLate ? "rgba(245, 158, 11, 0.15)" : "rgba(34, 197, 94, 0.15)";
 

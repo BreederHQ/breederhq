@@ -83,6 +83,7 @@ import {
   OvulationSummary,
   CollapsibleCycleHistory,
   CollapsibleOverride,
+  CycleLengthInsight,
   type CycleAnalysisResult,
 } from "./components/CycleAnalysis";
 import type { CycleHistoryEntry } from "./components/CycleAnalysis/types";
@@ -2123,6 +2124,15 @@ function CycleTab({
       {/* NEXT CYCLE COUNTDOWN TILES */}
       {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.nextCycleProjection?.projectedHeatStart && (
         <NextCycleHero projection={cycleAnalysis.nextCycleProjection} />
+      )}
+
+      {/* CYCLE LENGTH INSIGHT */}
+      {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.cycleLengthDays && cycleAnalysis.cycleLengthSource && (
+        <CycleLengthInsight
+          cycleLengthDays={cycleAnalysis.cycleLengthDays}
+          cycleLengthSource={cycleAnalysis.cycleLengthSource}
+          species={cycleAnalysis.species}
+        />
       )}
 
       {/* OVULATION PATTERN */}

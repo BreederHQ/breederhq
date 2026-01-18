@@ -7,6 +7,7 @@ export { CycleHistoryEntry } from "./CycleHistoryEntry";
 export { OvulationPatternAnalysis } from "./OvulationPatternAnalysis";
 export { CycleAlertBadge, calculateDaysUntilCycle } from "./CycleAlertBadge";
 export { NextCycleHero } from "./NextCycleHero";
+export { CycleLengthInsight } from "./CycleLengthInsight";
 export { OvulationDotPlot } from "./OvulationDotPlot";
 export { OvulationSummary } from "./OvulationSummary";
 export { CollapsibleCycleHistory } from "./CollapsibleCycleHistory";
