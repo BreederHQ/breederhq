@@ -42,6 +42,8 @@ export interface SpeciesBiologyRules {
   // Placement timing from birth
   birthToPlacementMinDays: number;
   birthToPlacementTypicalDays: number;
+  /** Maximum placement age from birth (for species with upper limits, e.g., rabbits must be placed by 10 weeks) */
+  birthToPlacementMaxDays?: number;
 
   // Female age requirements (for breeding)
   femaleMinBreedingAgeMonths: number;
@@ -145,6 +147,7 @@ export interface ValidationWarning {
     | "BREEDING_TOO_LATE"
     | "WEANING_TOO_EARLY"
     | "PLACEMENT_TOO_EARLY"
+    | "PLACEMENT_TOO_LATE"
     | "FEMALE_TOO_YOUNG"
     | "FEMALE_TOO_OLD"
     | "POSTPARTUM_TOO_SOON"

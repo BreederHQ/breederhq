@@ -70,11 +70,12 @@ import {
   asISODateOnly as asISODateOnlyEngine,
 } from "@bhq/ui/utils/reproEngine/normalize";
 
+import { DayPicker } from "react-day-picker";
+
 import { projectUpcomingCycleStarts } from "@bhq/ui/utils/reproEngine/projectUpcomingCycles";
 
 import {
   OvulationPatternBadge,
-  NextCycleProjectionCard,
   CycleHistoryEntry as CycleHistoryEntryComponent,
   OvulationPatternAnalysis,
   CycleAlertBadge,
@@ -84,6 +85,8 @@ import {
   CollapsibleCycleHistory,
   CollapsibleOverride,
   CycleLengthInsight,
+  SeasonalityIndicator,
+  isSeasonalBreeder,
   type CycleAnalysisResult,
 } from "./components/CycleAnalysis";
 import type { CycleHistoryEntry } from "./components/CycleAnalysis/types";
@@ -1981,9 +1984,6 @@ function CycleTab({
     [proj]
   );
 
-// State for the record heat popover
-  const [showRecordPopover, setShowRecordPopover] = React.useState(false);
-
   // State for editing a cycle date
   const [editingCycleId, setEditingCycleId] = React.useState<number | null>(null);
   const [editingDateIso, setEditingDateIso] = React.useState("");
@@ -2003,49 +2003,94 @@ function CycleTab({
     notes: null,
   }));
 
-  // Ref for hidden DatePicker
-  const recordDatePickerRef = React.useRef<HTMLInputElement>(null);
+  // Ref for the record button (for popover positioning)
+  const recordButtonRef = React.useRef<HTMLButtonElement>(null);
+  // State for the record date picker popover
+  const [recordPopoverOpen, setRecordPopoverOpen] = React.useState(false);
 
   return (
     <div className="space-y-4">
+      {/* Seasonality indicator for HORSE, GOAT, SHEEP */}
+      {isSeasonalBreeder(species) && (
+        <div className="flex justify-center">
+          <SeasonalityIndicator species={species} />
+        </div>
+      )}
+
       {/* ════════════════════════════════════════════════════════════════
           RECORD HEAT CYCLE - BIG BUTTON that opens date picker
       ════════════════════════════════════════════════════════════════ */}
       <div className="flex flex-col items-center">
-        {/* Hidden DatePicker - only for the popover */}
-        <div className="hidden">
-          <DatePicker
-            value={newDateIso}
-            onChange={async (e: React.ChangeEvent<HTMLInputElement>) => {
-              const iso = e.currentTarget.value || "";
-              if (!iso) return;
-              // Immediately save
+        {/* THE BIG BUTTON */}
+        <button
+          ref={recordButtonRef}
+          onClick={() => setRecordPopoverOpen(true)}
+          disabled={working}
+          className="w-full max-w-md h-14 px-8 rounded-xl font-bold text-lg bg-orange-500 text-white hover:bg-orange-400 active:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-orange-500/20"
+        >
+          {working ? "Saving..." : "Record Cycle Start Date"}
+        </button>
+
+        {/* Date picker popover - positioned relative to the button */}
+        <Popover
+          anchorRef={recordButtonRef}
+          open={recordPopoverOpen}
+          onClose={() => setRecordPopoverOpen(false)}
+          estHeight={340}
+          width={300}
+        >
+          <DayPicker
+            mode="single"
+            selected={undefined}
+            onSelect={async (date: Date | undefined) => {
+              if (!date) return;
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, "0");
+              const d = String(date.getDate()).padStart(2, "0");
+              const iso = `${y}-${m}-${d}`;
+              // Close popover first
+              setRecordPopoverOpen(false);
+              // Save the date
               let next = [...dates];
               if (!next.includes(iso)) {
                 next.push(iso);
               }
               next = next.sort();
               await persist(next);
-              setNewDateIso("");
             }}
-            inputClassName="record-heat-picker-input"
+            defaultMonth={new Date()}
+            showOutsideDays
+            captionLayout="dropdown"
+            startMonth={new Date(2020, 0)}
+            endMonth={new Date(2035, 11)}
+            classNames={{
+              root: "rdp-root",
+              months: "rdp-months",
+              month: "rdp-month",
+              month_caption: "rdp-month_caption",
+              caption_label: "rdp-caption_label",
+              nav: "rdp-nav",
+              button_previous: "rdp-button_previous",
+              button_next: "rdp-button_next",
+              month_grid: "rdp-month_grid",
+              weekdays: "rdp-weekdays",
+              weekday: "rdp-weekday",
+              week: "rdp-week",
+              day: "rdp-day",
+              day_button: "rdp-day_button",
+              selected: "rdp-selected",
+              today: "rdp-today",
+              outside: "rdp-outside",
+              disabled: "rdp-disabled",
+              hidden: "rdp-hidden",
+              dropdowns: "rdp-dropdowns",
+              dropdown: "rdp-dropdown",
+              dropdown_root: "rdp-dropdown_root",
+              months_dropdown: "rdp-months_dropdown",
+              years_dropdown: "rdp-years_dropdown",
+            }}
           />
-        </div>
-
-        {/* THE BIG BUTTON */}
-        <button
-          onClick={() => {
-            // Find the hidden input and click it to open the picker
-            const hiddenInput = document.querySelector('.record-heat-picker-input') as HTMLInputElement;
-            if (hiddenInput) {
-              hiddenInput.click();
-            }
-          }}
-          disabled={working}
-          className="w-full max-w-md h-14 px-8 rounded-xl font-bold text-lg bg-orange-500 text-white hover:bg-orange-400 active:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-orange-500/20"
-        >
-          {working ? "Saving..." : "Record Cycle Start Date"}
-        </button>
+        </Popover>
 
         {/* Current cycle length - centered under button */}
         <div className="flex items-center justify-center gap-2 text-sm mt-2">
@@ -8384,14 +8429,15 @@ export default function AppAnimals() {
       // Only females can have cycle alerts
       if (!(row.sex || "").toLowerCase().startsWith("f")) continue;
 
-      const daysUntil = calculateDaysUntilCycle(
+      const cycleInfo = calculateDaysUntilCycle(
         row.cycleStartDates,
         row.femaleCycleLenOverrideDays,
         row.species || ""
       );
 
-      if (daysUntil !== null) {
-        const needsAttention = daysUntil <= 14 && daysUntil >= -14;
+      if (cycleInfo !== null) {
+        const { daysUntil, threshold } = cycleInfo;
+        const needsAttention = daysUntil <= threshold && daysUntil >= -threshold;
         if (needsAttention) {
           alerts[row.id] = {
             daysUntilCycle: daysUntil,
@@ -9070,6 +9116,7 @@ export default function AppAnimals() {
             badge: cycleAlert?.needsAttention ? (
               <CycleAlertBadge
                 daysUntilExpected={cycleAlert.daysUntilCycle}
+                species={species}
                 size="sm"
                 dotOnly
               />
@@ -10229,6 +10276,7 @@ export default function AppAnimals() {
                                   {cycleAlert?.needsAttention && (
                                     <CycleAlertBadge
                                       daysUntilExpected={cycleAlert.daysUntilCycle}
+                                      species={r.species || ""}
                                       size="sm"
                                     />
                                   )}

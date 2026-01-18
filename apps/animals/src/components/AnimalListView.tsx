@@ -128,6 +128,7 @@ function CellValue({ row, colKey, vaccinationAlert, cycleAlert }: { row: AnimalR
           {cycleAlert?.needsAttention && (
             <CycleAlertBadge
               daysUntilExpected={cycleAlert.daysUntilCycle}
+              species={row.species || ""}
               size="sm"
             />
           )}

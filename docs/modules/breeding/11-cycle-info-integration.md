@@ -458,3 +458,88 @@ GET /animals/:id/next-cycle-projection
   Returns: ProjectedCycleStart | null
 ```
 
+---
+
+## Breeding Module Integration (v1.1.0)
+
+> **Implemented: 2026-01-18**
+
+The Breeding Module now integrates with cycle analysis data to surface learned ovulation patterns when creating or editing breeding plans.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `apps/breeding/src/hooks/useDamCycleAnalysis.ts` | Hook to fetch cycle analysis for selected dam |
+| `apps/breeding/src/components/OvulationInsightCard.tsx` | Displays learned ovulation pattern with classification |
+| `apps/breeding/src/api.ts` | Added `animals.getCycleAnalysis()` method |
+
+### useDamCycleAnalysis Hook
+
+```typescript
+import { useDamCycleAnalysis } from "../hooks/useDamCycleAnalysis";
+
+const { data, pattern, hasPattern, loading } = useDamCycleAnalysis({
+  damId: selectedDamId,
+  api,
+  supportsOvulationUpgrade: species === "DOG" || species === "HORSE",
+});
+
+// Returns:
+// - data: Full CycleAnalysisResult
+// - pattern: Simplified pattern data (avgOffsetDays, stdDeviation, classification, confidence)
+// - hasPattern: Boolean - true if dam has learned pattern (not "Insufficient Data")
+// - loading: Boolean
+// - error: String | null
+// - refresh: Function to refetch
+```
+
+### OvulationInsightCard Component
+
+Displays when a dam with a learned ovulation pattern is selected:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Bella's Ovulation Pattern                    [Early Ovulator]   │
+│ Based on 3 cycles                                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Typical Ovulation     Confidence                                │
+│ Day 10 (±0.6 days)    [HIGH]                                    │
+│                                                                 │
+│ Why this matters: Using this pattern can improve breeding       │
+│ timeline predictions from ±3-5 days to ±1-2 days.               │
+│                                                                 │
+│ [Use This Pattern for Predictions]                              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Integration Point
+
+Add to breeding plan creation/edit form after dam selection:
+
+```tsx
+{hasPattern && pattern && (
+  <OvulationInsightCard
+    classification={pattern.classification}
+    avgOffsetDays={pattern.avgOffsetDays}
+    stdDeviation={pattern.stdDeviation}
+    confidence={pattern.confidence}
+    sampleSize={pattern.sampleSize}
+    damName={damName}
+    onUsePattern={() => {
+      // Apply pattern to expected ovulation calculations
+      setExpectedOvulationOffset(pattern.avgOffsetDays);
+    }}
+  />
+)}
+```
+
+### Species Support
+
+Only shown for species that support ovulation upgrade:
+- **DOG:** Yes (progesterone testing available)
+- **HORSE:** Yes (ultrasound/palpation available)
+- **Others:** No (either induced ovulators or no testing infrastructure)
+

@@ -418,6 +418,48 @@ export type BlockDetailResponse = SchedulingAvailabilityBlock & {
   canReschedule: boolean | null;
 };
 
+/** Cycle analysis result for ovulation pattern integration */
+export type CycleAnalysisResult = {
+  animalId: number;
+  species: string;
+  cycleHistory: Array<{
+    id: number;
+    cycleStart: string;
+    ovulation: string | null;
+    ovulationMethod: string | null;
+    offsetDays: number | null;
+    variance: number | null;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    source: "HORMONE_TEST" | "BIRTH_CALCULATED" | "ESTIMATED";
+    breedingPlanId: number | null;
+    birthDate: string | null;
+    notes: string | null;
+  }>;
+  ovulationPattern: {
+    sampleSize: number;
+    confirmedCycles: number;
+    avgOffsetDays: number | null;
+    stdDeviation: number | null;
+    minOffset: number | null;
+    maxOffset: number | null;
+    classification: "Early Ovulator" | "Average" | "Late Ovulator" | "Insufficient Data";
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    guidance: string;
+  };
+  nextCycleProjection: {
+    projectedHeatStart: string | null;
+    projectedOvulationWindow: {
+      earliest: string;
+      latest: string;
+      mostLikely: string;
+    } | null;
+    recommendedTestingStart: string | null;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+  } | null;
+  cycleLengthDays: number;
+  cycleLengthSource: "OVERRIDE" | "HISTORY" | "BIOLOGY";
+};
+
 /** Response for plan commit that ensures a group */
 export type CommitPlanEnsureResp = {
   planId: number;
@@ -978,6 +1020,14 @@ export function makeBreedingApi(opts: ApiOpts) {
       /** Add foaling outcome record */
       addOutcome(planId: number, body: FoalingOutcomeInput) {
         return post<FoalingOutcome>(`/breeding/plans/${planId}/foaling-outcome`, body);
+      },
+    },
+
+    /* Animals namespace for cross-module data access */
+    animals: {
+      /** Get cycle analysis for an animal (dam) - includes ovulation patterns and predictions */
+      getCycleAnalysis(animalId: number) {
+        return get<CycleAnalysisResult>(`/animals/${animalId}/cycle-analysis`);
       },
     },
   };

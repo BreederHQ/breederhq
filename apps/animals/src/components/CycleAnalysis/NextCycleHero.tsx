@@ -54,8 +54,12 @@ export function NextCycleHero({
 
   const daysToHeat = daysUntil(projection.projectedHeatStart);
   const daysToTesting = daysUntil(projection.recommendedTestingStart);
+  const daysToOvulationEnd = projection.projectedOvulationWindow?.latest
+    ? daysUntil(projection.projectedOvulationWindow.latest)
+    : null;
   const heatCountdown = getCountdownLabel(daysToHeat);
   const testingCountdown = getCountdownLabel(daysToTesting);
+  const ovulationWindowPast = daysToOvulationEnd !== null && daysToOvulationEnd < 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -64,7 +68,8 @@ export function NextCycleHero({
           className="rounded-xl p-4"
           style={{
             backgroundColor: "#1a1a1a",
-            border: heatCountdown.urgency === "imminent" ? "1px solid rgba(245, 158, 11, 0.5)" :
+            border: heatCountdown.urgency === "past" ? "1px solid rgba(239, 68, 68, 0.5)" :
+                   heatCountdown.urgency === "imminent" ? "1px solid rgba(245, 158, 11, 0.5)" :
                    heatCountdown.urgency === "soon" ? "1px solid rgba(245, 158, 11, 0.3)" :
                    "1px solid rgba(60, 60, 60, 0.5)",
           }}
@@ -72,13 +77,21 @@ export function NextCycleHero({
           <div className="flex items-start justify-between mb-3">
             <div
               className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: "rgba(255, 107, 53, 0.15)" }}
+              style={{ backgroundColor: heatCountdown.urgency === "past" ? "rgba(239, 68, 68, 0.15)" : "rgba(255, 107, 53, 0.15)" }}
             >
-              <svg className="w-5 h-5" style={{ color: "#ff6b35" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5" style={{ color: heatCountdown.urgency === "past" ? "#ef4444" : "#ff6b35" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
               </svg>
             </div>
+            {heatCountdown.urgency === "past" && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full"
+                style={{ backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#ef4444" }}
+              >
+                Overdue
+              </span>
+            )}
             {heatCountdown.urgency === "imminent" && (
               <span
                 className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full"
@@ -92,7 +105,8 @@ export function NextCycleHero({
           <div
             className="text-2xl font-bold"
             style={{
-              color: heatCountdown.urgency === "imminent" ? "#f59e0b" :
+              color: heatCountdown.urgency === "past" ? "#ef4444" :
+                     heatCountdown.urgency === "imminent" ? "#f59e0b" :
                      heatCountdown.urgency === "soon" ? "#fbbf24" : "#ff6b35"
             }}
           >
@@ -107,7 +121,8 @@ export function NextCycleHero({
             className="rounded-xl p-4"
             style={{
               backgroundColor: "#1a1a1a",
-              border: testingCountdown.urgency === "imminent" ? "1px solid rgba(59, 130, 246, 0.5)" :
+              border: testingCountdown.urgency === "past" ? "1px solid rgba(239, 68, 68, 0.5)" :
+                     testingCountdown.urgency === "imminent" ? "1px solid rgba(59, 130, 246, 0.5)" :
                      testingCountdown.urgency === "soon" ? "1px solid rgba(59, 130, 246, 0.3)" :
                      "1px solid rgba(60, 60, 60, 0.5)",
             }}
@@ -115,12 +130,20 @@ export function NextCycleHero({
             <div className="flex items-start justify-between mb-3">
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "rgba(59, 130, 246, 0.15)" }}
+                style={{ backgroundColor: testingCountdown.urgency === "past" ? "rgba(239, 68, 68, 0.15)" : "rgba(59, 130, 246, 0.15)" }}
               >
-                <svg className="w-5 h-5" style={{ color: "#3b82f6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5" style={{ color: testingCountdown.urgency === "past" ? "#ef4444" : "#3b82f6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                 </svg>
               </div>
+              {testingCountdown.urgency === "past" && (
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full"
+                  style={{ backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#ef4444" }}
+                >
+                  Overdue
+                </span>
+              )}
               {testingCountdown.urgency === "imminent" && (
                 <span
                   className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full"
@@ -134,7 +157,8 @@ export function NextCycleHero({
             <div
               className="text-2xl font-bold"
               style={{
-                color: testingCountdown.urgency === "imminent" ? "#3b82f6" :
+                color: testingCountdown.urgency === "past" ? "#ef4444" :
+                       testingCountdown.urgency === "imminent" ? "#3b82f6" :
                        testingCountdown.urgency === "soon" ? "#60a5fa" : "#3b82f6"
               }}
             >
@@ -150,21 +174,29 @@ export function NextCycleHero({
             className="rounded-xl p-4"
             style={{
               backgroundColor: "#1a1a1a",
-              border: "1px solid rgba(60, 60, 60, 0.5)",
+              border: ovulationWindowPast ? "1px solid rgba(239, 68, 68, 0.5)" : "1px solid rgba(60, 60, 60, 0.5)",
             }}
           >
-            <div className="mb-3">
+            <div className="flex items-start justify-between mb-3">
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "rgba(34, 197, 94, 0.15)" }}
+                style={{ backgroundColor: ovulationWindowPast ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)" }}
               >
-                <svg className="w-5 h-5" style={{ color: "#22c55e" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5" style={{ color: ovulationWindowPast ? "#ef4444" : "#22c55e" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
+              {ovulationWindowPast && (
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full"
+                  style={{ backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#ef4444" }}
+                >
+                  Missed
+                </span>
+              )}
             </div>
             <div className="text-xs uppercase tracking-wide mb-1" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Ovulation Window</div>
-            <div className="text-xl font-bold" style={{ color: "#22c55e" }}>
+            <div className="text-xl font-bold" style={{ color: ovulationWindowPast ? "#ef4444" : "#22c55e" }}>
               {formatShortDate(projection.projectedOvulationWindow.earliest)} - {formatShortDate(projection.projectedOvulationWindow.latest)}
             </div>
             <div className="text-sm mt-1" style={{ color: "rgba(255, 255, 255, 0.5)" }}>

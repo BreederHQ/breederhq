@@ -30,14 +30,21 @@ Enable breeders of each species to confidently open the Cycle Info tab and see e
 - Predictable ovulation timing
 - Some are seasonal breeders
 
-**Current Support:** ⚠️ Partial - logic works but UI not optimized
+**Current Support:** ✅ Mostly complete
 
-**Changes Needed:**
+**Changes Completed:**
+
+| Item | Status | Description |
+|------|--------|-------------|
+| Seasonality awareness | ✅ DONE | `SeasonalityIndicator` component shows in/out of season for HORSE, GOAT, SHEEP |
+| Species-aware alert thresholds | ✅ DONE | `CycleAlertBadge` uses 14 days for long cycles, ~30% for short cycles |
+| Hemisphere support | ✅ DONE | Component accepts `hemisphere` prop (defaults to Northern, ready for tenant settings) |
+
+**Remaining (Low Priority):**
 
 | Item | Priority | Description |
 |------|----------|-------------|
-| Seasonality awareness | HIGH | Add seasonal breeding indicators for HORSE, GOAT, SHEEP |
-| Cycle frequency display | MEDIUM | Adjust UI language from "every ~6 months" to "every ~21 days" |
+| Cycle frequency display | LOW | Adjust UI language from "every ~6 months" to "every ~21 days" |
 | Ovulation day labels | LOW | Adjust default day labels (Day 1-5 vs Day 10-14) |
 
 ---
@@ -82,71 +89,40 @@ Since the entire tab is hidden for induced ovulators, no special guidance compon
 
 ---
 
-### Phase 1: Seasonality Awareness
+### ~~Phase 1: Seasonality Awareness~~ ✅ COMPLETE
 
-**Files to Modify:**
-- `apps/animals/src/App-Animals.tsx` (CycleTab)
-- `packages/ui/src/utils/reproEngine/defaults.ts`
+**Files Created:**
+- `apps/animals/src/components/CycleAnalysis/SeasonalityIndicator.tsx`
 
-**New Component:**
-- `SeasonalityIndicator.tsx`
+**Files Modified:**
+- `apps/animals/src/App-Animals.tsx` (CycleTab) - imports and renders SeasonalityIndicator
+- `apps/animals/src/components/CycleAnalysis/index.ts` - exports SeasonalityIndicator
 
-**Tasks:**
+**Implementation:**
 
-1. **Add seasonality configuration**
-   ```typescript
-   const SEASONAL_CONFIG = {
-     HORSE: {
-       breedingSeason: { start: 3, end: 9 }, // March-September (N. Hemisphere)
-       label: "Spring/Summer Breeder",
-       outOfSeasonNote: "Mares typically don't cycle in winter months"
-     },
-     GOAT: {
-       breedingSeason: { start: 8, end: 1 }, // August-January
-       label: "Fall Breeder (Short-Day)",
-       outOfSeasonNote: "Does cycle when daylight hours decrease"
-     },
-     SHEEP: {
-       breedingSeason: { start: 8, end: 12 }, // August-December
-       label: "Fall Breeder (Short-Day)",
-       outOfSeasonNote: "Ewes cycle in fall/early winter"
-     }
-   };
-   ```
+The `SeasonalityIndicator` component shows breeding season status for HORSE, GOAT, and SHEEP:
 
-2. **Add SeasonalityIndicator component**
-   ```typescript
-   function SeasonalityIndicator({ species, currentDate }: Props) {
-     const config = SEASONAL_CONFIG[species];
-     if (!config) return null;
+```typescript
+// Shows badge at top of CycleTab for seasonal breeders
+{isSeasonalBreeder(species) && (
+  <div className="flex justify-center">
+    <SeasonalityIndicator species={species} />
+  </div>
+)}
+```
 
-     const isInSeason = checkIfInSeason(currentDate, config.breedingSeason);
+**Features:**
+- Shows "In Season" (green) or "Off Season" (neutral) badge
+- Displays breeding season months (e.g., "April – August")
+- Tooltip explains long-day vs short-day breeding patterns
+- Supports both Northern and Southern hemisphere via `hemisphere` prop
+- Exports `getSeasonalBreedingInfo()` helper for programmatic use
 
-     return (
-       <div className={cn(
-         "rounded-lg p-3",
-         isInSeason ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"
-       )}>
-         <div className="font-medium">{config.label}</div>
-         {!isInSeason && <div className="text-sm">{config.outOfSeasonNote}</div>}
-       </div>
-     );
-   }
-   ```
-
-3. **Integrate into CycleTab**
-   ```typescript
-   {isSeasonalBreeder(animal.species) && (
-     <SeasonalityIndicator
-       species={animal.species}
-       currentDate={new Date()}
-     />
-   )}
-   ```
-
-**Future Enhancement:** Hemisphere detection based on breeder location
-
-**Estimated Effort:** 3-4 hours
+**Hemisphere Handling:**
+- Defaults to Northern hemisphere ("N")
+- Component accepts `hemisphere?: "N" | "S"` prop
+- Southern hemisphere seasons are offset by ~6 months
+- Ready to be wired to tenant settings when location preferences are added
 
 ---
 
@@ -270,27 +246,33 @@ Since the entire tab is hidden for induced ovulators, no special guidance compon
 ## Success Criteria
 
 1. **Induced ovulators:** ✅ DONE - Entire Cycle Info tab is hidden
-2. **Seasonal breeders:** Clear indication of breeding season status (TODO)
-3. **All species:** Accurate cycle length display with appropriate units (TODO)
-4. **All species:** Species-appropriate guidance text (TODO)
-5. **No species:** Shows irrelevant or confusing information
+2. **Seasonal breeders:** ✅ DONE - SeasonalityIndicator shows in/out of season for HORSE, GOAT, SHEEP
+3. **Species-aware alerts:** ✅ DONE - CycleAlertBadge uses proportional thresholds based on cycle length
+4. **All species:** Accurate cycle length display with appropriate units (LOW priority - cosmetic)
+5. **All species:** Species-appropriate guidance text (LOW priority - cosmetic)
+6. **No species:** Shows irrelevant or confusing information
 
 ---
 
 ## Files Summary
 
-### To Create
-- `apps/animals/src/components/CycleAnalysis/SeasonalityIndicator.tsx`
+### Created (This Sprint)
+- ✅ `apps/animals/src/components/CycleAnalysis/SeasonalityIndicator.tsx`
 
-### To Modify
-- `apps/animals/src/App-Animals.tsx` (CycleTab - add seasonality)
-- `apps/animals/src/components/CycleAnalysis/OvulationSummary.tsx`
-- `apps/animals/src/components/CycleAnalysis/NextCycleHero.tsx`
-- `breederhq-api/src/services/cycle-analysis-service.ts`
-- `packages/ui/src/utils/reproEngine/defaults.ts`
+### Modified (This Sprint)
+- ✅ `apps/animals/src/App-Animals.tsx` (CycleTab - seasonality indicator + DatePicker fix)
+- ✅ `apps/animals/src/components/CycleAnalysis/CycleAlertBadge.tsx` (species-aware thresholds)
+- ✅ `apps/animals/src/components/CycleAnalysis/index.ts` (exports)
+- ✅ `apps/animals/src/components/AnimalListView.tsx` (species prop to badge)
+- ✅ `apps/animals/src/components/AnimalCardView.tsx` (species prop to badge)
 
-### Already Implemented
-- Induced ovulator tab hiding (`App-Animals.tsx` lines 9059-9078)
+### Previously Implemented
+- Induced ovulator tab hiding (`App-Animals.tsx`)
+
+### Future (Low Priority)
+- `apps/animals/src/components/CycleAnalysis/OvulationSummary.tsx` (cycle length language)
+- `apps/animals/src/components/CycleAnalysis/NextCycleHero.tsx` (cycle length language)
+- `breederhq-api/src/services/cycle-analysis-service.ts` (backend seasonality data)
 
 ### Optional Consolidation
 - Create `packages/shared/src/species-config.ts` as single source of truth

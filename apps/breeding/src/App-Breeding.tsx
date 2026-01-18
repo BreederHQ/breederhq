@@ -46,6 +46,7 @@ import RollupGantt from "./components/RollupGantt";
 import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import PlanJourney from "./components/PlanJourney";
+import { OvulationInsightCard } from "./components/OvulationInsightCard";
 import { BreedingPlanCardView } from "./components/BreedingPlanCardView";
 import { BreedingPlanListView } from "./components/BreedingPlanListView";
 import { FoalingMilestoneChecklist } from "./components/FoalingMilestoneChecklist";
@@ -56,7 +57,8 @@ import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
 import "@bhq/ui/styles/datepicker.css";
-import { makeBreedingApi, type BreedingProgramLite, type OffspringGroupDetail } from "./api";
+import { makeBreedingApi, type BreedingProgramLite, type OffspringGroupDetail, type CycleAnalysisResult } from "./api";
+import { useDamCycleAnalysis } from "./hooks/useDamCycleAnalysis";
 
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 import { reproEngine } from "@bhq/ui/utils";
@@ -7090,6 +7092,21 @@ function PlanDetailsView(props: {
     };
   }, [isHorse, row.id, api]);
 
+  // ---- Dam Cycle Analysis for Ovulation Pattern Insight ----
+  // Fetch cycle analysis when a dam is selected for species that support ovulation upgrade
+  const speciesSupportsOvulationUpgrade = supportsOvulationUpgrade(row.species);
+  const {
+    data: damCycleAnalysis,
+    pattern: damOvulationPattern,
+    hasPattern: damHasOvulationPattern,
+    loading: damCycleAnalysisLoading,
+  } = useDamCycleAnalysis({
+    damId: row.damId,
+    api,
+    supportsOvulationUpgrade: speciesSupportsOvulationUpgrade,
+    skip: !isEdit, // Only fetch when in edit mode
+  });
+
   // Handler for creating milestones
   const handleCreateMilestones = React.useCallback(async () => {
     if (!api || !row.id) return;
@@ -8676,6 +8693,8 @@ function PlanDetailsView(props: {
             {/* Plan Journey - Phase timeline and guidance */}
             <PlanJourney
               status={row.status}
+              species={effective.species}
+              offspringCount={offspringGroupData?.offspring?.length ?? offspringGroupData?.animals?.length ?? null}
               hasPlanName={Boolean(effective.name)}
               hasSpecies={Boolean(effective.species)}
               hasDam={Boolean(effective.damId)}
@@ -9191,6 +9210,28 @@ function PlanDetailsView(props: {
                 </div>
               </div>
             </SectionCard>
+
+            {/* Ovulation Pattern Insight - show when dam is selected and has learned pattern */}
+            {/* Only shown for species that support ovulation upgrade (DOG, HORSE) */}
+            {isEdit && speciesSupportsOvulationUpgrade && effective.damId && damHasOvulationPattern && damOvulationPattern && (
+              <OvulationInsightCard
+                classification={damOvulationPattern.classification}
+                avgOffsetDays={damOvulationPattern.avgOffsetDays}
+                stdDeviation={damOvulationPattern.stdDeviation}
+                confidence={damOvulationPattern.confidence}
+                sampleSize={damOvulationPattern.sampleSize}
+                guidance={damOvulationPattern.guidance}
+                damName={effective.damName || undefined}
+                onUsePattern={() => {
+                  // When user clicks "Use This Pattern", we can pre-populate
+                  // the expected ovulation offset in the plan
+                  // For now, this just acknowledges the pattern - future enhancement
+                  // could auto-fill testing dates based on the pattern
+                  console.log("[Breeding] User acknowledged ovulation pattern:", damOvulationPattern);
+                }}
+                className="animate-in fade-in slide-in-from-top-2 duration-300"
+              />
+            )}
 
             {/* Tags */}
             {api && (

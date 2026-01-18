@@ -284,23 +284,34 @@ PLANNING → SET_DATE → INCUBATING → HATCHED → BROODER_CARE → PLACED
 
 ## Implementation Priority
 
+> **Updated: 2026-01-18** - Several items now implemented
+
 ### Tier 1: High Impact, Moderate Effort
 
-1. **Horses:** Foaling milestone prominence + single-offspring phase simplification
-2. **Dogs:** Progesterone testing prompts + cycle learning integration
-3. **Cats/Rabbits:** Induced ovulator messaging + terminology cleanup
+1. ✅ **Horses:** Single-offspring phase simplification (IMPLEMENTED - 7 phases with combined PLACEMENT)
+2. ✅ **Dogs:** Cycle learning integration via `useDamCycleAnalysis` hook + `OvulationInsightCard` component
+3. 🔲 **Cats/Rabbits:** Induced ovulator messaging + terminology cleanup
 
 ### Tier 2: Medium Impact, Lower Effort
 
-4. **Goats:** Weaning age validation (70-day minimum)
-5. **Rabbits:** Placement deadline warning (10-week max)
-6. **Cattle/Alpaca/Llama:** Single-offspring phase simplification
+4. ✅ **Goats:** Weaning age validation (70-day minimum) - IMPLEMENTED in `dateValidation/defaults.ts`
+5. ✅ **Rabbits:** Placement deadline warning (10-week max) - IMPLEMENTED in `dateValidation/validate.ts`
+6. ✅ **Cattle/Alpaca/Llama:** Single-offspring phase simplification (IMPLEMENTED - uses `showGroupConcept` flag)
 
 ### Tier 3: Future Enhancements
 
-7. **Seasonal breeding awareness** (horses, goats, sheep)
-8. **Chickens:** Complete terminology overhaul
-9. **Pigs:** Commercial mode option
+7. 🔲 **Seasonal breeding awareness** (horses, goats, sheep)
+8. 🔲 **Chickens:** Complete terminology overhaul
+9. 🔲 **Pigs:** Commercial mode option
+
+### Implementation Details (v1.1.0)
+
+| Feature | Files Modified |
+|---------|----------------|
+| Phase consolidation | `PlanJourney.tsx`, `deriveBreedingStatus.ts`, `speciesTerminology.ts` |
+| Goat weaning validation | `dateValidation/defaults.ts` (70 days min) |
+| Rabbit placement validation | `dateValidation/defaults.ts`, `validate.ts` (70 days max) |
+| Ovulation pattern integration | `useDamCycleAnalysis.ts`, `OvulationInsightCard.tsx`, `api.ts` |
 
 ---
 

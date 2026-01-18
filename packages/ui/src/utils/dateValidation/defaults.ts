@@ -114,9 +114,9 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 1,
     cycleToBreedingMaxDays: 3,
 
-    // Weaning: 8-10 weeks optimal (research shows <70 days causes weaning shock)
-    birthToWeaningMinDays: 56,       // 8 weeks minimum
-    birthToWeaningTypicalDays: 63,   // 9 weeks typical
+    // Weaning: 10 weeks minimum (research shows <70 days causes weaning shock)
+    birthToWeaningMinDays: 70,       // 10 weeks minimum (prevents weaning shock)
+    birthToWeaningTypicalDays: 70,   // 10 weeks typical
 
     // Placement: after weaning adjustment
     birthToPlacementMinDays: 63,     // 9 weeks minimum
@@ -148,9 +148,10 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     birthToWeaningMinDays: 28,       // 4 weeks minimum (intensive only)
     birthToWeaningTypicalDays: 42,   // 6 weeks typical (ARBA)
 
-    // Placement: 8 weeks, must be before 10 weeks to prevent fighting
+    // Placement: 8 weeks typical, MUST be before 10 weeks to prevent fighting
     birthToPlacementMinDays: 42,     // 6 weeks minimum
     birthToPlacementTypicalDays: 56, // 8 weeks typical (ARBA)
+    birthToPlacementMaxDays: 70,     // 10 weeks maximum (prevents fighting/aggression)
 
     // Female age
     femaleMinBreedingAgeMonths: 6,

@@ -221,39 +221,96 @@ const SPECIES_CYCLE_LENGTHS = {
 | Late Ovulator | avgOffset >= (speciesDefault + 2) |
 | Average | Between those thresholds |
 
+### Cycle Alert Thresholds
+
+**Status:** ✅ Implemented - species-aware thresholds
+
+Alert thresholds are proportional to cycle length:
+
+| Species Type | Cycle Length | Alert Threshold |
+|--------------|--------------|-----------------|
+| Long cycle (DOG) | ~180 days | 14 days |
+| Short cycle (HORSE, GOAT, SHEEP, etc) | ~17-21 days | ~6 days (30% of cycle) |
+
+**Implementation:** `apps/animals/src/components/CycleAnalysis/CycleAlertBadge.tsx`
+```typescript
+function getAlertThreshold(species?: string, cycleLengthDays?: number): number {
+  const cycleLen = cycleLengthDays || SPECIES_CYCLE_LENGTHS[species] || 180;
+
+  if (cycleLen > 60) return 14;  // Long cycle species
+  return Math.max(5, Math.min(14, Math.round(cycleLen * 0.3)));
+}
+```
+
 ---
 
 ## Seasonal Breeders
 
-**Note:** Current implementation does NOT account for seasonality.
+**Status:** ✅ Implemented via `SeasonalityIndicator` component
 
 ### Species with Breeding Seasons:
 
-| Species | Breeding Season | Notes |
-|---------|-----------------|-------|
-| HORSE | Spring/Summer (Mar-Sep in N. Hemisphere) | Transition periods have irregular cycles |
-| GOAT | Fall (Aug-Jan in N. Hemisphere) | Short-day breeders |
-| SHEEP | Fall (Aug-Dec in N. Hemisphere) | Short-day breeders |
+| Species | Type | Northern Hemisphere | Southern Hemisphere |
+|---------|------|---------------------|---------------------|
+| HORSE | Long-day breeder | April – August | October – February |
+| GOAT | Short-day breeder | September – February | March – August |
+| SHEEP | Short-day breeder | August – January | February – July |
 
-### Future Enhancement Needed:
-- Seasonality awareness for projections
-- "Out of season" indicators
-- Transition period warnings
+### Implementation Details
+
+**Component:** `apps/animals/src/components/CycleAnalysis/SeasonalityIndicator.tsx`
+
+**Season Detection Logic:**
+```typescript
+const NORTHERN_SEASONS = {
+  HORSE: { peakMonths: [4, 5, 6, 7, 8], label: "Spring/Summer Breeder" },
+  GOAT: { peakMonths: [9, 10, 11, 12, 1, 2], label: "Fall Breeder" },
+  SHEEP: { peakMonths: [8, 9, 10, 11, 12, 1], label: "Fall Breeder" },
+};
+
+function isInBreedingSeason(peakMonths: number[], currentMonth: number): boolean {
+  return peakMonths.includes(currentMonth);
+}
+```
+
+**Hemisphere Support:**
+- Defaults to Northern hemisphere ("N")
+- Accepts `hemisphere` prop for Southern ("S")
+- Ready to be wired to tenant settings when location preferences are added
+
+**Display:**
+- Shows at top of CycleTab for seasonal species
+- Green badge when in season, neutral when off season
+- Tooltip explains long-day vs short-day breeding patterns
+
+### Future Enhancements (Low Priority):
+- Transition period warnings (irregular cycles)
+- Integration with cycle projections (adjust confidence during off-season)
 
 ---
 
 ## Induced Ovulator Handling
 
-**Current Status:** Partially implemented
+**Status:** ✅ Fully implemented - Cycle Info tab is hidden
 
-For induced ovulators (CAT, RABBIT, ALPACA, LLAMA):
+For induced ovulators (CAT, RABBIT, ALPACA, LLAMA, FERRET, CAMEL):
+- The entire Cycle Info tab is hidden in the UI
+- No ovulation prediction is shown (as it's not applicable)
+
+**Implementation:** `apps/animals/src/App-Animals.tsx`
+```typescript
+const INDUCED_OVULATORS = ["CAT", "RABBIT", "FERRET", "CAMEL", "LLAMA", "ALPACA"];
+const isSpontaneousOvulator = !INDUCED_OVULATORS.includes(species);
+
+// Tab only shown for spontaneous ovulators
+if (sex.startsWith("f") && isSpontaneousOvulator) {
+  tabs.push({ key: "cycle", label: "Cycle Info", ... });
+}
+```
+
+**Backend:**
 - `ovulationOffsetDays` is set to 0
-- `isInducedOvulator` flag exists in backend
-
-**Missing Frontend Handling:**
-- Ovulation pattern analysis should be hidden
-- Different guidance text needed
-- Focus should be on heat tracking, not ovulation prediction
+- `isInducedOvulator` flag exists for future use
 
 ---
 

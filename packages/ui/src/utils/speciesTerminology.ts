@@ -1704,3 +1704,34 @@ export function getEstimatedWeaningWeeks(species: string | null | undefined): nu
   const terms = getSpeciesTerminology(species);
   return terms.weaning.estimatedDurationWeeks;
 }
+
+// ============================================================================
+// Placement Phase Helper Functions
+// ============================================================================
+
+/**
+ * Check if species should show PLACEMENT_STARTED as a separate phase.
+ *
+ * Litter species (dogs, cats, rabbits, etc.) have staggered placements over time,
+ * so they need both PLACEMENT_STARTED and PLACEMENT_COMPLETED phases.
+ *
+ * Individual-offspring species (horses, cattle, alpacas, llamas) typically have
+ * a single placement event, so they use a combined PLACEMENT phase.
+ *
+ * This is determined by the `showGroupConcept` feature flag - species that
+ * emphasize the "litter" concept need the two-phase placement workflow.
+ *
+ * @param species - Species code
+ * @returns true if species should show PLACEMENT_STARTED phase (litter species)
+ *
+ * @example
+ * ```ts
+ * speciesShowsPlacementStartPhase('DOG');   // true (litter - staggered placement)
+ * speciesShowsPlacementStartPhase('CAT');   // true (litter - staggered placement)
+ * speciesShowsPlacementStartPhase('HORSE'); // false (single foal - combined placement)
+ * speciesShowsPlacementStartPhase('CATTLE'); // false (single calf - combined placement)
+ * ```
+ */
+export function speciesShowsPlacementStartPhase(species: string | null | undefined): boolean {
+  return speciesShowsGroupConcept(species);
+}

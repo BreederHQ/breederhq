@@ -1,25 +1,66 @@
 import * as React from "react";
 import { Tooltip } from "@bhq/ui";
 
+// Species default cycle lengths (days) - used for threshold calculation
+const SPECIES_CYCLE_LENGTHS: Record<string, number> = {
+  DOG: 180,
+  CAT: 21,
+  HORSE: 21,
+  GOAT: 21,
+  SHEEP: 17,
+  PIG: 21,
+  CATTLE: 21,
+  RABBIT: 15,
+  ALPACA: 14,
+  LLAMA: 14,
+};
+
+/**
+ * Calculate species-aware alert threshold
+ * - For long-cycle species (DOG ~180 days): 14 days is reasonable (~8% of cycle)
+ * - For short-cycle species (21 days): use ~30% of cycle length (6-7 days)
+ */
+function getAlertThreshold(species?: string, cycleLengthDays?: number): number {
+  const cycleLen = cycleLengthDays || SPECIES_CYCLE_LENGTHS[species?.toUpperCase() || "DOG"] || 180;
+
+  // For long cycles (>60 days), use 14 days
+  // For short cycles, use ~30% of cycle (min 5 days, max 14 days)
+  if (cycleLen > 60) {
+    return 14;
+  }
+  return Math.max(5, Math.min(14, Math.round(cycleLen * 0.3)));
+}
+
 type CycleAlertBadgeProps = {
   daysUntilExpected: number;
   size?: "sm" | "md";
   dotOnly?: boolean;
+  /** Species code for threshold calculation */
+  species?: string;
+  /** Actual cycle length if known (overrides species default) */
+  cycleLengthDays?: number;
 };
 
 /**
  * CycleAlertBadge - Shows when a female is approaching or past expected heat cycle
  *
- * - Yellow dot: Within 14 days of expected cycle
+ * - Yellow dot: Within threshold of expected cycle (species-aware)
  * - Amber dot: Cycle is overdue (past expected date)
+ *
+ * Threshold is species-aware:
+ * - Dogs (~180 day cycle): 14 days
+ * - Horses/Goats/etc (~21 day cycle): ~6 days
  */
 export function CycleAlertBadge({
   daysUntilExpected,
   size = "md",
   dotOnly = false,
+  species,
+  cycleLengthDays,
 }: CycleAlertBadgeProps) {
+  const threshold = getAlertThreshold(species, cycleLengthDays);
   const isOverdue = daysUntilExpected < 0;
-  const needsAttention = daysUntilExpected <= 14 && daysUntilExpected >= -14;
+  const needsAttention = daysUntilExpected <= threshold && daysUntilExpected >= -threshold;
 
   if (!needsAttention) return null;
 
@@ -63,27 +104,14 @@ export function CycleAlertBadge({
 
 /**
  * Helper to calculate days until next expected heat cycle
+ * Returns an object with daysUntil and the calculated threshold for "needs attention"
  */
 export function calculateDaysUntilCycle(
   cycleStartDates: string[] | null | undefined,
   cycleLengthOverride: number | null | undefined,
   species: string
-): number | null {
+): { daysUntil: number; threshold: number; cycleLengthDays: number } | null {
   if (!cycleStartDates || cycleStartDates.length === 0) return null;
-
-  // Species default cycle lengths (days)
-  const SPECIES_CYCLE_LENGTHS: Record<string, number> = {
-    DOG: 180,
-    CAT: 21,
-    HORSE: 21,
-    GOAT: 21,
-    SHEEP: 17,
-    PIG: 21,
-    CATTLE: 21,
-    RABBIT: 15,
-    ALPACA: 14,
-    LLAMA: 14,
-  };
 
   const cycleLengthDays = cycleLengthOverride || SPECIES_CYCLE_LENGTHS[species?.toUpperCase()] || 180;
 
@@ -99,5 +127,11 @@ export function calculateDaysUntilCycle(
   const now = new Date();
   const daysUntil = Math.ceil((nextExpected.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-  return daysUntil;
+  // Get the alert threshold for this species
+  const threshold = getAlertThreshold(species, cycleLengthDays);
+
+  return { daysUntil, threshold, cycleLengthDays };
 }
+
+// Export the threshold helper for external use
+export { getAlertThreshold };

@@ -1,6 +1,8 @@
 // apps/breeding/src/pages/planner/deriveBreedingStatus.ts
 // Status derivation logic for planner components
 
+import { speciesShowsPlacementStartPhase } from "@bhq/ui/utils/speciesTerminology";
+
 export type Status =
   | "PLANNING"
   | "COMMITTED"
@@ -90,7 +92,11 @@ export function toBackendStatus(status: Status | string): BackendStatus {
 /** Convert backend API status to frontend value */
 export function fromBackendStatus(
   status: BackendStatus | string,
-  context?: { placementStartDateActual?: string | null; placementCompletedDateActual?: string | null }
+  context?: {
+    placementStartDateActual?: string | null;
+    placementCompletedDateActual?: string | null;
+    species?: string | null;
+  }
 ): Status {
   const normalized = (status ?? "").toUpperCase() as BackendStatus;
   const baseStatus = BACKEND_TO_STATUS[normalized] ?? (normalized as Status);
@@ -99,6 +105,13 @@ export function fromBackendStatus(
   // Phase 6 (PLACEMENT_STARTED) and Phase 7 (PLACEMENT_COMPLETED) both have backend status PLACEMENT
   // Differentiate by checking if placement start date has been entered
   if (normalized === "PLACEMENT" && context) {
+    // For individual-offspring species (HORSE, CATTLE, ALPACA, LLAMA), skip PLACEMENT_STARTED
+    // They use a combined PLACEMENT phase that maps directly to PLACEMENT_COMPLETED
+    if (!speciesShowsPlacementStartPhase(context.species)) {
+      return "PLACEMENT_COMPLETED";
+    }
+
+    // For litter species, differentiate between PLACEMENT_STARTED and PLACEMENT_COMPLETED
     // If placement start date exists, user is in Phase 7 (PLACEMENT_COMPLETED)
     // They've clicked "Advance to Phase 7" and can now enter placement completed date
     if (context.placementStartDateActual) {
@@ -150,6 +163,10 @@ export function deriveBreedingStatus(p: {
   const hasPlacementCompleted = hasDate(p.placementCompletedDateActual);
   const hasCompleted = hasDate(p.completedDateActual);
 
+  // Check if this is an individual-offspring species (HORSE, CATTLE, ALPACA, LLAMA)
+  // These species skip PLACEMENT_STARTED and go directly to PLACEMENT_COMPLETED
+  const isIndividualSpecies = !speciesShowsPlacementStartPhase(p.species);
+
   // Validate explicit status against available data
   // If the status requires data that's missing, regress to the highest valid status
   if (STATUS_ORDER.includes(explicit)) {
@@ -157,11 +174,25 @@ export function deriveBreedingStatus(p: {
     if (explicit === "COMPLETE" && !hasPlacementCompleted) {
       // Regress - fall through to find valid status
     }
-    // PLACEMENT_COMPLETED requires placement started
-    else if (explicit === "PLACEMENT_COMPLETED" && !hasPlacementStart) {
-      // Regress
+    // PLACEMENT_COMPLETED requirements differ by species type
+    else if (explicit === "PLACEMENT_COMPLETED") {
+      if (isIndividualSpecies) {
+        // For individual species, PLACEMENT_COMPLETED requires weaned date (no placement start needed)
+        if (!hasWeanedDate) {
+          // Regress
+        } else {
+          return explicit;
+        }
+      } else {
+        // For litter species, PLACEMENT_COMPLETED requires placement started
+        if (!hasPlacementStart) {
+          // Regress
+        } else {
+          return explicit;
+        }
+      }
     }
-    // PLACEMENT_STARTED requires weaned date
+    // PLACEMENT_STARTED requires weaned date (litter species only)
     else if (explicit === "PLACEMENT_STARTED" && !hasWeanedDate) {
       // Regress
     }
@@ -195,8 +226,17 @@ export function deriveBreedingStatus(p: {
   // Either no explicit status OR explicit status was invalid - derive from available data
   // Find the highest valid status based on available dates
   if (hasCompleted && hasPlacementCompleted) return "COMPLETE";
-  if (hasPlacementCompleted && hasPlacementStart) return "PLACEMENT_COMPLETED";
-  if (hasPlacementStart && hasWeanedDate) return "PLACEMENT_STARTED";
+
+  // For individual-offspring species, skip PLACEMENT_STARTED entirely
+  if (isIndividualSpecies) {
+    if (hasPlacementCompleted && hasWeanedDate) return "PLACEMENT_COMPLETED";
+    // Skip PLACEMENT_STARTED for individual species
+  } else {
+    // For litter species, use both placement phases
+    if (hasPlacementCompleted && hasPlacementStart) return "PLACEMENT_COMPLETED";
+    if (hasPlacementStart && hasWeanedDate) return "PLACEMENT_STARTED";
+  }
+
   if (hasWeanedDate && hasBirthDate) return "WEANED";
   if (hasBirthDate && hasBreedDate) return "BIRTHED";
   if (hasBreedDate && hasCycleStart) return "BRED";

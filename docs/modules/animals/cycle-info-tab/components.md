@@ -19,6 +19,7 @@ All cycle analysis components are located in:
 | CollapsibleOverride | Cycle length override controls |
 | CycleLengthInsight | Short/long cycler indicator |
 | CycleAlerts | Context-aware notifications |
+| SeasonalityIndicator | Breeding season status for seasonal species |
 | NextCycleProjectionCard | Prediction display |
 | OvulationPatternBadge | Classification badge |
 | ConfidenceBadge | Data quality indicator |
@@ -289,6 +290,59 @@ All cycle analysis components are located in:
 
 ---
 
+## SeasonalityIndicator
+
+**Purpose:** Shows breeding season status for seasonal breeders (HORSE, GOAT, SHEEP)
+
+**Location:** `apps/animals/src/components/CycleAnalysis/SeasonalityIndicator.tsx`
+
+**Props:**
+```typescript
+{
+  species: string;
+  hemisphere?: "N" | "S";  // Default: "N" (Northern)
+}
+```
+
+**Seasonal Species:**
+
+| Species | Type | Northern Hemisphere | Southern Hemisphere |
+|---------|------|---------------------|---------------------|
+| HORSE | Long-day breeder | April – August | October – February |
+| GOAT | Short-day breeder | September – February | March – August |
+| SHEEP | Short-day breeder | August – January | February – July |
+
+**Display:**
+- **In Season:** Green badge with sun/leaf icon
+- **Off Season:** Neutral badge with season months
+
+**Tooltip Content:**
+- Species breeding pattern explanation (long-day vs short-day)
+- Peak breeding months for the hemisphere
+
+**Logic:**
+```typescript
+function isInBreedingSeason(peakMonths: number[], currentMonth: number): boolean {
+  return peakMonths.includes(currentMonth);
+}
+```
+
+**Helper Exports:**
+- `isSeasonalBreeder(species)` - Returns true for HORSE, GOAT, SHEEP
+- `getSeasonalBreedingInfo(species, hemisphere)` - Returns full season info object
+
+**Integration:**
+Shows at top of CycleTab for seasonal species:
+```typescript
+{isSeasonalBreeder(species) && (
+  <div className="flex justify-center">
+    <SeasonalityIndicator species={species} />
+  </div>
+)}
+```
+
+---
+
 ## Badge Components
 
 ### OvulationPatternBadge
@@ -324,28 +378,77 @@ All cycle analysis components are located in:
 
 ### CycleAlertBadge
 
-**Props:** `{ daysUntilExpected, size?, dotOnly? }`
+**Props:**
+```typescript
+{
+  daysUntilExpected: number;
+  size?: "sm" | "md";
+  dotOnly?: boolean;
+  species?: string;           // For threshold calculation
+  cycleLengthDays?: number;   // Overrides species default
+}
+```
+
+**Species-Aware Thresholds:**
+
+The alert threshold is proportional to cycle length:
+
+| Species Type | Cycle Length | Threshold |
+|--------------|--------------|-----------|
+| Long cycle (DOG) | ~180 days | 14 days |
+| Short cycle (HORSE, GOAT, etc) | ~21 days | ~6 days (30% of cycle) |
+
+**Threshold Calculation:**
+```typescript
+function getAlertThreshold(species?: string, cycleLengthDays?: number): number {
+  const cycleLen = cycleLengthDays || SPECIES_CYCLE_LENGTHS[species] || 180;
+
+  if (cycleLen > 60) return 14;  // Long cycle species
+  return Math.max(5, Math.min(14, Math.round(cycleLen * 0.3)));  // ~30% for short cycles
+}
+```
+
+**Display:**
 
 | Condition | Color |
 |-----------|-------|
-| Overdue (<0) | Amber pulsing |
-| Within 14 days | Yellow pulsing |
-| Beyond 14 days | Hidden |
+| Overdue (< 0 days) | Amber pulsing |
+| Within threshold | Yellow pulsing |
+| Beyond threshold | Hidden |
 
 ---
 
-## Helper Function: calculateDaysUntilCycle
+## Helper Functions
+
+### calculateDaysUntilCycle
 
 ```typescript
 function calculateDaysUntilCycle(
   cycleStartDates: string[] | null | undefined,
   cycleLengthOverride: number | null | undefined,
   species: string
-): number | null
+): { daysUntil: number; threshold: number; cycleLengthDays: number } | null
 ```
+
+**Returns:**
+- `daysUntil` - Days until next expected heat (negative if overdue)
+- `threshold` - Species-aware alert threshold
+- `cycleLengthDays` - Effective cycle length used
 
 **Logic:**
 1. Uses override if available, else species default
 2. Gets most recent cycle start
 3. Calculates next expected date
-4. Returns days until (negative if overdue)
+4. Returns object with days until and threshold
+
+### getAlertThreshold
+
+```typescript
+function getAlertThreshold(species?: string, cycleLengthDays?: number): number
+```
+
+**Returns:** Number of days before expected cycle to show alert
+
+**Logic:**
+- Long cycles (>60 days): 14 days
+- Short cycles: ~30% of cycle length (min 5, max 14)

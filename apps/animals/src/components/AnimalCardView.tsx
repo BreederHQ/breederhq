@@ -122,6 +122,7 @@ function AnimalCard({ row, onClick, vaccinationAlert, cycleAlert }: { row: Anima
             {cycleAlert?.needsAttention && (
               <CycleAlertBadge
                 daysUntilExpected={cycleAlert.daysUntilCycle}
+                species={row.species || ""}
                 size="sm"
               />
             )}

@@ -275,17 +275,17 @@ test.describe('Cycle Projections', () => {
   });
 
   // ============================================================================
-  // Test 8: CAT - Uses 21-day cycle with 3-day ovulation offset
-  // Note: Using CAT as GOAT may not be available in test tenant
+  // Test 8: GOAT - Uses 21-day cycle with 2-day ovulation offset
+  // Note: GOAT is a spontaneous ovulator (unlike CAT which is induced)
   // ============================================================================
-  test('CAT - Uses correct species defaults for projections', async ({
+  test('GOAT - Uses correct species defaults for projections', async ({
     apiContext,
     hogwartsConfig,
     testAnimalIds,
   }) => {
     const animal = await createTestAnimal(apiContext, hogwartsConfig, {
-      name: `Test Cat ${Date.now()}`,
-      species: 'CAT',
+      name: `Test Goat ${Date.now()}`,
+      species: 'GOAT',
       sex: 'FEMALE',
       dateOfBirth: '2020-01-01',
     });
@@ -306,7 +306,7 @@ test.describe('Cycle Projections', () => {
 
     const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
 
-    // Cat: 21-day cycle
+    // Goat: 21-day cycle
     // Next heat is projected from last cycle + cycle length
     const expectedNextHeat = addDays(lastCycle, analysis.cycleLengthDays);
 
@@ -315,7 +315,88 @@ test.describe('Cycle Projections', () => {
   });
 
   // ============================================================================
-  // Test 9: Animals with more history have consistent projections
+  // Test 9: SHEEP - Uses 17-day cycle with 2-day ovulation offset
+  // ============================================================================
+  test('SHEEP - Uses correct species defaults for projections', async ({
+    apiContext,
+    hogwartsConfig,
+    testAnimalIds,
+  }) => {
+    const animal = await createTestAnimal(apiContext, hogwartsConfig, {
+      name: `Test Sheep ${Date.now()}`,
+      species: 'SHEEP',
+      sex: 'FEMALE',
+      dateOfBirth: '2020-01-01',
+    });
+    testAnimalIds.push(animal.id);
+
+    // Set recent cycle start
+    const today = todayISO();
+    const lastCycle = addDays(today, -5);
+    const dates = [
+      addDays(today, -39),
+      addDays(today, -22),
+      lastCycle,
+    ];
+    await setCycleStartDates(apiContext, hogwartsConfig, {
+      animalId: animal.id,
+      dates,
+    });
+
+    const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
+
+    // Sheep: 17-day cycle
+    // Next heat is projected from last cycle + cycle length
+    const expectedNextHeat = addDays(lastCycle, analysis.cycleLengthDays);
+
+    expect(analysis.nextCycleProjection).toBeDefined();
+    expect(analysis.nextCycleProjection.projectedHeatStart).toBe(expectedNextHeat);
+  });
+
+  // ============================================================================
+  // Test 10: GOAT - Ovulation window calculation
+  // ============================================================================
+  test('GOAT - Ovulation window centers around day 2', async ({
+    apiContext,
+    hogwartsConfig,
+    testAnimalIds,
+  }) => {
+    const animal = await createTestAnimal(apiContext, hogwartsConfig, {
+      name: `Test Goat ${Date.now()}`,
+      species: 'GOAT',
+      sex: 'FEMALE',
+      dateOfBirth: '2020-01-01',
+    });
+    testAnimalIds.push(animal.id);
+
+    // Set recent cycle start
+    const today = todayISO();
+    const dates = [
+      addDays(today, -42),
+      addDays(today, -21),
+      addDays(today, -2), // Very recent cycle
+    ];
+    await setCycleStartDates(apiContext, hogwartsConfig, {
+      animalId: animal.id,
+      dates,
+    });
+
+    const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
+
+    // Projection is for NEXT cycle
+    // Next heat = lastCycle + cycleLength
+    // Next ovulation = nextHeat + ovulationOffset (2 days for goats)
+    const lastCycle = addDays(today, -2);
+    const nextHeat = addDays(lastCycle, analysis.cycleLengthDays);
+    const expectedOvulation = addDays(nextHeat, SPECIES_CYCLE_DEFAULTS.GOAT.ovulationOffsetDays);
+
+    expect(analysis.nextCycleProjection).toBeDefined();
+    expect(analysis.nextCycleProjection.projectedOvulationWindow).toBeDefined();
+    expect(analysis.nextCycleProjection.projectedOvulationWindow.mostLikely).toBe(expectedOvulation);
+  });
+
+  // ============================================================================
+  // Test 11: Animals with more history have consistent projections
   // ============================================================================
   test('Animals with more history have projections', async ({
     apiContext,

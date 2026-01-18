@@ -44,6 +44,7 @@ The Breeding Module is the core workflow engine for managing breeding plans from
 |----------|-------------|
 | [11-cycle-info-integration.md](./11-cycle-info-integration.md) | Connection to Animals module cycle tracking |
 | [12-foaling-system.md](./12-foaling-system.md) | Horse-specific foaling workflow and milestones |
+| [13-ui-walkthrough-by-species.md](./13-ui-walkthrough-by-species.md) | Species-specific UI features and validation warnings |
 
 ### Future Planning
 
@@ -77,21 +78,78 @@ The Breeding Module is the core workflow engine for managing breeding plans from
 | ALPACA | BREEDING_DATE (induced) | 345 days | Camelid, induced ovulator |
 | LLAMA | BREEDING_DATE (induced) | 350 days | Camelid, induced ovulator |
 
-### Lifecycle Phases (8 Total)
+### Lifecycle Phases (Species-Dependent)
 
+**Litter Species (DOG, CAT, RABBIT, GOAT, SHEEP) - 8 Phases:**
 ```
 PLANNING → COMMITTED → BRED → BIRTHED → WEANED → PLACEMENT_STARTED → PLACEMENT_COMPLETED → COMPLETE
                                                                                               ↓
                                                                                          (CANCELED)
 ```
 
+**Individual-Offspring Species (HORSE, CATTLE, ALPACA, LLAMA) - 7 Phases:**
+```
+PLANNING → COMMITTED → BRED → BIRTHED → WEANED → PLACEMENT → COMPLETE
+                                                                  ↓
+                                                             (CANCELED)
+```
+
+> Note: Individual-offspring species skip the separate PLACEMENT_STARTED phase since there's typically only one offspring to place. Edge case: If a horse has twins, the 8-phase workflow is used.
+
+### Species-Specific Validation Rules
+
+| Species | Rule | Value | Warning |
+|---------|------|-------|---------|
+| GOAT | Minimum weaning age | 70 days (10 weeks) | Prevents weaning shock |
+| RABBIT | Maximum placement age | 70 days (10 weeks) | Prevents fighting/aggression |
+
+### UI Walkthrough Quick Reference
+
+| Species | Phases | Ovulation Insight Card | Special Validation | Special Tabs |
+|---------|:------:|:----------------------:|-------------------|--------------|
+| **DOG** | 8 | ✅ Shows pattern when dam selected | — | — |
+| **CAT** | 8 | ❌ Induced ovulator | — | — |
+| **HORSE** | 7 | ✅ Shows pattern when dam selected | — | Foaling Checklist, Foaling Outcome |
+| **GOAT** | 8 | ❌ No testing available | ⚠️ Weaning ≥70 days (prevents shock) | — |
+| **SHEEP** | 8 | ❌ No testing available | — | — |
+| **RABBIT** | 8 | ❌ Induced ovulator | ⚠️ Placement ≤70 days (prevents fighting) | — |
+
+#### What Breeders Will See
+
+**DOG/HORSE with dam history:**
+```
+┌─ Ovulation Insight Card ─────────────────────────────┐
+│ Bella's Ovulation Pattern          [Early Ovulator]  │
+│ Based on 3 cycles                                    │
+│ Typical Ovulation: Day 10 (±0.6 days)  [HIGH conf]   │
+│ [Use This Pattern for Predictions]                   │
+└──────────────────────────────────────────────────────┘
+```
+
+**GOAT with early weaning:**
+```
+⚠️ Warning: Weaning at 56 days is below minimum of 70 days -
+   early weaning can cause weaning shock
+```
+
+**RABBIT with late placement:**
+```
+⚠️ Warning: Placement at 84 days exceeds maximum of 70 days -
+   must place before 10 weeks to prevent fighting
+```
+
+> See [13-ui-walkthrough-by-species.md](./13-ui-walkthrough-by-species.md) for complete details.
+
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `apps/breeding/src/components/PlanJourney.tsx` | Main plan detail UI (67KB) |
-| `apps/breeding/src/components/RollupGantt.tsx` | Multi-plan timeline (35KB) |
-| `packages/ui/src/utils/speciesTerminology.ts` | Species configuration |
+| `apps/breeding/src/components/PlanJourney.tsx` | Main plan detail UI with dynamic phases |
+| `apps/breeding/src/components/OvulationInsightCard.tsx` | Displays learned ovulation patterns |
+| `apps/breeding/src/hooks/useDamCycleAnalysis.ts` | Hook to fetch dam's cycle analysis |
+| `apps/breeding/src/pages/planner/deriveBreedingStatus.ts` | Species-aware status derivation |
+| `packages/ui/src/utils/speciesTerminology.ts` | Species configuration + phase helpers |
+| `packages/ui/src/utils/dateValidation/` | Species-specific validation rules |
 | `packages/ui/src/utils/reproEngine/` | Timeline calculation engine |
 | `breederhq-api/src/routes/breeding.ts` | API routes |
 
@@ -101,5 +159,6 @@ PLANNING → COMMITTED → BRED → BIRTHED → WEANED → PLACEMENT_STARTED →
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-18 | Species-specific phase consolidation, validation rules, ovulation pattern integration |
 | 1.0.0 | 2026-01-18 | Initial comprehensive documentation |
 

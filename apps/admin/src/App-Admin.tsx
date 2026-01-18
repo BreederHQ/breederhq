@@ -1182,23 +1182,23 @@ export default function AppAdmin() {
                   </div>
 
                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-                    <div className="text-xs text-secondary mb-1 flex items-center justify-between">
+                    <div className="text-xs text-amber-700 dark:text-amber-300 mb-1 flex items-center justify-between">
                       <span>Temporary Password</span>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(createdPassword);
                         }}
-                        className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-hairline rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                        className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded hover:bg-amber-100 dark:hover:bg-gray-700 text-amber-800 dark:text-amber-200"
                       >
                         Copy
                       </button>
                     </div>
-                    <div className="font-mono text-sm font-semibold break-all">{createdPassword}</div>
+                    <div className="font-mono text-sm font-semibold break-all text-amber-900 dark:text-amber-100">{createdPassword}</div>
                   </div>
 
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
-                    <div className="font-medium mb-1">Important:</div>
-                    <ul className="list-disc list-inside pl-2 space-y-1 text-secondary">
+                    <div className="font-medium mb-1 text-blue-800 dark:text-blue-200">Important:</div>
+                    <ul className="list-disc list-inside pl-2 space-y-1 text-blue-700 dark:text-blue-300">
                       <li>The owner must change this password on first login</li>
                       <li>This password will not be shown again</li>
                       <li>You can reset the password later from the Admin UI</li>

@@ -327,30 +327,35 @@ Sad scenario but needs handling:
 - Handle in Offspring module (placementState: RETURNED)
 - Plan remains COMPLETE
 
-## Implementation Checklist
+## Implementation Status
 
-### Phase 1: UI Simplification
+> **Status: IMPLEMENTED** (v1.1.0 - 2026-01-18)
 
-- [ ] Add `showPlacementStartPhase` logic based on species
-- [ ] Implement combined "Placement" phase for individual species
-- [ ] Update phase count display (7 vs 8)
-- [ ] Test with all species
+### Phase 1: UI Simplification ✅
 
-### Phase 2: Auto-Advance Logic
+- [x] Add `speciesShowsPlacementStartPhase()` helper based on `showGroupConcept` flag
+- [x] Implement combined "Placement" phase for individual species in PlanJourney.tsx
+- [x] Dynamic phase count (7 vs 8) based on species
+- [x] Edge case: Individual species with multiple offspring (e.g., horse twins) get 8 phases
 
-- [ ] Implement auto-advance when single offspring placed
-- [ ] Ensure both dates set correctly
-- [ ] Update event logging
+### Phase 2: Status Derivation ✅
 
-### Phase 3: Terminology Updates
+- [x] Updated `deriveBreedingStatus.ts` to be species-aware
+- [x] Updated `fromBackendStatus()` to map PLACEMENT directly to PLACEMENT_COMPLETED for individual species
+- [x] Individual species skip PLACEMENT_STARTED in status derivation
+
+### Phase 3: Files Modified
+
+| File | Changes |
+|------|---------|
+| `packages/ui/src/utils/speciesTerminology.ts` | Added `speciesShowsPlacementStartPhase()` |
+| `apps/breeding/src/components/PlanJourney.tsx` | Dynamic phases based on species |
+| `apps/breeding/src/pages/planner/deriveBreedingStatus.ts` | Species-aware status derivation |
+| `apps/breeding/src/App-Breeding.tsx` | Pass species/offspringCount to PlanJourney |
+
+### Remaining Work (Future)
 
 - [ ] Add species-specific placement labels to speciesTerminology
-- [ ] Update UI to use dynamic labels
-- [ ] Update guidance text per species
-
-### Phase 4: Edge Case Handling
-
-- [ ] Detect multiple offspring for normally-single species
 - [ ] Handle keeper offspring in placement counting
 - [ ] Document deceased offspring workflow
 

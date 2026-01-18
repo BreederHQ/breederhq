@@ -372,6 +372,45 @@ function validatePlacementTiming(
 }
 
 /**
+ * Validate placement does not exceed maximum allowed age (e.g., rabbits must be placed by 10 weeks).
+ */
+function validatePlacementMaxTiming(
+  actuals: PlanActualDates,
+  rules: SpeciesBiologyRules,
+  ctx: ValidationContext
+): ValidationWarning[] {
+  if (!ctx.config.enableBiologyWarnings) return [];
+  // Only check if species has a max placement age defined
+  if (!rules.birthToPlacementMaxDays) return [];
+
+  const warnings: ValidationWarning[] = [];
+  const birthDate = parseDate(actuals.birthActual);
+  const placementDate = parseDate(actuals.placementStartActual);
+
+  if (birthDate && placementDate) {
+    const days = daysBetween(birthDate, placementDate);
+
+    if (days > rules.birthToPlacementMaxDays) {
+      const weeks = Math.round(rules.birthToPlacementMaxDays / 7);
+      warnings.push({
+        field: "placementStart",
+        code: "PLACEMENT_TOO_LATE",
+        message: `Placement at ${days} days (${Math.round(days / 7)} weeks) exceeds maximum of ${rules.birthToPlacementMaxDays} days (${weeks} weeks) - must place before ${weeks} weeks to prevent fighting/aggression`,
+        severity: "serious",
+        canOverride: true,
+        details: {
+          actual: `${days} days (${Math.round(days / 7)} weeks)`,
+          expected: `Maximum ${rules.birthToPlacementMaxDays} days (${weeks} weeks)`,
+          speciesDefault: rules.birthToPlacementTypicalDays,
+        },
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Validate female age at breeding.
  */
 function validateFemaleAge(
@@ -647,6 +686,7 @@ export function validateBreedingDates(
   warnings.push(...validateBreedingTiming(actuals, bioRules, ctx));
   warnings.push(...validateWeaningTiming(actuals, bioRules, ctx));
   warnings.push(...validatePlacementTiming(actuals, bioRules, ctx));
+  warnings.push(...validatePlacementMaxTiming(actuals, bioRules, ctx));
   warnings.push(...validateFemaleAge(actuals, bioRules, ctx));
   warnings.push(...validatePostpartumRecovery(actuals, bioRules, ctx));
   warnings.push(...validateLitterCount(bioRules, ctx));

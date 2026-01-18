@@ -4,9 +4,10 @@
 import * as React from "react";
 import { DatePicker } from "@bhq/ui";
 import "@bhq/ui/styles/datepicker.css";
+import { speciesShowsPlacementStartPhase } from "@bhq/ui/utils/speciesTerminology";
 
-// Phase definitions
-const PHASES = [
+// Phase definitions - full 8-phase lifecycle for litter species
+const PHASES_LITTER = [
   { key: "PLANNING", label: "Planning", shortLabel: "Planning" },
   { key: "COMMITTED", label: "Committed", shortLabel: "Committed" },
   { key: "BRED", label: "Breeding", shortLabel: "Breeding" },
@@ -17,12 +18,52 @@ const PHASES = [
   { key: "COMPLETE", label: "Plan Complete", shortLabel: "Complete" },
 ] as const;
 
-type PhaseKey = typeof PHASES[number]["key"];
+// Phase definitions - 7-phase lifecycle for individual-offspring species (HORSE, CATTLE, ALPACA, LLAMA)
+const PHASES_INDIVIDUAL = [
+  { key: "PLANNING", label: "Planning", shortLabel: "Planning" },
+  { key: "COMMITTED", label: "Committed", shortLabel: "Committed" },
+  { key: "BRED", label: "Breeding", shortLabel: "Breeding" },
+  { key: "BIRTHED", label: "Birth", shortLabel: "Birth" },
+  { key: "WEANED", label: "Weaned", shortLabel: "Weaned" },
+  { key: "PLACEMENT", label: "Placement", shortLabel: "Placed" },
+  { key: "COMPLETE", label: "Plan Complete", shortLabel: "Complete" },
+] as const;
 
-// Map status to phase index
-function getPhaseIndex(status: string | null | undefined): number {
+type PhaseKeyLitter = typeof PHASES_LITTER[number]["key"];
+type PhaseKeyIndividual = typeof PHASES_INDIVIDUAL[number]["key"];
+type PhaseKey = PhaseKeyLitter | PhaseKeyIndividual;
+
+// Phase type with preserved key type
+type Phase = { key: PhaseKey; label: string; shortLabel: string };
+
+// Get appropriate phases array based on species
+function getPhasesForSpecies(species: string | null | undefined, offspringCount?: number | null): readonly Phase[] {
+  // If species uses litter concept, show all 8 phases
+  if (speciesShowsPlacementStartPhase(species)) {
+    return PHASES_LITTER as readonly Phase[];
+  }
+  // For individual-offspring species, check if they have multiple offspring (e.g., horse twins)
+  // If so, still show the 8-phase workflow
+  if (offspringCount && offspringCount > 1) {
+    return PHASES_LITTER as readonly Phase[];
+  }
+  // Single-offspring species with single/no offspring use simplified 7 phases
+  return PHASES_INDIVIDUAL as readonly Phase[];
+}
+
+// Map status to phase index, handling combined PLACEMENT phase for individual species
+function getPhaseIndex(status: string | null | undefined, phases: readonly Phase[]): number {
   if (!status) return 0;
-  const idx = PHASES.findIndex(p => p.key === status);
+
+  // Handle mapping for individual species where PLACEMENT_STARTED/PLACEMENT_COMPLETED → PLACEMENT
+  let mappedStatus = status;
+  if (phases === (PHASES_INDIVIDUAL as readonly Phase[])) {
+    if (status === "PLACEMENT_STARTED" || status === "PLACEMENT_COMPLETED") {
+      mappedStatus = "PLACEMENT";
+    }
+  }
+
+  const idx = phases.findIndex(p => p.key === mappedStatus);
   return idx >= 0 ? idx : 0;
 }
 
@@ -36,6 +77,10 @@ type Requirement = {
 
 export type PlanJourneyProps = {
   status: string | null | undefined;
+  // Species for phase display (determines 7 vs 8 phases)
+  species?: string | null;
+  // Offspring count for edge cases (e.g., horse twins get 8 phases)
+  offspringCount?: number | null;
   // For Planning → Committed requirements
   hasPlanName: boolean;
   hasSpecies: boolean;
@@ -84,6 +129,8 @@ export type PlanJourneyProps = {
 
 export function PlanJourney({
   status,
+  species,
+  offspringCount,
   hasPlanName,
   hasSpecies,
   hasDam,
@@ -121,7 +168,11 @@ export function PlanJourney({
   onToggleGuidance,
   isEdit = false,
 }: PlanJourneyProps) {
-  const currentPhaseIdx = getPhaseIndex(status);
+  // Determine phases based on species (litter vs individual offspring)
+  const PHASES = React.useMemo(() => getPhasesForSpecies(species, offspringCount), [species, offspringCount]);
+  const showsPlacementStartPhase = speciesShowsPlacementStartPhase(species) || (offspringCount && offspringCount > 1);
+
+  const currentPhaseIdx = getPhaseIndex(status, PHASES);
   const currentPhase = PHASES[currentPhaseIdx];
   const nextPhase = PHASES[currentPhaseIdx + 1];
 
@@ -242,17 +293,25 @@ export function PlanJourney({
           { key: "birthDate", label: "Actual Birth Date", met: hasActualBirthDate, action: "Enter the actual birth date" },
         ];
       case "PLACEMENT_STARTED":
-        // To advance to Placement Started, weaning must have occurred
+        // To advance to Placement Started, weaning must have occurred (litter species only)
+        return [
+          { key: "weanedDate", label: "Actual Weaned Date", met: hasActualWeanedDate, action: "Enter the weaning date" },
+        ];
+      case "PLACEMENT":
+        // Combined placement phase for individual-offspring species (HORSE, CATTLE, ALPACA, LLAMA)
+        // To advance to Placement, weaning must have occurred
         return [
           { key: "weanedDate", label: "Actual Weaned Date", met: hasActualWeanedDate, action: "Enter the weaning date" },
         ];
       case "PLACEMENT_COMPLETED":
-        // To advance to Placement Completed, placement must have started
+        // To advance to Placement Completed, placement must have started (litter species only)
         return [
           { key: "placementStarted", label: "Actual Placement Start Date", met: hasPlacementStarted, action: "Enter the placement start date" },
         ];
       case "COMPLETE":
-        // To advance to Complete phase, placement completed date must be entered
+        // To advance to Complete phase, placement must be done
+        // For individual species with combined PLACEMENT, we need placementCompleted date
+        // For litter species, we also need placementCompleted date
         return [
           { key: "placementCompleted", label: "Actual Placement Completed Date", met: hasPlacementCompleted, action: "Enter the placement completed date" },
         ];
@@ -294,6 +353,9 @@ export function PlanJourney({
       case "WEANED":
         return "Weaned Phase Guidance";
       case "PLACEMENT_STARTED":
+        return "Placement Phase Guidance";
+      case "PLACEMENT":
+        // Combined placement phase for individual-offspring species
         return "Placement Phase Guidance";
       case "PLACEMENT_COMPLETED":
         return "Completing Plan Guidance";

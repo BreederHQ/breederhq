@@ -264,8 +264,8 @@ test.describe('Cycle Info Tab UI Display', () => {
 
     await navigateToCycleTab(authenticatedPage, hogwartsConfig.frontendUrl, animal.id);
 
-    // Should show heat/cycle info
-    await expect(authenticatedPage.locator('text=/heat|cycle/i')).toBeVisible({ timeout: 10000 });
+    // Should show heat/cycle info - use .first() since multiple elements match
+    await expect(authenticatedPage.locator('text=/heat|cycle/i').first()).toBeVisible({ timeout: 10000 });
   });
 
   // ============================================================================

@@ -255,17 +255,17 @@ test.describe('Cycle Length Calculations', () => {
   });
 
   // ============================================================================
-  // Test 9: CAT - Uses correct species default (21 days)
-  // Note: Using CAT instead of GOAT as GOAT may not be enabled in test tenant
+  // Test 9: GOAT - Uses correct species default (21 days)
+  // Note: GOAT is a spontaneous ovulator with short cycles
   // ============================================================================
-  test('CAT - Uses correct species default (21 days)', async ({
+  test('GOAT - Uses correct species default (21 days)', async ({
     apiContext,
     hogwartsConfig,
     testAnimalIds,
   }) => {
     const animal = await createTestAnimal(apiContext, hogwartsConfig, {
-      name: `Test Cat ${Date.now()}`,
-      species: 'CAT',
+      name: `Test Goat ${Date.now()}`,
+      species: 'GOAT',
       sex: 'FEMALE',
       dateOfBirth: '2020-01-01',
     });
@@ -273,12 +273,89 @@ test.describe('Cycle Length Calculations', () => {
 
     const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
 
-    expect(analysis.cycleLengthDays).toBe(SPECIES_CYCLE_DEFAULTS.CAT.cycleLenDays);
+    expect(analysis.cycleLengthDays).toBe(SPECIES_CYCLE_DEFAULTS.GOAT.cycleLenDays);
     expect(analysis.cycleLengthSource).toBe('BIOLOGY');
   });
 
   // ============================================================================
-  // Test 11: Clearing override reverts to history
+  // Test 10: GOAT - Calculates cycle length from history
+  // ============================================================================
+  test('GOAT - Calculates cycle length from history', async ({
+    apiContext,
+    hogwartsConfig,
+    testAnimalIds,
+  }) => {
+    const animal = await createTestAnimal(apiContext, hogwartsConfig, {
+      name: `Test Goat ${Date.now()}`,
+      species: 'GOAT',
+      sex: 'FEMALE',
+      dateOfBirth: '2020-01-01',
+    });
+    testAnimalIds.push(animal.id);
+
+    // Set 4 cycle start dates with 19 day gaps (slightly shorter than default 21)
+    const cycleLengthDays = 19;
+    const dates = generateShortCycleStartDates(4, cycleLengthDays);
+    await setCycleStartDates(apiContext, hogwartsConfig, { animalId: animal.id, dates });
+
+    const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
+
+    expect(analysis.cycleLengthSource).toBe('HISTORY');
+    expect(analysis.cycleLengthDays).toBe(cycleLengthDays);
+  });
+
+  // ============================================================================
+  // Test 11: SHEEP - Uses correct species default (17 days)
+  // Note: SHEEP has a shorter cycle than GOAT/HORSE
+  // ============================================================================
+  test('SHEEP - Uses correct species default (17 days)', async ({
+    apiContext,
+    hogwartsConfig,
+    testAnimalIds,
+  }) => {
+    const animal = await createTestAnimal(apiContext, hogwartsConfig, {
+      name: `Test Sheep ${Date.now()}`,
+      species: 'SHEEP',
+      sex: 'FEMALE',
+      dateOfBirth: '2020-01-01',
+    });
+    testAnimalIds.push(animal.id);
+
+    const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
+
+    expect(analysis.cycleLengthDays).toBe(SPECIES_CYCLE_DEFAULTS.SHEEP.cycleLenDays);
+    expect(analysis.cycleLengthSource).toBe('BIOLOGY');
+  });
+
+  // ============================================================================
+  // Test 12: SHEEP - Calculates cycle length from history
+  // ============================================================================
+  test('SHEEP - Calculates cycle length from history', async ({
+    apiContext,
+    hogwartsConfig,
+    testAnimalIds,
+  }) => {
+    const animal = await createTestAnimal(apiContext, hogwartsConfig, {
+      name: `Test Sheep ${Date.now()}`,
+      species: 'SHEEP',
+      sex: 'FEMALE',
+      dateOfBirth: '2020-01-01',
+    });
+    testAnimalIds.push(animal.id);
+
+    // Set 4 cycle start dates with 15 day gaps (shorter than default 17)
+    const cycleLengthDays = 15;
+    const dates = generateShortCycleStartDates(4, cycleLengthDays);
+    await setCycleStartDates(apiContext, hogwartsConfig, { animalId: animal.id, dates });
+
+    const analysis = await getCycleAnalysis(apiContext, hogwartsConfig, animal.id);
+
+    expect(analysis.cycleLengthSource).toBe('HISTORY');
+    expect(analysis.cycleLengthDays).toBe(cycleLengthDays);
+  });
+
+  // ============================================================================
+  // Test 13: Clearing override reverts to history
   // ============================================================================
   test('Clearing override reverts to history', async ({
     apiContext,

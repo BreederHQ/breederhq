@@ -219,11 +219,16 @@ export function generateShortCycleStartDates(
 /**
  * Species defaults (matching reproEngine)
  */
+/**
+ * Species defaults for SPONTANEOUS OVULATORS only
+ * Note: Induced ovulators (CAT, RABBIT, FERRET, CAMEL, LLAMA, ALPACA) do NOT have
+ * cycle tracking since they ovulate in response to mating, not on a predictable cycle.
+ */
 export const SPECIES_CYCLE_DEFAULTS = {
   DOG: { cycleLenDays: 180, ovulationOffsetDays: 12 },
-  CAT: { cycleLenDays: 21, ovulationOffsetDays: 3 },
   HORSE: { cycleLenDays: 21, ovulationOffsetDays: 5 },
   GOAT: { cycleLenDays: 21, ovulationOffsetDays: 2 },
   SHEEP: { cycleLenDays: 17, ovulationOffsetDays: 2 },
-  RABBIT: { cycleLenDays: 15, ovulationOffsetDays: 0 },
+  COW: { cycleLenDays: 21, ovulationOffsetDays: 1 },
+  PIG: { cycleLenDays: 21, ovulationOffsetDays: 2 },
 } as const;
