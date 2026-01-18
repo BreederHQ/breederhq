@@ -38,10 +38,21 @@ import QuotaWarningBanner from "./components/QuotaWarningBanner";
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "bloodlines" | "marketing" | "marketplace" | "finance" | "contracts" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
+// Membership type from enhanced session response
+type TenantMembership = {
+  tenantId: number;
+  tenantName: string | null;
+  tenantSlug: string | null;
+  role: string | null;
+  membershipRole: string | null;
+  membershipStatus: string | null;
+};
+
 type AuthState = {
-  user?: { id: string; email?: string | null } | null;
+  user?: { id: string; email?: string | null; isSuperAdmin?: boolean } | null;
+  tenant?: { id: number; name: string; slug: string | null; isDemoTenant?: boolean; demoResetType?: string | null } | null;
   org?: { id: number; name?: string | null } | null;
-  memberships?: Array<{ organizationId: number; role?: string }>;
+  memberships?: TenantMembership[];
 } | null;
 
 // compute API root once; works with same-origin dev and env overrides
@@ -397,10 +408,89 @@ export default function AppPlatform() {
     }
   }
 
+  // Derive tenant info for display (prefer new tenant structure, fall back to legacy org)
+  const currentTenant = auth?.tenant ? {
+    id: auth.tenant.id,
+    name: auth.tenant.name,
+    slug: auth.tenant.slug ?? "",
+  } : null;
+
   const orgName =
-    (auth?.org?.name && String(auth.org.name).trim())
-      ? String(auth.org.name).trim()
-      : "Organization";
+    (auth?.tenant?.name && String(auth.tenant.name).trim())
+      ? String(auth.tenant.name).trim()
+      : (auth?.org?.name && String(auth.org.name).trim())
+        ? String(auth.org.name).trim()
+        : "Organization";
+
+  // Transform memberships for AccountMenu (filter out nulls)
+  const menuMemberships = (auth?.memberships ?? [])
+    .filter((m): m is TenantMembership & { tenantName: string; tenantSlug: string } =>
+      m.tenantName !== null && m.tenantSlug !== null
+    )
+    .map((m) => ({
+      tenantId: m.tenantId,
+      tenantName: m.tenantName,
+      tenantSlug: m.tenantSlug,
+      role: m.role ?? "member",
+    }));
+
+  // Handler for tenant switching
+  const handleTenantSwitch = async (tenantId: number) => {
+    try {
+      const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+      const res = await fetch("/api/v1/session/tenant", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        },
+        body: JSON.stringify({ tenantId, saveDefault: false }),
+      });
+
+      if (res.ok) {
+        // Clear caches and reload to pick up new tenant context
+        try { localStorage.removeItem("BHQ_TENANT_ID"); } catch { /* ignore */ }
+        try { localStorage.removeItem("BHQ_ORG_ID"); } catch { /* ignore */ }
+        (window as any).__BHQ_TENANT_ID__ = undefined;
+        (window as any).__BHQ_ORG_ID__ = undefined;
+        window.location.href = "/";
+      } else {
+        console.error("Failed to switch tenant:", await res.text());
+      }
+    } catch (err) {
+      console.error("Error switching tenant:", err);
+    }
+  };
+
+  // Handler for demo tenant reset
+  const handleDemoReset = async () => {
+    if (!auth?.tenant?.id) return;
+
+    try {
+      const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+      const res = await fetch(`/api/v1/tenants/${auth.tenant.id}/reset`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        },
+      });
+
+      if (res.ok) {
+        // Reset triggered - logout and redirect
+        doLogout();
+      } else {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        console.error("Failed to reset demo tenant:", err);
+        alert(`Failed to reset demo tenant: ${err.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      console.error("Error resetting demo tenant:", err);
+      alert("Error resetting demo tenant. Please try again.");
+    }
+  };
 
   return (
     <UiScaleProvider>
@@ -434,7 +524,12 @@ export default function AppPlatform() {
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
             orgName={orgName}
-            onOrgClick={() => alert("Organization switcher coming soon")}
+            currentTenant={currentTenant}
+            memberships={menuMemberships}
+            onTenantSwitch={handleTenantSwitch}
+            isSuperAdmin={auth?.user?.isSuperAdmin}
+            isDemoTenant={auth?.tenant?.isDemoTenant}
+            onDemoReset={handleDemoReset}
             onSettingsClick={() => setSettingsOpen(true)}
             onMessagesClick={() => window.location.assign("/marketing/messages")}
             unreadMessagesCount={unreadCount}

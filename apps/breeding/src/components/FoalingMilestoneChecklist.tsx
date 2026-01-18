@@ -47,6 +47,10 @@ type FoalingMilestoneChecklistProps = {
   onRecalculateMilestones?: () => Promise<void>;
   onDeleteMilestones?: () => Promise<void>;
   isLoading?: boolean;
+  // Anchor mode system props
+  reproAnchorMode?: "CYCLE_START" | "OVULATION" | "BREEDING_DATE" | null;
+  ovulationConfirmed?: string | null;
+  ovulationConfirmedMethod?: string | null;
 };
 
 // Milestone metadata for display
@@ -176,6 +180,10 @@ export function FoalingMilestoneChecklist({
   onRecalculateMilestones,
   onDeleteMilestones,
   isLoading = false,
+  // Anchor mode system props
+  reproAnchorMode,
+  ovulationConfirmed,
+  ovulationConfirmedMethod,
 }: FoalingMilestoneChecklistProps) {
   const [completingId, setCompletingId] = React.useState<number | null>(null);
   const [uncompletingId, setUncompletingId] = React.useState<number | null>(null);
@@ -338,11 +346,33 @@ export function FoalingMilestoneChecklist({
               <Calendar className="h-5 w-5 text-purple-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-purple-100">
-                Foaling Milestone Checklist
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-purple-100">
+                  Foaling Milestone Checklist
+                </h3>
+                {/* Anchor mode confidence indicator */}
+                {reproAnchorMode === "OVULATION" && ovulationConfirmed && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-purple-500/20 text-purple-400 rounded border border-purple-500/30">
+                    HIGH Accuracy
+                  </span>
+                )}
+                {reproAnchorMode === "CYCLE_START" && !ovulationConfirmed && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-blue-500/20 text-blue-400 rounded border border-blue-500/30">
+                    Standard
+                  </span>
+                )}
+              </div>
               {damName && (
                 <p className="text-xs text-purple-200/70">{damName}</p>
+              )}
+              {/* Show anchor date source */}
+              {ovulationConfirmed && reproAnchorMode === "OVULATION" && (
+                <p className="text-xs text-purple-300/70 mt-0.5">
+                  Based on ovulation: {formatDate(ovulationConfirmed)}
+                  {ovulationConfirmedMethod && (
+                    <span className="text-purple-400/50"> ({ovulationConfirmedMethod.replace(/_/g, " ").toLowerCase()})</span>
+                  )}
+                </p>
               )}
             </div>
           </div>
@@ -353,6 +383,12 @@ export function FoalingMilestoneChecklist({
             {expectedBirthDate && !actualBirthDate && (
               <div className="text-xs text-purple-300/70">
                 Due: {formatDate(expectedBirthDate)}
+                {reproAnchorMode === "OVULATION" && (
+                  <span className="text-purple-400/60"> (±3 days)</span>
+                )}
+                {reproAnchorMode === "CYCLE_START" && (
+                  <span className="text-blue-400/60"> (±5-7 days)</span>
+                )}
               </div>
             )}
             {actualBirthDate && (

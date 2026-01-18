@@ -5,6 +5,9 @@ import * as React from "react";
 import { Tooltip } from "@bhq/ui";
 import { VaccinationAlertBadge } from "@bhq/ui/components/VaccinationTracker";
 import type { VaccinationAlertState } from "@bhq/ui/components/VaccinationTracker";
+import { CycleAlertBadge } from "./CycleAnalysis";
+
+type CycleAlertState = { daysUntilCycle: number; needsAttention: boolean; isOverdue: boolean };
 
 type AnimalRow = {
   id: number;
@@ -70,9 +73,11 @@ type AnimalCardViewProps = {
   onRowClick?: (row: AnimalRow) => void;
   /** Vaccination alerts keyed by animal ID */
   vaccinationAlerts?: Record<number, VaccinationAlertState>;
+  /** Cycle alerts keyed by animal ID (females only) */
+  cycleAlerts?: Record<number, CycleAlertState>;
 };
 
-function AnimalCard({ row, onClick, vaccinationAlert }: { row: AnimalRow; onClick?: () => void; vaccinationAlert?: VaccinationAlertState }) {
+function AnimalCard({ row, onClick, vaccinationAlert, cycleAlert }: { row: AnimalRow; onClick?: () => void; vaccinationAlert?: VaccinationAlertState; cycleAlert?: CycleAlertState }) {
   const accentColor = STATUS_COLORS[row.status || "Active"] || STATUS_COLORS.Active;
   const titleCount = row._count?.titles ?? 0;
   const competitionCount = row._count?.competitionEntries ?? 0;
@@ -114,6 +119,12 @@ function AnimalCard({ row, onClick, vaccinationAlert }: { row: AnimalRow; onClic
               {row.name}
             </span>
             <SexIndicator sex={row.sex} />
+            {cycleAlert?.needsAttention && (
+              <CycleAlertBadge
+                daysUntilExpected={cycleAlert.daysUntilCycle}
+                size="sm"
+              />
+            )}
             {vaccinationAlert?.hasIssues && (
               <Tooltip content={
                 vaccinationAlert.expiredCount > 0
@@ -202,7 +213,7 @@ function AnimalCard({ row, onClick, vaccinationAlert }: { row: AnimalRow; onClic
   );
 }
 
-export function AnimalCardView({ rows, loading, error, onRowClick, vaccinationAlerts }: AnimalCardViewProps) {
+export function AnimalCardView({ rows, loading, error, onRowClick, vaccinationAlerts, cycleAlerts }: AnimalCardViewProps) {
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-secondary">
@@ -236,6 +247,7 @@ export function AnimalCardView({ rows, loading, error, onRowClick, vaccinationAl
             row={row}
             onClick={() => onRowClick?.(row)}
             vaccinationAlert={vaccinationAlerts?.[row.id]}
+            cycleAlert={cycleAlerts?.[row.id]}
           />
         ))}
       </div>

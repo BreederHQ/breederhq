@@ -6,6 +6,9 @@ import { ChevronRight } from "lucide-react";
 import { Tooltip, TagChip } from "@bhq/ui";
 import { VaccinationAlertBadge } from "@bhq/ui/components/VaccinationTracker";
 import type { VaccinationAlertState } from "@bhq/ui/components/VaccinationTracker";
+import { CycleAlertBadge } from "./CycleAnalysis";
+
+type CycleAlertState = { daysUntilCycle: number; needsAttention: boolean; isOverdue: boolean };
 
 type ColumnDef = { key: string; label: string };
 
@@ -40,6 +43,7 @@ type AnimalListViewProps = {
   onRowClick?: (row: AnimalRow) => void;
   visibleColumns: ColumnDef[];
   vaccinationAlerts?: Record<number, VaccinationAlertState>;
+  cycleAlerts?: Record<number, CycleAlertState>;
 };
 
 // Status colors
@@ -107,7 +111,7 @@ function SexIndicator({ sex }: { sex?: string | null }) {
   return <span className="text-secondary">-</span>;
 }
 
-function CellValue({ row, colKey, vaccinationAlert }: { row: AnimalRow; colKey: string; vaccinationAlert?: VaccinationAlertState }) {
+function CellValue({ row, colKey, vaccinationAlert, cycleAlert }: { row: AnimalRow; colKey: string; vaccinationAlert?: VaccinationAlertState; cycleAlert?: CycleAlertState }) {
   const value = (row as any)[colKey];
 
   switch (colKey) {
@@ -120,6 +124,12 @@ function CellValue({ row, colKey, vaccinationAlert }: { row: AnimalRow; colKey: 
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10 shrink-0">
               🏆
             </span>
+          )}
+          {cycleAlert?.needsAttention && (
+            <CycleAlertBadge
+              daysUntilExpected={cycleAlert.daysUntilCycle}
+              size="sm"
+            />
           )}
           {vaccinationAlert?.hasIssues && (
             <VaccinationAlertBadge
@@ -217,11 +227,13 @@ function AnimalListRow({
   onClick,
   visibleColumns,
   vaccinationAlert,
+  cycleAlert,
 }: {
   row: AnimalRow;
   onClick?: () => void;
   visibleColumns: ColumnDef[];
   vaccinationAlert?: VaccinationAlertState;
+  cycleAlert?: CycleAlertState;
 }) {
   // Use first tag color for background if available, otherwise use default (same as contacts)
   const firstTagColor = row.tagObjects?.[0]?.color;
@@ -262,7 +274,7 @@ function AnimalListRow({
           key={col.key}
           className="overflow-hidden"
         >
-          <CellValue row={row} colKey={col.key} vaccinationAlert={vaccinationAlert} />
+          <CellValue row={row} colKey={col.key} vaccinationAlert={vaccinationAlert} cycleAlert={cycleAlert} />
         </div>
       ))}
 
@@ -279,6 +291,7 @@ export function AnimalListView({
   onRowClick,
   visibleColumns,
   vaccinationAlerts,
+  cycleAlerts,
 }: AnimalListViewProps) {
   if (loading) {
     return (
@@ -330,6 +343,7 @@ export function AnimalListView({
           onClick={() => onRowClick?.(row)}
           visibleColumns={visibleColumns}
           vaccinationAlert={vaccinationAlerts?.[row.id]}
+          cycleAlert={cycleAlerts?.[row.id]}
         />
       ))}
     </div>

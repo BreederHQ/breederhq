@@ -1,6 +1,14 @@
 // packages/ui/src/utils/reproEngine/timelineFromSeed.ts
 import { getSpeciesDefaults } from "./defaults";
-import type { ISODate, ReproSummary, ReproTimeline, SpeciesCode } from "./types";
+import type {
+  AnchorConfig,
+  ConfidenceLevel,
+  ISODate,
+  ReproAnchorMode,
+  ReproSummary,
+  ReproTimeline,
+  SpeciesCode,
+} from "./types";
 
 type RangeTuple = [ISODate, ISODate];
 
@@ -197,6 +205,228 @@ export function buildTimelineFromBirth(summary: ReproSummary, actualBirth: ISODa
       seedType: "ACTUAL_BIRTH",
     },
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Anchor Mode System: Ovulation-Centric Timeline Building
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build breeding timeline from confirmed ovulation date as primary anchor.
+ *
+ * This is the veterinary-preferred method when ovulation is hormone-tested.
+ * Works BACKWARD to estimate cycle start, and FORWARD to calculate birth.
+ * More accurate than cycle-start based timeline (±1 day vs ±2-3 days).
+ *
+ * @param summary - Reproductive summary for the animal
+ * @param confirmedOvulation - Hormone-tested or ultrasound-confirmed ovulation date
+ * @returns Complete timeline with tighter birth window (±1 day instead of ±2)
+ */
+export function buildTimelineFromOvulation(
+  summary: ReproSummary,
+  confirmedOvulation: ISODate
+): ReproTimeline {
+  const ovulationDate = assertIsoDate(confirmedOvulation, "confirmedOvulation");
+  const species = summary.species;
+  const d = getSpeciesDefaults(species);
+
+  // BACKWARD CALCULATION: Derive estimated cycle start
+  // Note: This is an ESTIMATE - individual females may vary ±2 days
+  const estimatedCycleStart = addDays(ovulationDate, -d.ovulationOffsetDays);
+
+  // FORWARD CALCULATION: Birth from confirmed ovulation (highly reliable)
+  const birthExpected = addDays(ovulationDate, d.gestationDays);
+
+  // Breeding window: ovulation ±1 day
+  const breedingFull = makeRangeTuple(
+    addDays(ovulationDate, -1),
+    addDays(ovulationDate, 2)
+  );
+  const breedingLikely = makeRangeTuple(
+    ovulationDate,
+    addDays(ovulationDate, 1)
+  );
+
+  // Birth: gestation days from ovulation (HIGH confidence)
+  // With confirmed ovulation, birth window is tighter (±1 day vs ±2)
+  const birthCenter = addDays(ovulationDate, d.gestationDays);
+  const birthFull: RangeTuple = makeRangeTuple(
+    addDays(birthExpected, -1),
+    addDays(birthExpected, 1)
+  );
+  const birthLikely: RangeTuple = [birthExpected, birthExpected] as RangeTuple;
+
+  // Pre-breeding windows (work backward from ovulation)
+  const preBreedingFull: RangeTuple = makeRangeTuple(
+    addDays(estimatedCycleStart, -d.startBufferDays),
+    addDays(ovulationDate, -1)
+  );
+  const preBreedingLikely = centerRangeTuple(estimatedCycleStart, 5);
+
+  // Hormone testing window (leading up to ovulation)
+  const hormoneFull: RangeTuple = makeRangeTuple(
+    addDays(estimatedCycleStart, 7),
+    ovulationDate
+  );
+  const hormoneLikely: RangeTuple = makeRangeTuple(
+    addDays(preBreedingLikely[1], 1),
+    addDays(preBreedingLikely[1], 7)
+  );
+
+  // Post-birth windows (same logic as cycle-based)
+  const offspringCareWeeks = d.offspringCareDurationWeeks;
+  const offspringCareFull: RangeTuple = makeRangeTuple(
+    birthFull[0],
+    addDays(birthFull[1], offspringCareWeeks * 7)
+  );
+  const offspringCareLikely: RangeTuple = makeRangeTuple(
+    birthLikely[0],
+    addDays(birthLikely[0], offspringCareWeeks * 7)
+  );
+
+  const placementWeeks = d.placementStartWeeksDefault;
+  const placementNormalFull: RangeTuple = makeRangeTuple(
+    addDays(birthFull[0], placementWeeks * 7),
+    addDays(birthFull[1], placementWeeks * 7)
+  );
+  const placementNormalLikelyCenter = addDays(birthLikely[0], placementWeeks * 7);
+  const placementNormalLikely = centerRangeTuple(placementNormalLikelyCenter, 1);
+
+  const placementExtendedFull: RangeTuple = makeRangeTuple(
+    placementNormalFull[1],
+    addDays(placementNormalFull[1], d.placementExtendedWeeks * 7)
+  );
+
+  // Travel availability bands
+  const travelRisky1: RangeTuple = makeRangeTuple(hormoneFull[0], breedingFull[1]);
+  const travelRisky2: RangeTuple = makeRangeTuple(birthFull[0], placementExtendedFull[1]);
+  const travelUnlikely1: RangeTuple = makeRangeTuple(hormoneLikely[0], breedingLikely[1]);
+  const travelUnlikely2: RangeTuple = makeRangeTuple(
+    offspringCareLikely[0],
+    placementNormalLikely[1]
+  );
+
+  return {
+    projectedCycleStarts: [],
+    seedCycleStart: estimatedCycleStart, // DERIVED, not observed
+    seedOvulationDate: ovulationDate, // PRIMARY ANCHOR
+    windows: {
+      pre_breeding: { full: preBreedingFull, likely: preBreedingLikely },
+      hormone_testing: { full: hormoneFull, likely: hormoneLikely },
+      breeding: { full: breedingFull, likely: breedingLikely },
+      birth: { full: birthFull, likely: birthLikely },
+      offspring_care: { full: offspringCareFull, likely: offspringCareLikely },
+      placement_normal: { full: placementNormalFull, likely: placementNormalLikely },
+      placement_extended: { full: placementExtendedFull, likely: placementExtendedFull },
+      availability_travel_risky_1: { full: travelRisky1, likely: travelRisky1 },
+      availability_travel_risky_2: { full: travelRisky2, likely: travelRisky2 },
+      availability_travel_unlikely_1: { full: travelUnlikely1, likely: travelUnlikely1 },
+      availability_travel_unlikely_2: { full: travelUnlikely2, likely: travelUnlikely2 },
+    },
+    milestones: {
+      cycle_start_estimated: estimatedCycleStart,
+      heat_start_estimated: estimatedCycleStart,
+      ovulation_confirmed: ovulationDate, // PRIMARY ANCHOR
+      breeding_optimal: ovulationDate,
+      birth_expected: birthCenter,
+    },
+    explain: {
+      species,
+      seedType: "OVULATION_CONFIRMED",
+      anchorDate: ovulationDate,
+      anchorMode: "OVULATION" as ReproAnchorMode,
+      derivedCycleStart: estimatedCycleStart,
+      confidence: "HIGH" as ConfidenceLevel,
+    },
+  };
+}
+
+/**
+ * Build timeline using appropriate method based on anchor mode.
+ * This is the universal entry point for all timeline calculations.
+ *
+ * @param summary - Reproductive summary for the animal
+ * @param anchor - Anchor configuration specifying mode and date
+ * @returns Complete timeline using the appropriate calculation method
+ */
+export function buildTimelineFromAnchor(
+  summary: ReproSummary,
+  anchor: AnchorConfig
+): ReproTimeline {
+  switch (anchor.mode) {
+    case "OVULATION":
+      return buildTimelineFromOvulation(summary, anchor.date);
+    case "BREEDING_DATE":
+      // For induced ovulators (cats/rabbits), breeding date IS ovulation
+      return buildTimelineFromOvulation(summary, anchor.date);
+    case "CYCLE_START":
+    default:
+      return buildTimelineFromSeed(summary, anchor.date);
+  }
+}
+
+/**
+ * Detect which anchor to use from plan data.
+ * Priority: Birth (if actual) > Ovulation (if hormone-tested) > Cycle Start > null
+ *
+ * @param plan - Plan data with potential anchor dates
+ * @returns Anchor configuration or null if no anchor available
+ */
+export function detectAnchorFromPlan(plan: {
+  reproAnchorMode?: string | null;
+  lockedOvulationDate?: string | null;
+  lockedCycleStart?: string | null;
+  ovulationConfirmed?: string | null;
+  ovulationConfirmedMethod?: string | null;
+  birthDateActual?: string | null;
+}): AnchorConfig | null {
+  // If actual birth recorded, use that for post-birth timeline
+  if (plan.birthDateActual) {
+    return null; // Handled separately by buildTimelineFromBirth
+  }
+
+  // Priority 1: Explicit anchor mode with confirmed ovulation
+  if (plan.reproAnchorMode === "OVULATION" && plan.ovulationConfirmed) {
+    return {
+      mode: "OVULATION",
+      date: assertIsoDate(plan.ovulationConfirmed, "ovulationConfirmed"),
+      confidence: "HIGH",
+    };
+  }
+
+  // Priority 2: Explicit anchor mode with locked ovulation (legacy)
+  if (plan.reproAnchorMode === "OVULATION" && plan.lockedOvulationDate) {
+    return {
+      mode: "OVULATION",
+      date: assertIsoDate(plan.lockedOvulationDate, "lockedOvulationDate"),
+      confidence: "HIGH",
+    };
+  }
+
+  // Priority 3: Auto-detect from data quality
+  // If ovulation is hormone-confirmed, use it even if mode is CYCLE_START
+  if (
+    plan.ovulationConfirmed &&
+    plan.ovulationConfirmedMethod &&
+    plan.ovulationConfirmedMethod !== "CALCULATED"
+  ) {
+    return {
+      mode: "OVULATION",
+      date: assertIsoDate(plan.ovulationConfirmed, "ovulationConfirmed"),
+      confidence: "HIGH",
+    };
+  }
+
+  // Priority 4: Cycle start (most common case)
+  if (plan.lockedCycleStart) {
+    return {
+      mode: "CYCLE_START",
+      date: assertIsoDate(plan.lockedCycleStart, "lockedCycleStart"),
+      confidence: "MEDIUM",
+    };
+  }
+
+  return null;
 }
 
 // Compatibility shim for legacy callers.

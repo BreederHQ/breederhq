@@ -640,6 +640,13 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       );
     },
 
+    // Get cycle analysis with ovulation pattern and predictions
+    async getCycleAnalysis(animalId: number | string) {
+      return reqWithExtra<any>(
+        `/animals/${encodeURIComponent(String(animalId))}/cycle-analysis`
+      );
+    },
+
     // Program flags (legacy)
     async getProgramFlags(id: string | number) {
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/program-flags`);

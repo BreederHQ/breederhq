@@ -185,7 +185,19 @@ export function createPortalFetch(tenantSlug: string | null) {
     });
 
     if (!res.ok) {
-      const error = new Error(`API error: ${res.status} ${res.statusText}`) as any;
+      // Try to get error message from response body
+      let errorMessage = `API error: ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body.message) {
+          errorMessage = body.message;
+        } else if (body.error) {
+          errorMessage = body.error;
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+      const error = new Error(errorMessage) as any;
       error.status = res.status;
       throw error;
     }

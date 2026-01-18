@@ -1060,6 +1060,76 @@ export const adminFeatureApi = {
   },
 };
 
+/* ───────────────────────── Super Admin Management (UNSCOPED: super admin only) ───────────────────────── */
+
+/** Super admin user DTO */
+export type SuperAdminDTO = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  verified: boolean;
+  createdAt: string;
+  tenantCount: number;
+};
+
+/** Super admin management API */
+export const superAdminApi = {
+  /** List all super admin users */
+  listSuperAdmins() {
+    return request<{ items: SuperAdminDTO[]; total: number }>(
+      `/admin/super-admins`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Create a new super admin user */
+  createSuperAdmin(data: {
+    email: string;
+    firstName: string;
+    lastName?: string | null;
+    verify?: boolean;
+    generateTempPassword?: boolean;
+    tempPassword?: string;
+  }) {
+    return request<{
+      ok: boolean;
+      user: SuperAdminDTO;
+      tempPassword?: string;
+      tenantsAdded: number;
+    }>(`/admin/super-admins`, {
+      method: "POST",
+      body: data,
+      tenantScoped: false,
+    });
+  },
+
+  /** Grant super admin status to an existing user */
+  grantSuperAdmin(userId: string) {
+    return request<{ ok: boolean; userId: string; tenantsAdded: number }>(
+      `/admin/super-admins/${encodeURIComponent(userId)}/grant`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Revoke super admin status from a user */
+  revokeSuperAdmin(userId: string) {
+    return request<{ ok: boolean; userId: string }>(
+      `/admin/super-admins/${encodeURIComponent(userId)}/revoke`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Sync super admin to all tenants (add missing memberships) */
+  syncTenants(userId: string) {
+    return request<{ ok: boolean; userId: string; totalTenants: number; tenantsAdded: number }>(
+      `/admin/super-admins/${encodeURIComponent(userId)}/sync-tenants`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+};
+
 /** ───────────────────────── Small helpers ───────────────────────── */
 function setNum(sp: URLSearchParams, key: string, n: number) {
   if (Number.isFinite(n as number)) sp.set(key, String(n));

@@ -117,6 +117,7 @@ export function deriveBreedingStatus(p: {
   damId?: number | null;
   sireId?: number | null;
   lockedCycleStart?: string | null;
+  ovulationConfirmed?: string | null; // NEW: Anchor mode system - ovulation-confirmed plans
   cycleStartDateActual?: string | null;
   breedDateActual?: string | null;
   birthDateActual?: string | null;
@@ -138,7 +139,9 @@ export function deriveBreedingStatus(p: {
 
   // Check prerequisites for each status
   const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
-  const hasCommitPrereqs = hasBasics && p.sireId != null && hasDate(p.lockedCycleStart);
+  // UPDATED: Accept EITHER lockedCycleStart OR ovulationConfirmed for commit prerequisites
+  // This supports the anchor mode system where plans can be locked via cycle start OR ovulation
+  const hasCommitPrereqs = hasBasics && p.sireId != null && (hasDate(p.lockedCycleStart) || hasDate(p.ovulationConfirmed));
   const hasCycleStart = hasDate(p.cycleStartDateActual);
   const hasBreedDate = hasDate(p.breedDateActual);
   const hasBirthDate = hasDate(p.birthDateActual);

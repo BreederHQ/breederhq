@@ -212,22 +212,30 @@ export function useDashboardDataV2(): DashboardDataV2 {
           directFetch<DashboardCounts>("/dashboard/counts", DEFAULT_COUNTS),
 
           // Plans - use api.breeding.plans.list directly (not gated)
-          api.breeding.plans.list({}).then((r: any) => {
+          // Include parents to get dam/sire names for foaling widget
+          api.breeding.plans.list({ include: "parents" }).then((r: any) => {
             // Handle various response shapes:
             // - Array directly: [...]
             // - Paginated with items: { items: [...], total, page, limit }
             // - Paginated with data: { data: [...], meta: {...} }
             // - Wrapped: { plans: [...] }
-            let plans: PlanRow[] = [];
+            let rawPlans: any[] = [];
             if (Array.isArray(r)) {
-              plans = r;
+              rawPlans = r;
             } else if (r?.items && Array.isArray(r.items)) {
-              plans = r.items;
+              rawPlans = r.items;
             } else if (r?.data && Array.isArray(r.data)) {
-              plans = r.data;
+              rawPlans = r.data;
             } else if (r?.plans && Array.isArray(r.plans)) {
-              plans = r.plans;
+              rawPlans = r.plans;
             }
+            // Transform to include dam/sire names from nested objects
+            const plans: PlanRow[] = rawPlans.map((p: any) => ({
+              ...p,
+              damName: p.dam?.name ?? p.damName ?? null,
+              sireName: p.sire?.name ?? p.sireName ?? null,
+              birthDateActual: p.birthDateActual ?? null,
+            }));
             return plans;
           }).catch(() => []),
 

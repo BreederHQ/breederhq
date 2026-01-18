@@ -1,0 +1,7 @@
+# Ignore generated output files (contain secrets)
+output/*.json
+output/*.txt
+output/keys/
+
+# Keep the directory structure
+!output/.gitkeep

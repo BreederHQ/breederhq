@@ -2,14 +2,15 @@ import * as React from "react";
 
 type Variant = "neutral" | "amber" | "red" | "green" | "blue" | "success" | "default";
 
+// Dark-mode friendly badge styles with subtle glow effects
 const map: Record<Variant, string> = {
-  neutral: "bg-surface-strong border-hairline text-secondary",
-  amber:   "bg-amber-200/70 border-amber-300 text-amber-900",
-  red:     "bg-red-200/70 border-red-300 text-red-900",
-  green:   "bg-green-200/70 border-green-300 text-green-900",
-  blue:    "bg-blue-200/70 border-blue-300 text-blue-900",
-  default: "bg-surface-strong border-hairline text-secondary",
-  success: "bg-green-200/70 border-green-300 text-green-900",
+  neutral: "bg-zinc-800/80 border-zinc-600/50 text-zinc-300",
+  amber:   "bg-amber-900/40 border-amber-500/50 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)]",
+  red:     "bg-red-900/40 border-red-500/50 text-red-300 shadow-[0_0_8px_rgba(239,68,68,0.15)]",
+  green:   "bg-emerald-900/40 border-emerald-500/50 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
+  blue:    "bg-blue-900/40 border-blue-500/50 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.15)]",
+  default: "bg-zinc-800/80 border-zinc-600/50 text-zinc-300",
+  success: "bg-emerald-900/40 border-emerald-500/50 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.15)]",
 };
 
 export type BadgeProps = {
@@ -24,7 +25,7 @@ export function Badge({ children, variant = "neutral", className = "", title }: 
     <span
       title={title}
       className={[
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border",
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border backdrop-blur-sm",
         map[variant],
         className
       ].join(" ")}

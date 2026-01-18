@@ -14,6 +14,8 @@ export type PlanRow = {
   species: "Dog" | "Cat" | "Horse" | "";
   damId?: number | null;
   sireId?: number | null;
+  damName?: string | null;
+  sireName?: string | null;
 
   // cycle anchors
   lockedCycleStart?: string | null;
@@ -29,6 +31,9 @@ export type PlanRow = {
   expectedDue?: string | null;
   expectedWeaned?: string | null;
   expectedNextCycleStart?: string | Date | null;
+
+  // foaling tracking (for HORSE species)
+  birthDateActual?: string | null;
 };
 
 export type DashboardTask = {

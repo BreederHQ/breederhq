@@ -1,7 +1,12 @@
 // apps/breeding/src/adapters/planWindows.ts
 import type { ISODate, ReproSummary } from "@bhq/ui/utils/reproEngine/types";
 import { asISODateOnly } from "@bhq/ui/utils/reproEngine/normalize";
-import { buildTimelineFromSeed } from "@bhq/ui/utils/reproEngine/timelineFromSeed";
+import {
+  buildTimelineFromSeed,
+  buildTimelineFromOvulation,
+  buildTimelineFromAnchor,
+  detectAnchorFromPlan,
+} from "@bhq/ui/utils/reproEngine/timelineFromSeed";
 
 export type StageRange = [ISODate, ISODate];
 
@@ -25,10 +30,15 @@ export type PlanStageWindows = {
   // milestones commonly consumed by other adapters
   cycle_start: ISODate;
   ovulation: ISODate;
+  ovulation_confirmed: ISODate | null; // NEW: Confirmed ovulation from hormone testing
   birth_expected: ISODate | null;
   placement_start_expected: ISODate | null;
   placement_completed_expected: ISODate | null;
   placement_extended_end_expected: ISODate | null;
+
+  // NEW: Anchor mode metadata
+  anchor_mode: "CYCLE_START" | "OVULATION" | "BREEDING_DATE" | null;
+  confidence: "HIGH" | "MEDIUM" | "LOW" | null;
 };
 
 function todayISO(): ISODate {
@@ -69,12 +79,17 @@ function mergeWindows(a: PlanStageWindows, b: PlanStageWindows): PlanStageWindow
     post_birth_care_likely: mergeRange(a.post_birth_care_likely, b.post_birth_care_likely),
     placement_normal_likely: mergeRange(a.placement_normal_likely, b.placement_normal_likely),
     placement_extended_likely: mergeRange(a.placement_extended_likely, b.placement_extended_likely),
+
+    // Preserve anchor mode metadata from first window (range planning uses earliest/latest)
+    anchor_mode: a.anchor_mode,
+    confidence: a.confidence,
   };
 }
 
 function toPlanStageWindows(tl: ReturnType<typeof buildTimelineFromSeed>): PlanStageWindows {
   const w = tl.windows || {};
   const m = tl.milestones || {};
+  const explain = (tl as any).explain || {};
 
   return {
     pre_breeding_full: (w as any).pre_breeding?.full || ["", ""],
@@ -93,12 +108,17 @@ function toPlanStageWindows(tl: ReturnType<typeof buildTimelineFromSeed>): PlanS
     placement_normal_likely: (w as any).placement_normal?.likely || ["", ""],
     placement_extended_likely: (w as any).placement_extended?.likely || ["", ""],
 
-    cycle_start: (m as any).cycle_start || "",
-    ovulation: (m as any).ovulation_center || "",
-    birth_expected: (w as any).birth?.full?.[0] ?? null,
+    cycle_start: (m as any).cycle_start || (m as any).cycle_start_estimated || "",
+    ovulation: (m as any).ovulation_center || (m as any).ovulation_confirmed || "",
+    ovulation_confirmed: (m as any).ovulation_confirmed || (tl as any).seedOvulationDate || null,
+    birth_expected: ((m as any).birth_expected || (w as any).birth?.full?.[0]) ?? null,
     placement_start_expected: (w as any).placement_normal?.full?.[0] ?? null,
     placement_completed_expected: (w as any).placement_normal?.full?.[1] ?? null,
     placement_extended_end_expected: (w as any).placement_extended?.full?.[1] ?? null,
+
+    // Anchor mode metadata from timeline explain
+    anchor_mode: explain.anchorMode || null,
+    confidence: explain.confidence || null,
   };
 }
 
@@ -108,7 +128,17 @@ export function windowsFromPlan(plan: {
   species?: string | null;
   dob?: string | null;
 
+  // Anchor mode system fields
+  reproAnchorMode?: string | null;
+  ovulationConfirmed?: string | null;
+  ovulationConfirmedMethod?: string | null;
+
+  // Legacy locked fields
   lockedCycleStart?: string | null;
+  lockedOvulationDate?: string | null;
+
+  // Optional actual birth date (highest priority anchor)
+  birthDateActual?: string | null;
 
   // Optional "range planning" fields, if present in your plan model.
   earliestCycleStart?: string | null;
@@ -125,12 +155,30 @@ export function windowsFromPlan(plan: {
     cycleStartsAsc: [],
   };
 
+  // NEW: Use anchor detection from reproEngine
+  // Priority: birth actual > ovulation confirmed > cycle start
+  const anchor = detectAnchorFromPlan({
+    reproAnchorMode: plan.reproAnchorMode,
+    lockedOvulationDate: plan.lockedOvulationDate,
+    lockedCycleStart: plan.lockedCycleStart,
+    ovulationConfirmed: plan.ovulationConfirmed,
+    ovulationConfirmedMethod: plan.ovulationConfirmedMethod,
+    birthDateActual: plan.birthDateActual,
+  });
+
+  if (anchor) {
+    const tl = buildTimelineFromAnchor(summary, anchor);
+    return toPlanStageWindows(tl);
+  }
+
+  // Fallback: Legacy lockedCycleStart handling (backward compatibility)
   const locked = asISODateOnly(plan.lockedCycleStart ?? null);
   if (locked) {
     const tl = buildTimelineFromSeed(summary, locked as ISODate);
     return toPlanStageWindows(tl);
   }
 
+  // Range planning support (earliestCycleStart / latestCycleStart)
   const earliest = asISODateOnly((plan as any).earliestCycleStart ?? null);
   const latest = asISODateOnly((plan as any).latestCycleStart ?? null);
 

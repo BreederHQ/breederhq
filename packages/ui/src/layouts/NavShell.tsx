@@ -1,6 +1,7 @@
 // packages/ui/src/layouts/NavShell.tsx
 import * as React from "react";
 import logoUrl from "../assets/logo.png";
+import { AccountMenu, type TenantMembership } from "../components/AccountMenu";
 
 export type NavItem = {
   key: string;
@@ -26,6 +27,7 @@ export type NavShellProps = {
     onLogout?: () => void;
   };
   orgName?: string;
+  /** @deprecated Use currentTenant instead */
   onOrgClick?: () => void;
   onSettingsClick?: () => void;
   onNotificationsClick?: () => void;
@@ -34,6 +36,19 @@ export type NavShellProps = {
   unreadMessagesCount?: number;
   notificationsDropdownContent?: React.ReactNode;
   children?: React.ReactNode;
+  // New props for tenant switching
+  /** Current active tenant for the account menu */
+  currentTenant?: { id: number; name: string; slug: string } | null;
+  /** All tenants the user has access to */
+  memberships?: TenantMembership[];
+  /** Called when user switches tenant */
+  onTenantSwitch?: (tenantId: number) => void;
+  /** Whether current user is a super admin */
+  isSuperAdmin?: boolean;
+  /** Whether current tenant is a demo tenant */
+  isDemoTenant?: boolean;
+  /** Called when user clicks reset demo tenant */
+  onDemoReset?: () => void;
 };
 
 const Icon = {
@@ -127,6 +142,13 @@ export const NavShell: React.FC<NavShellProps> = ({
   unreadCount = 0,
   unreadMessagesCount = 0,
   notificationsDropdownContent,
+  // New tenant switching props
+  currentTenant,
+  memberships,
+  onTenantSwitch,
+  isSuperAdmin,
+  isDemoTenant,
+  onDemoReset,
 }) => {
   const [announcedTitle, setAnnouncedTitle] = React.useState<string>();
 
@@ -330,36 +352,18 @@ export const NavShell: React.FC<NavShellProps> = ({
                   )}
                 </div>
 
-                {orgName ? (
-                  <button
-                    onClick={onOrgClick}
-                    className="inline-flex h-9 items-center rounded-lg border border-hairline bg-surface px-3 hover:bg-surface-strong transition text-sm"
-                    title="Switch organization"
-                  >
-                    {orgName}
-                  </button>
-                ) : null}
-
-                <button
-                  aria-label="Settings"
-                  onClick={onSettingsClick}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
-                >
-                  <Icon.Gear className="h-5 w-5" />
-                </button>
-
+                {/* Account Menu - combines tenant switching, settings, and logout */}
                 {loggedIn ? (
-                  <button
-                    onClick={() => auth?.onLogout?.()}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 hover:bg-surface-strong transition"
-                    aria-label="Logout"
-                  >
-                    <Icon.CircleUser className="h-5 w-5" />
-                    <span className="hidden md:inline text-sm">Logout</span>
-                    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 md:hidden">
-                      <path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" />
-                    </svg>
-                  </button>
+                  <AccountMenu
+                    currentTenant={currentTenant ?? (orgName ? { id: 0, name: orgName, slug: "" } : null)}
+                    memberships={memberships}
+                    onTenantSwitch={onTenantSwitch}
+                    onSettingsClick={onSettingsClick}
+                    onLogout={() => auth?.onLogout?.()}
+                    isSuperAdmin={isSuperAdmin}
+                    isDemoTenant={isDemoTenant}
+                    onDemoReset={onDemoReset}
+                  />
                 ) : (
                   <button
                     onClick={() => auth?.onLogin?.()}

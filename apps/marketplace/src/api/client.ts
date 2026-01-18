@@ -328,7 +328,7 @@ export interface GetDirectListingsParams {
 
 /**
  * Get all ACTIVE direct animal listings across all breeders.
- * This is the V2 endpoint for individual animal listings (not legacy AnimalPublicListing).
+ * Uses the public V1 endpoint for individual animal listings (DirectAnimalListing model).
  */
 export async function getPublicDirectListings(params: GetDirectListingsParams = {}): Promise<DirectListingsResponse> {
   const query = new URLSearchParams();
@@ -343,7 +343,7 @@ export async function getPublicDirectListings(params: GetDirectListingsParams = 
   if (params.offset != null) query.set("offset", String(params.offset));
 
   const queryStr = query.toString();
-  const path = `/api/v2/marketplace/listings${queryStr ? `?${queryStr}` : ""}`;
+  const path = `/api/v1/marketplace/direct-listings${queryStr ? `?${queryStr}` : ""}`;
 
   devLogFetch(path);
   const { data } = await apiGet<DirectListingsResponse>(path);
@@ -352,6 +352,7 @@ export async function getPublicDirectListings(params: GetDirectListingsParams = 
 
 /**
  * Get a single direct animal listing by slug.
+ * Note: Uses V2 endpoint which has detailed data drawer filtering.
  */
 export async function getPublicDirectListing(slug: string): Promise<PublicDirectListingDTO> {
   const path = `/api/v2/marketplace/listings/${encodeURIComponent(slug)}`;

@@ -73,6 +73,16 @@ import {
 import { projectUpcomingCycleStarts } from "@bhq/ui/utils/reproEngine/projectUpcomingCycles";
 
 import {
+  OvulationPatternBadge,
+  NextCycleProjectionCard,
+  CycleHistoryEntry,
+  OvulationPatternAnalysis,
+  CycleAlertBadge,
+  calculateDaysUntilCycle,
+  type CycleAnalysisResult,
+} from "./components/CycleAnalysis";
+
+import {
   DogPlaceholder,
   CatPlaceholder,
   HorsePlaceholder,
@@ -400,6 +410,8 @@ function clamp(n: number, lo: number, hi: number) {
  * Card View Wrapper (uses DetailsHost context)
  * ────────────────────────────────────────────────────────────────────────── */
 
+type CycleAlertState = { daysUntilCycle: number; needsAttention: boolean; isOverdue: boolean };
+
 function CardViewWithDetails({
   rows,
   loading,
@@ -416,6 +428,7 @@ function CardViewWithDetails({
   start,
   end,
   vaccinationAlerts,
+  cycleAlerts,
 }: {
   rows: AnimalRow[];
   loading: boolean;
@@ -432,6 +445,7 @@ function CardViewWithDetails({
   start: number;
   end: number;
   vaccinationAlerts?: Record<number, VaccinationAlertState>;
+  cycleAlerts?: Record<number, CycleAlertState>;
 }) {
   const { open } = useTableDetails<AnimalRow>();
 
@@ -443,6 +457,7 @@ function CardViewWithDetails({
         error={error}
         onRowClick={(row) => open?.(row)}
         vaccinationAlerts={vaccinationAlerts}
+        cycleAlerts={cycleAlerts}
       />
       <TableFooter
         entityLabel="animals"
@@ -489,6 +504,7 @@ function ListViewWithDetails({
   start,
   end,
   vaccinationAlerts,
+  cycleAlerts,
   visibleColumns,
 }: {
   rows: AnimalRow[];
@@ -506,6 +522,7 @@ function ListViewWithDetails({
   start: number;
   end: number;
   vaccinationAlerts?: Record<number, VaccinationAlertState>;
+  cycleAlerts?: Record<number, CycleAlertState>;
   visibleColumns: { key: string; label: string }[];
 }) {
   const { open } = useTableDetails<AnimalRow>();
@@ -519,6 +536,7 @@ function ListViewWithDetails({
         onRowClick={(row) => open?.(row)}
         visibleColumns={visibleColumns}
         vaccinationAlerts={vaccinationAlerts}
+        cycleAlerts={cycleAlerts}
       />
       <TableFooter
         entityLabel="animals"
@@ -1747,6 +1765,7 @@ function CycleTab({
   const [editing, setEditing] = React.useState<Record<string, boolean>>({});
   const [working, setWorking] = React.useState(false);
   const [newDateIso, setNewDateIso] = React.useState<string>("");
+  const [cycleHistoryExpanded, setCycleHistoryExpanded] = React.useState(false);
 
   const [confirmDeleteIso, setConfirmDeleteIso] = React.useState<string | null>(null);
   const [overrideInput, setOverrideInput] = React.useState<string>(() =>
@@ -1754,10 +1773,35 @@ function CycleTab({
   );
   const [overrideSaving, setOverrideSaving] = React.useState(false);
 
+  // Cycle analysis state
+  const [cycleAnalysis, setCycleAnalysis] = React.useState<CycleAnalysisResult | null>(null);
+  const [cycleAnalysisLoading, setCycleAnalysisLoading] = React.useState(false);
+
   // Sync override input when animal data changes (e.g., after refetch)
   React.useEffect(() => {
     setOverrideInput(animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : "");
   }, [animal.femaleCycleLenOverrideDays]);
+
+  // Fetch cycle analysis data
+  React.useEffect(() => {
+    const fetchCycleAnalysis = async () => {
+      if (!animal?.id) return;
+      const fn = api?.animals?.getCycleAnalysis;
+      if (typeof fn !== "function") return;
+
+      setCycleAnalysisLoading(true);
+      try {
+        const result = await fn(animal.id);
+        setCycleAnalysis(result);
+      } catch (err) {
+        console.error("[Animals] fetch cycle analysis failed", err);
+      } finally {
+        setCycleAnalysisLoading(false);
+      }
+    };
+
+    fetchCycleAnalysis();
+  }, [api, animal?.id, dates]);
 
   const species = (String(animal.species || "DOG").toUpperCase() || "DOG") as string;
 
@@ -1933,7 +1977,7 @@ function CycleTab({
 return (
     <div className="space-y-2">
       <SectionCard title="Cycle Summary">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
           <div>
             <div className="text-xs text-secondary">Last Heat Start</div>
             <div>{pretty(lastHeatIso)}</div>
@@ -1952,10 +1996,51 @@ return (
               Upcoming Projected Cycle Start
             </div>
             <div>
-              {projected.length ? projected.map(pretty).join(" • ") : ""}
+              {projected.length ? projected.slice(0, 2).map(pretty).join(" • ") : "—"}
+            </div>
+          </div>
+          {/* Ovulation Pattern */}
+          <div>
+            <div className="text-xs text-secondary flex items-center gap-1">
+              Ovulation Pattern
+              <Tooltip content="Based on this female's breeding history with confirmed or calculated ovulation dates">
+                <span className="cursor-help text-secondary">?</span>
+              </Tooltip>
+            </div>
+            <div className="flex items-center gap-2">
+              {cycleAnalysis?.ovulationPattern ? (
+                <>
+                  {cycleAnalysis.ovulationPattern.avgOffsetDays !== null && (
+                    <span>
+                      Day {Math.round(cycleAnalysis.ovulationPattern.avgOffsetDays)}
+                      {cycleAnalysis.ovulationPattern.stdDeviation !== null && cycleAnalysis.ovulationPattern.stdDeviation > 0 && (
+                        <span className="text-secondary"> +/-{Math.round(cycleAnalysis.ovulationPattern.stdDeviation)}</span>
+                      )}
+                    </span>
+                  )}
+                  <OvulationPatternBadge
+                    classification={cycleAnalysis.ovulationPattern.classification}
+                    confidence={cycleAnalysis.ovulationPattern.confidence}
+                    sampleSize={cycleAnalysis.ovulationPattern.confirmedCycles}
+                  />
+                </>
+              ) : cycleAnalysisLoading ? (
+                <span className="text-secondary">Loading...</span>
+              ) : (
+                <span className="text-secondary">—</span>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Next Cycle Projection Card */}
+        {cycleAnalysis?.nextCycleProjection && cycleAnalysis.ovulationPattern && (
+          <NextCycleProjectionCard
+            projection={cycleAnalysis.nextCycleProjection}
+            ovulationPattern={cycleAnalysis.ovulationPattern}
+            species={species}
+          />
+        )}
 
         <div className="mt-4 pt-4 border-t border-hairline">
           <div className="text-sm font-medium mb-2">Cycle Length Override</div>
@@ -2002,132 +2087,202 @@ return (
 
       </SectionCard>
 
-      <SectionCard title="Cycle Start Dates">
-        <div className="rounded-md border border-hairline divide-y">
-          {dates.length === 0 && (
-            <div className="p-2 text-sm text-secondary">
-              No dates yet. Add the first cycle start below.
-            </div>
-          )}
+      <SectionCard title="Record Heat Cycle">
+        {(() => {
+          // Calculate if we're in the "attention window" (within 2 weeks of projected cycle)
+          const nextProjected = projected[0];
+          const daysUntilNext = nextProjected
+            ? Math.ceil((new Date(nextProjected).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            : null;
+          const needsAttention = daysUntilNext !== null && daysUntilNext <= 14 && daysUntilNext >= -7;
+          const isOverdue = daysUntilNext !== null && daysUntilNext < 0;
 
-          {dates.map((d) => {
-            const isEditing = editing[d];
-            return (
-              <div
-                key={d}
-                className="p-2 flex items-center justify-between gap-3 text-sm"
-              >
-                {!isEditing && (
-                  <>
-                    <div className="min-w-[10rem]">{pretty(d)}</div>
-                    <div className="flex items-center gap-2 ml-auto">
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() =>
-                          setEditing((prev) => ({
-                            ...prev,
-                            [d]: true,
-                          }))
-                        }
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setConfirmDeleteIso(d);
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </>
-                )}
+          return (
+            <div className="space-y-4">
+              {/* Alert banner when attention needed */}
+              {needsAttention && (
+                <div className={`p-3 rounded-lg border ${isOverdue
+                  ? "bg-amber-900/20 border-amber-500/50 text-amber-200"
+                  : "bg-blue-900/20 border-blue-500/50 text-blue-200"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="font-semibold">
+                      {isOverdue
+                        ? `Heat cycle may have started - ${Math.abs(daysUntilNext)} days past projected`
+                        : `Heat cycle expected in ${daysUntilNext} days`}
+                    </span>
+                  </div>
+                  <p className="text-sm opacity-80">
+                    Watch for signs of heat (swelling, bleeding, behavior changes) and record the start date below.
+                  </p>
+                </div>
+              )}
 
-                {isEditing && (
-                  <div className="flex items-center gap-2 w-full">
+              {/* Main action: Record new heat start */}
+              <div className="p-4 rounded-lg border-2 border-dashed border-brand-orange/50 bg-brand-orange/5">
+                <div className="text-sm font-medium text-primary mb-3">
+                  When did heat start?
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 max-w-xs">
                     <DatePicker
-                      value={d}
+                      value={newDateIso}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const v = e.currentTarget.value;
-                        if (!v) return;
-                        setDates((prev) => {
-                          const next = prev.filter((x) => x !== d);
-                          if (!next.includes(v)) next.push(v);
-                          return next.sort();
-                        });
+                        setNewDateIso(v || "");
                       }}
-                      placeholder="mm/dd/yyyy"
+                      placeholder="Select date..."
                       showIcon
                     />
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() =>
-                        setEditing((prev) => {
-                          const next = { ...prev };
-                          delete next[d];
-                          return next;
-                        })
-                      }
-                    >
-                      Done
-                    </Button>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setConfirmDeleteIso(d);
-                      }}
-                    >
-                      Delete
-                    </Button>
                   </div>
-                )}
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      if (!newDateIso) return;
+                      let next = [...dates];
+                      if (!next.includes(newDateIso)) {
+                        next.push(newDateIso);
+                      }
+                      next = next.sort();
+                      persist(next);
+                      setNewDateIso("");
+                    }}
+                    disabled={working || !newDateIso}
+                  >
+                    {working ? "Saving…" : "Record Heat Start"}
+                  </Button>
+                </div>
               </div>
-            );
-          })}
-        </div>
 
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <div className="w-64">
-            <DatePicker
-              value={newDateIso}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const v = e.currentTarget.value;
-                setNewDateIso(v || "");
-              }}
-              placeholder="mm/dd/yyyy"
-              showIcon
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              let next = [...dates];
-              if (newDateIso) {
-                if (!next.includes(newDateIso)) {
-                  next.push(newDateIso);
-                }
-                next = next.sort();
-              }
-              persist(next);
-              setNewDateIso("");
-            }}
-            disabled={working || (!dates.length && !newDateIso)}
-          >
-            {working ? "Saving…" : "Save Dates"}
-          </Button>
-        </div>
+              {/* Collapsed history */}
+              {dates.length > 0 && (
+                <div className="pt-2 border-t border-hairline">
+                  <button
+                    type="button"
+                    className="text-sm text-secondary hover:text-primary flex items-center gap-1 w-full"
+                    onClick={() => setCycleHistoryExpanded(!cycleHistoryExpanded)}
+                  >
+                    <svg
+                      className={`w-4 h-4 transition-transform ${cycleHistoryExpanded ? "rotate-90" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    {cycleHistoryExpanded ? "Hide" : "View"} cycle history ({dates.length} recorded)
+                  </button>
+
+                  {cycleHistoryExpanded && (
+                    <div className="mt-2 rounded-md border border-hairline divide-y divide-hairline">
+                      {[...dates].reverse().map((d) => {
+                        const isEditingDate = editing[d];
+                        return (
+                          <div
+                            key={d}
+                            className="p-2 flex items-center justify-between gap-3 text-sm"
+                          >
+                            {!isEditingDate && (
+                              <>
+                                <div className="min-w-[10rem]">{pretty(d)}</div>
+                                <div className="flex items-center gap-2 ml-auto">
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      setEditing((prev) => ({
+                                        ...prev,
+                                        [d]: true,
+                                      }))
+                                    }
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setConfirmDeleteIso(d);
+                                    }}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </>
+                            )}
+
+                            {isEditingDate && (
+                              <div className="flex items-center gap-2 w-full">
+                                <DatePicker
+                                  value={d}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const v = e.currentTarget.value;
+                                    if (!v) return;
+                                    setDates((prev) => {
+                                      const next = prev.filter((x) => x !== d);
+                                      if (!next.includes(v)) next.push(v);
+                                      return next.sort();
+                                    });
+                                  }}
+                                  placeholder="mm/dd/yyyy"
+                                  showIcon
+                                />
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setEditing((prev) => {
+                                      const next = { ...prev };
+                                      delete next[d];
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  Done
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setConfirmDeleteIso(d);
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </SectionCard>
+
+      {/* Ovulation Pattern Analysis Section */}
+      {cycleAnalysis && !cycleAnalysisLoading && (
+        <OvulationPatternAnalysis
+          analysis={cycleAnalysis}
+          onLearnMore={() => {
+            // Could open an education dialog here
+            console.log("Learn more about ovulation tracking");
+          }}
+        />
+      )}
 
       {confirmDeleteIso && getOverlayRoot() &&
         createPortal(
@@ -8344,6 +8499,33 @@ export default function AppAnimals() {
     });
   }, []);
 
+  // Cycle alert state - calculated from row data for females
+  const cycleAlerts = React.useMemo(() => {
+    const alerts: Record<number, { daysUntilCycle: number; needsAttention: boolean; isOverdue: boolean }> = {};
+    for (const row of rows) {
+      // Only females can have cycle alerts
+      if (!(row.sex || "").toLowerCase().startsWith("f")) continue;
+
+      const daysUntil = calculateDaysUntilCycle(
+        row.cycleStartDates,
+        row.femaleCycleLenOverrideDays,
+        row.species || ""
+      );
+
+      if (daysUntil !== null) {
+        const needsAttention = daysUntil <= 14 && daysUntil >= -14;
+        if (needsAttention) {
+          alerts[row.id] = {
+            daysUntilCycle: daysUntil,
+            needsAttention: true,
+            isOverdue: daysUntil < 0,
+          };
+        }
+      }
+    }
+    return alerts;
+  }, [rows]);
+
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
   const [includeArchived, setIncludeArchived] = React.useState<boolean>(false);
@@ -8996,8 +9178,20 @@ export default function AppAnimals() {
 
       tabs: (r: AnimalRow) => {
         const tabs = [{ key: "overview", label: "Overview" } as const];
-        if ((r.sex || "").toLowerCase().startsWith("f"))
-          tabs.push({ key: "cycle", label: "Cycle Info" } as any);
+        if ((r.sex || "").toLowerCase().startsWith("f")) {
+          const cycleAlert = cycleAlerts[r.id];
+          tabs.push({
+            key: "cycle",
+            label: "Cycle Info",
+            badge: cycleAlert?.needsAttention ? (
+              <CycleAlertBadge
+                daysUntilExpected={cycleAlert.daysUntilCycle}
+                size="sm"
+                dotOnly
+              />
+            ) : undefined,
+          } as any);
+        }
         tabs.push({ key: "program", label: "Program" } as any);
         // Marketplace tab always present - content gated by feature flag
         tabs.push({ key: "marketplace", label: "Marketplace" } as any);
@@ -9712,7 +9906,7 @@ export default function AppAnimals() {
       </>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen, deleteEligibility, fetchDeleteEligibility, getDeleteBlockerTooltip, vaccinationAlerts, handleVaccinationAlertChange]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen, deleteEligibility, fetchDeleteEligibility, getDeleteBlockerTooltip, vaccinationAlerts, handleVaccinationAlertChange, cycleAlerts]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -10120,10 +10314,11 @@ export default function AppAnimals() {
                           let v = (r as any)[c.key] as any;
                           if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                           if (Array.isArray(v)) v = v.join(", ");
-                          // Special handling for name column - show titles badge and vaccination alerts
+                          // Special handling for name column - show titles badge and vaccination/cycle alerts
                           if (c.key === "name") {
                             const hasTitles = r.titlePrefix || r.titleSuffix;
                             const vaxAlert = vaccinationAlerts[r.id];
+                            const cycleAlert = cycleAlerts[r.id];
                             return (
                               <TableCell key={c.key} align="left">
                                 <div className="flex items-center gap-2">
@@ -10132,6 +10327,12 @@ export default function AppAnimals() {
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
                                       🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
                                     </span>
+                                  )}
+                                  {cycleAlert?.needsAttention && (
+                                    <CycleAlertBadge
+                                      daysUntilExpected={cycleAlert.daysUntilCycle}
+                                      size="sm"
+                                    />
                                   )}
                                   {vaxAlert?.hasIssues && (
                                     <VaccinationAlertBadge
@@ -10190,6 +10391,7 @@ export default function AppAnimals() {
               start={start}
               end={end}
               vaccinationAlerts={vaccinationAlerts}
+              cycleAlerts={cycleAlerts}
               visibleColumns={visibleSafe}
             />
           ) : (
@@ -10209,6 +10411,7 @@ export default function AppAnimals() {
               start={start}
               end={end}
               vaccinationAlerts={vaccinationAlerts}
+              cycleAlerts={cycleAlerts}
             />
           )}
         </DetailsHost>

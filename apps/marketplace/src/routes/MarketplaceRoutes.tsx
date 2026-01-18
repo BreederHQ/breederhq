@@ -37,7 +37,7 @@ import { AnimalProgramsPage } from "../breeder/pages/AnimalProgramsPage";
 import BreedingProgramRulesPage from "../breeder/pages/BreedingProgramRulesPage";
 import { CreateDirectListingWizard } from "../breeder/pages/CreateDirectListingWizard";
 import { CreateServiceWizard } from "../breeder/pages/CreateServiceWizard";
-import { FoalingCalendarPage } from "../breeder/pages/FoalingCalendarPage";
+// FoalingCalendarPage moved to /breeding/foaling in platform app
 
 /**
  * Route guard for seller-only routes.
@@ -162,13 +162,10 @@ export function MarketplaceRoutes() {
           </SellerOnlyRoute>
         }
       />
+      {/* Foaling calendar moved to platform /breeding/foaling - redirect */}
       <Route
         path="/manage/breeding-programs/foaling-calendar"
-        element={
-          <SellerOnlyRoute>
-            <FoalingCalendarPage />
-          </SellerOnlyRoute>
-        }
+        element={<Navigate to="/breeding/foaling" replace />}
       />
 
       {/* Legacy seller routes - redirect to new management pages */}

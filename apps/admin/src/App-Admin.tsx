@@ -12,6 +12,7 @@ import MarketplaceAbuseAdmin from "./MarketplaceAbuseAdmin";
 import BreederReportsAdmin from "./BreederReportsAdmin";
 import UsageDashboard from "./UsageDashboard";
 import SubscriptionAdmin from "./SubscriptionAdmin";
+import SuperAdminsAdmin from "./SuperAdminsAdmin";
 
 type TenantRow = TenantDTO;
 
@@ -234,7 +235,7 @@ function TenantDetailsView({
 }
 
 /* ───────────────────────── Main component ───────────────────────── */
-type AdminSection = "tenants" | "marketplace-abuse" | "breeder-reports" | "usage" | "subscriptions";
+type AdminSection = "tenants" | "super-admins" | "marketplace-abuse" | "breeder-reports" | "usage" | "subscriptions";
 
 export default function AppAdmin() {
   const [activeSection, setActiveSection] = React.useState<AdminSection>("tenants");
@@ -694,6 +695,7 @@ export default function AppAdmin() {
   // Super admin section tabs config
   const superAdminTabs = [
     { key: "tenants", label: "Tenants" },
+    { key: "super-admins", label: "Super Admins" },
     { key: "marketplace-abuse", label: "Marketplace Abuse" },
     { key: "breeder-reports", label: "Breeder Reports" },
     { key: "usage", label: "Usage Dashboard" },
@@ -728,6 +730,17 @@ export default function AppAdmin() {
       </nav>
     </div>
   );
+
+  // If showing Super Admins section (super admin only), render that instead
+  if (activeSection === "super-admins" && isSuper) {
+    return (
+      <div>
+        {/* Super Admin Section Nav */}
+        {renderSuperAdminNav()}
+        <SuperAdminsAdmin />
+      </div>
+    );
+  }
 
   // If showing Marketplace Abuse section (super admin only), render that instead
   if (activeSection === "marketplace-abuse" && isSuper) {

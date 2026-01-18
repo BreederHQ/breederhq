@@ -14,6 +14,7 @@ export * from "./CountrySelect";
 export * from "./DatePicker";
 export * from "./Drawer";
 export * from "./Dialog";
+export * from "./EducationWizard";
 export * from "./EmptyState";
 export * from "./EntityRow";
 export * from "./FieldRow";

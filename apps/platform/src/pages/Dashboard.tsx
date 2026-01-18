@@ -11,12 +11,16 @@ import {
   WaitlistGauge,
   FinancialSnapshot,
   QuickActionsHub,
+  GreetingBanner,
+  BreedingPipelineTile,
+  OffspringCountTile,
+  WaitlistCountTile,
+  FinancesTile,
 } from "../components/dashboard";
 import KpiPanel from "../components/KpiPanel";
 import ActivityFeed from "../components/ActivityFeed";
 import ContactFollowUps from "../components/ContactFollowUps";
 import { api } from "../api";
-import logoUrl from "@bhq/ui/assets/logo.png";
 import { FoalingDashboardWidget, type FoalingPlanItem } from "../../../marketplace/src/breeder/components/FoalingDashboardWidget";
 import { RecordFoalingModal } from "../../../breeding/src/components/RecordFoalingModal";
 
@@ -193,409 +197,6 @@ async function loadNameFromDb(): Promise<string> {
   }
 }
 
-function timeGreeting(d = new Date()): string {
-  const h = d.getHours();
-  if (h >= 5 && h < 12) return "Good morning";
-  if (h >= 12 && h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// LARGE GRADIENT ICONS (matching Marketing page style)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function BreedingIcon({ className = "w-20 h-20" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="breedingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff6b35" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      {/* Paw print - main pad */}
-      <ellipse cx="32" cy="42" rx="12" ry="10" fill="url(#breedingGrad)" />
-      {/* Toe beans */}
-      <ellipse cx="20" cy="26" rx="5" ry="6" fill="url(#breedingGrad)" />
-      <ellipse cx="44" cy="26" rx="5" ry="6" fill="url(#breedingGrad)" />
-      <ellipse cx="27" cy="18" rx="4" ry="5" fill="url(#breedingGrad)" />
-      <ellipse cx="37" cy="18" rx="4" ry="5" fill="url(#breedingGrad)" />
-    </svg>
-  );
-}
-
-function OffspringIcon({ className = "w-20 h-20" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="offspringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff6b35" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M44 14a10 10 0 0 0-10 8 10 10 0 0 0-14-4 10 10 0 0 0-4 14l16 24 16-24a10 10 0 0 0-4-18z"
-        stroke="url(#offspringGrad)"
-        strokeWidth="2.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// Custom Waitlist Tile with Pending/Approved breakdown
-function WaitlistTile({
-  pendingCount,
-  approvedCount
-}: {
-  pendingCount: number;
-  approvedCount: number;
-}) {
-  const hasPending = pendingCount > 0;
-
-  return (
-    <a
-      href={hasPending ? "/waitlist/pending" : "/waitlist"}
-      className="bhq-tile"
-      style={{
-        display: "block",
-        position: "relative",
-        backgroundColor: "#1a1a1a",
-        border: hasPending ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid rgba(60, 60, 60, 0.5)",
-        borderRadius: "20px",
-        height: "200px",
-        overflow: "hidden",
-        textDecoration: "none",
-        transition: "all 0.3s ease",
-      }}
-    >
-      {/* Urgent Badge if pending */}
-      {hasPending && (
-        <div style={{ position: "absolute", top: "16px", right: "16px" }}>
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              padding: "4px 10px",
-              borderRadius: "999px",
-              backgroundColor: "#f59e0b",
-              color: "#fff",
-              animation: "pulse 2s infinite",
-            }}
-          >
-            Action Needed
-          </span>
-        </div>
-      )}
-
-      {/* Content - two column layout */}
-      <div style={{
-        position: "absolute",
-        bottom: "24px",
-        left: "24px",
-        right: "24px",
-        top: hasPending ? "56px" : "24px",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-      }}>
-        <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#fff" }}>
-          Waitlist
-        </h3>
-
-        {/* Two-stat layout */}
-        <div style={{
-          marginTop: "12px",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "16px",
-        }}>
-          {/* Pending - Action Required */}
-          <div style={{
-            padding: "12px",
-            backgroundColor: hasPending ? "rgba(245, 158, 11, 0.15)" : "rgba(60, 60, 60, 0.3)",
-            borderRadius: "12px",
-            border: hasPending ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid transparent",
-          }}>
-            <div style={{
-              fontSize: "1.75rem",
-              fontWeight: 700,
-              color: hasPending ? "#f59e0b" : "rgba(255, 255, 255, 0.3)",
-              lineHeight: 1,
-            }}>
-              {pendingCount}
-            </div>
-            <div style={{
-              fontSize: "0.7rem",
-              color: hasPending ? "#f59e0b" : "rgba(255, 255, 255, 0.4)",
-              marginTop: "4px",
-              fontWeight: 500,
-              textTransform: "uppercase",
-              letterSpacing: "0.03em",
-            }}>
-              Pending
-            </div>
-            <div style={{
-              fontSize: "0.65rem",
-              color: "rgba(255, 255, 255, 0.4)",
-              marginTop: "2px",
-            }}>
-              Needs review
-            </div>
-          </div>
-
-          {/* Approved - FYI */}
-          <div style={{
-            padding: "12px",
-            backgroundColor: "rgba(60, 60, 60, 0.3)",
-            borderRadius: "12px",
-          }}>
-            <div style={{
-              fontSize: "1.75rem",
-              fontWeight: 700,
-              color: approvedCount > 0 ? "#22c55e" : "rgba(255, 255, 255, 0.3)",
-              lineHeight: 1,
-            }}>
-              {approvedCount}
-            </div>
-            <div style={{
-              fontSize: "0.7rem",
-              color: approvedCount > 0 ? "#22c55e" : "rgba(255, 255, 255, 0.4)",
-              marginTop: "4px",
-              fontWeight: 500,
-              textTransform: "uppercase",
-              letterSpacing: "0.03em",
-            }}>
-              Approved
-            </div>
-            <div style={{
-              fontSize: "0.65rem",
-              color: "rgba(255, 255, 255, 0.4)",
-              marginTop: "2px",
-            }}>
-              Waiting for availability
-            </div>
-          </div>
-        </div>
-      </div>
-    </a>
-  );
-}
-
-function FinanceIcon({ className = "w-20 h-20" }: { className?: string }) {
-  return (
-    <div className={className} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{
-        fontSize: "3.5rem",
-        fontWeight: 700,
-        background: "linear-gradient(135deg, #ff6b35 0%, #c45a10 100%)",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-      }}>
-        $
-      </span>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// HERO GREETING CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function HeroGreeting({
-  name,
-  pendingTasks,
-  completedTasks,
-}: {
-  name: string;
-  pendingTasks: number;
-  completedTasks: number;
-}) {
-  const greeting = timeGreeting();
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
-  return (
-    <div
-      className="bhq-hero-glow"
-      style={{
-        background: "linear-gradient(135deg, rgba(255, 107, 53, 0.15) 0%, #1a1a1a 40%, #1a1a1a 100%)",
-        border: "1px solid rgba(255, 107, 53, 0.4)",
-        borderRadius: "24px",
-        padding: "2.5rem",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Decorative gradient orb - behind everything */}
-      <div
-        style={{
-          position: "absolute",
-          top: "-100px",
-          right: "-100px",
-          width: "300px",
-          height: "300px",
-          background: "radial-gradient(circle, rgba(255, 107, 53, 0.3) 0%, transparent 70%)",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
-      {/* Logo - on top of glow */}
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          right: "2rem",
-          transform: "translateY(-50%)",
-          zIndex: 10,
-          filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))",
-        }}
-      >
-        <img
-          src={logoUrl}
-          alt="BreederHQ"
-          style={{
-            width: "180px",
-            height: "180px",
-            objectFit: "contain",
-          }}
-        />
-      </div>
-
-      <div style={{ position: "relative", zIndex: 1 }}>
-        {/* Date line */}
-        <div style={{ fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.5)", marginBottom: "0.5rem" }}>
-          {dateStr}
-        </div>
-
-        {/* Main greeting */}
-        <h1 style={{ margin: 0, fontSize: "2.5rem", fontWeight: 700, lineHeight: 1.2 }}>
-          <span style={{ color: "#fff" }}>{greeting}, </span>
-          <span className="bhq-shimmer-text">{name}</span>
-          <span className="bhq-wave" style={{ marginLeft: "0.5rem" }}>👋</span>
-        </h1>
-
-        {/* Subtext */}
-        <p style={{ margin: "1rem 0 0 0", fontSize: "1.125rem", color: "rgba(255, 255, 255, 0.7)" }}>
-          {pendingTasks > 0 ? (
-            <>
-              You have <span style={{ color: "#ff6b35", fontWeight: 600 }}>{pendingTasks}</span> thing{pendingTasks !== 1 ? "s" : ""} to tackle today
-              {completedTasks > 0 && (
-                <span style={{ color: "rgba(255, 255, 255, 0.5)" }}> · {completedTasks} already done</span>
-              )}
-            </>
-          ) : (
-            <>Your schedule is clear - It's a perfect day to plan ahead!</>
-          )}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PRIMARY TILE (matching Marketing page)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function PrimaryTile({
-  title,
-  subtitle,
-  count,
-  countLabel,
-  icon,
-  href,
-  badge,
-  badgeColor = "#22c55e",
-}: {
-  title: string;
-  subtitle: string;
-  count?: number | string;
-  countLabel?: string;
-  icon: React.ReactNode;
-  href: string;
-  badge?: string;
-  badgeColor?: string;
-}) {
-  return (
-    <a
-      href={href}
-      className="bhq-tile"
-      style={{
-        display: "block",
-        position: "relative",
-        backgroundColor: "#1a1a1a",
-        border: "1px solid rgba(60, 60, 60, 0.5)",
-        borderRadius: "20px",
-        height: "200px",
-        overflow: "hidden",
-        textDecoration: "none",
-        transition: "all 0.3s ease",
-      }}
-    >
-      {/* Badge */}
-      {badge && (
-        <div style={{ position: "absolute", top: "16px", left: "16px" }}>
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              padding: "4px 10px",
-              borderRadius: "999px",
-              backgroundColor: badgeColor,
-              color: "#fff",
-            }}
-          >
-            {badge}
-          </span>
-        </div>
-      )}
-
-      {/* Large Icon */}
-      <div
-        className="bhq-tile-icon"
-        style={{
-          position: "absolute",
-          top: "16px",
-          right: "16px",
-          transition: "transform 0.3s ease",
-        }}
-      >
-        {icon}
-      </div>
-
-      {/* Content */}
-      <div style={{ position: "absolute", bottom: "24px", left: "24px", right: "24px" }}>
-        <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#fff" }}>
-          {title}
-        </h3>
-        <p style={{ margin: "4px 0 0 0", fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.6)" }}>
-          {subtitle}
-        </p>
-        {count !== undefined && (
-          <div style={{ marginTop: "12px", display: "flex", alignItems: "baseline", gap: "6px" }}>
-            <span style={{ fontSize: "2rem", fontWeight: 700, color: "#ff6b35" }}>{count}</span>
-            {countLabel && (
-              <span style={{ fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.5)" }}>{countLabel}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </a>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION CARD
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -690,10 +291,10 @@ export default function Dashboard() {
     return data.plans.map((p) => ({
       id: typeof p.id === "string" ? parseInt(p.id, 10) : p.id,
       name: p.name || "Untitled Plan",
-      damName: null, // PlanRow doesn't have dam name directly
-      sireName: null, // PlanRow doesn't have sire name directly
+      damName: p.damName ?? null,
+      sireName: p.sireName ?? null,
       expectedBirthDate: p.expectedDue ?? p.lockedDueDate ?? null,
-      birthDateActual: null, // PlanRow doesn't have this field
+      birthDateActual: p.birthDateActual ?? null,
       breedDateActual: p.lockedCycleStart ?? null,
       species: p.species || "",
     }));
@@ -749,7 +350,7 @@ export default function Dashboard() {
 
         {/* Hero Greeting */}
         <div style={{ marginBottom: "2rem" }}>
-          <HeroGreeting
+          <GreetingBanner
             name={displayName}
             pendingTasks={pendingAgenda}
             completedTasks={completedAgenda}
@@ -765,38 +366,14 @@ export default function Dashboard() {
             marginBottom: "2rem",
           }}
         >
-          <PrimaryTile
-            title="Breeding Pipeline"
-            subtitle="Active plans and upcoming milestones"
-            count={activePlans}
-            countLabel="active"
-            icon={<BreedingIcon />}
-            href="/breeding"
-            badge={activePlans > 0 ? "Active" : undefined}
-            badgeColor="#22c55e"
-          />
-          <PrimaryTile
-            title="Offspring in Care"
-            subtitle="Groups currently being raised"
-            count={data.offspringGroups.length}
-            countLabel="groups"
-            icon={<OffspringIcon />}
-            href="/offspring"
-            badge={data.offspringGroups.length > 0 ? "Active" : undefined}
-          />
-          <WaitlistTile
+          <BreedingPipelineTile activePlans={activePlans} />
+          <OffspringCountTile groupCount={data.offspringGroups.length} />
+          <WaitlistCountTile
             pendingCount={data.waitlistPressure.pendingWaitlist ?? 0}
             approvedCount={data.waitlistPressure.activeWaitlist ?? 0}
           />
-          <PrimaryTile
-            title="Finances"
-            subtitle="Outstanding balances and collections"
-            count={data.financeSummary ? `$${Math.round(data.financeSummary.outstandingTotalCents / 100).toLocaleString()}` : "$0"}
-            countLabel="outstanding"
-            icon={<FinanceIcon />}
-            href="/finance"
-            badge={data.financeSummary && data.financeSummary.outstandingTotalCents > 0 ? "Action" : undefined}
-            badgeColor="#3b82f6"
+          <FinancesTile
+            outstandingCents={data.financeSummary?.outstandingTotalCents ?? 0}
           />
         </div>
 
@@ -852,7 +429,7 @@ export default function Dashboard() {
               plans={foalingPlans}
               loading={data.loading}
               onRecordFoaling={(plan) => setFoalingPlan(plan)}
-              calendarLink="/breeding"
+              calendarLink="/breeding/foaling"
             />
           </div>
         )}

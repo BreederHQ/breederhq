@@ -34,6 +34,8 @@ import {
   useViewMode,
   SortDropdown,
   type SortOption,
+  EducationWizard,
+  useWizardCompletion,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
@@ -59,6 +61,14 @@ import { makeBreedingApi, type BreedingProgramLite, type OffspringGroupDetail } 
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 import { reproEngine } from "@bhq/ui/utils";
 import { windowsFromPlan } from "./adapters/planWindows";
+import {
+  getSpeciesTerminology,
+  supportsOvulationUpgrade,
+  isInducedOvulator,
+  getOvulationConfirmationMethods,
+  getOvulationGuidance,
+  getCycleLabel,
+} from "@bhq/ui/utils/speciesTerminology";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
@@ -79,6 +89,9 @@ import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./
 
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
+
+// ── Foaling page (horse-only) ─────────────────────────────────
+import { FoalingPage, type FoalingPlan } from "./pages/FoalingPage";
 
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
 import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, STATUS_LABELS, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
@@ -743,6 +756,13 @@ type PlanRow = {
   lockedDueDate?: string | null;
   lockedPlacementStartDate?: string | null;
 
+  /* Anchor Mode System (ovulation-based) */
+  reproAnchorMode?: "CYCLE_START" | "OVULATION" | "BREEDING_DATE" | null;
+  ovulationConfirmed?: string | null;
+  ovulationConfirmedMethod?: string | null;
+  cycleStartObserved?: string | null;
+  ovulationVarianceDays?: number | null;
+
   nickname?: string | null;
   breedText?: string | null;
   depositsCommitted?: number | null;
@@ -1093,6 +1113,13 @@ function planToRow(p: any): PlanRow {
     lockedOvulationDate: p.lockedOvulationDate ?? null,
     lockedDueDate: p.lockedDueDate ?? null,
     lockedPlacementStartDate: p.lockedPlacementStartDate ?? null,
+
+    /* Anchor Mode System (ovulation-based) */
+    reproAnchorMode: p.reproAnchorMode ?? null,
+    ovulationConfirmed: p.ovulationConfirmed ?? null,
+    ovulationConfirmedMethod: p.ovulationConfirmedMethod ?? null,
+    cycleStartObserved: p.cycleStartObserved ?? null,
+    ovulationVarianceDays: p.ovulationVarianceDays ?? null,
 
     /* Misc */
     nickname: p.nickname ?? null,
@@ -4790,8 +4817,8 @@ export default function AppBreeding() {
     return displayRows.slice(from, to);
   }, [displayRows, clampedPage, pageSize]);
 
-  /* ───────── View routing (list | calendar | planner | genetics-lab) ───────── */
-  type ViewRoute = "list" | "calendar" | "planner" | "genetics-lab";
+  /* ───────── View routing (list | calendar | planner | genetics-lab | foaling) ───────── */
+  type ViewRoute = "list" | "calendar" | "planner" | "genetics-lab" | "foaling";
 
   // Determine the module base path
   const getBasePath = React.useCallback(() => {
@@ -4801,6 +4828,7 @@ export default function AppBreeding() {
     if (clean.endsWith("/calendar")) return clean.slice(0, -"/calendar".length) || "/";
     if (clean.endsWith("/planner")) return clean.slice(0, -"/planner".length) || "/";
     if (clean.endsWith("/genetics-lab")) return clean.slice(0, -"/genetics-lab".length) || "/";
+    if (clean.endsWith("/foaling")) return clean.slice(0, -"/foaling".length) || "/";
     return clean || "/";
   }, []);
 
@@ -4811,6 +4839,7 @@ export default function AppBreeding() {
     if (p.includes("/calendar")) return "calendar";
     if (p.includes("/planner")) return "planner";
     if (p.includes("/genetics-lab")) return "genetics-lab";
+    if (p.includes("/foaling")) return "foaling";
     return "list";
   };
 
@@ -5474,6 +5503,8 @@ export default function AppBreeding() {
                 ? "Breeding Planner"
                 : currentView === "genetics-lab"
                 ? "Genetics Lab"
+                : currentView === "foaling"
+                ? "Foaling Management"
                 : "Breeding Plans"
             }
             subtitle={
@@ -5483,6 +5514,8 @@ export default function AppBreeding() {
                 ? "Plan and schedule future breedings"
                 : currentView === "genetics-lab"
                 ? "Analyze genetics and predict outcomes"
+                : currentView === "foaling"
+                ? "Track pregnancies, births, and post-foaling heat cycles"
                 : "Create and manage breeding plans"
             }
           />
@@ -5578,6 +5611,31 @@ export default function AppBreeding() {
                   </>
                 )}
               </SafeNavLink>
+
+              {/* Foaling tab - only shown for horse breeders */}
+              {rows.some((r) => r.species?.toUpperCase() === "HORSE") && (
+                <SafeNavLink
+                  to={`${basePath}/foaling`}
+                  className={({ isActive }) =>
+                    [
+                      "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                      isActive
+                        ? "text-primary border-[hsl(var(--brand-orange))]"
+                        : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                    ].join(" ")
+                  }
+                >
+                  {({ isActive }: { isActive: boolean }) => (
+                    <>
+                      {isActive && (
+                        <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                      )}
+                      <span className="relative z-10">🐴</span>
+                      <span className="relative z-10">Foaling</span>
+                    </>
+                  )}
+                </SafeNavLink>
+              )}
             </nav>
           </div>
         </div>
@@ -5944,6 +6002,46 @@ export default function AppBreeding() {
                 breed: a.breed || "",
                 sex: a.sex,
               }))}
+            />
+          </div>
+        )}
+
+        {/* FOALING VIEW (Horse-only) */}
+        {currentView === "foaling" && (
+          <div className="p-4">
+            <FoalingPage
+              plans={rows.map((r) => ({
+                id: typeof r.id === "string" ? parseInt(r.id, 10) : r.id,
+                name: r.name || "Untitled Plan",
+                species: r.species || "",
+                dam: r.damId ? { id: typeof r.damId === "string" ? parseInt(r.damId, 10) : r.damId, name: r.damName || "Unknown" } : null,
+                sire: r.sireId ? { id: typeof r.sireId === "string" ? parseInt(r.sireId, 10) : r.sireId, name: r.sireName || "Unknown" } : null,
+                expectedBirthDate: r.lockedDueDate ?? r.expectedDue ?? null,
+                birthDateActual: r.birthDateActual ?? null,
+                breedDateActual: r.lockedCycleStart ?? null,
+              }))}
+              loading={loading}
+              onRecordFoaling={async (planId, data) => {
+                try {
+                  const res = await fetch(`/api/v1/breeding/plans/${planId}/record-foaling`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                  body: JSON.stringify(data),
+                  });
+                  if (!res.ok) throw new Error("Failed to record foaling");
+                  // Refresh plans
+                  const freshPlans = await api.plans.list();
+                  setRows(Array.isArray(freshPlans) ? freshPlans.map(planToRow) : []);
+                } catch (err) {
+                  console.error("Error recording foaling:", err);
+                  throw err;
+                }
+              }}
+              onRefresh={async () => {
+                const freshPlans = await api.plans.list();
+                setRows(Array.isArray(freshPlans) ? freshPlans.map(planToRow) : []);
+              }}
             />
           </div>
         )}
@@ -6824,8 +6922,17 @@ function PlanDetailsView(props: {
   const [draftTick, setDraftTick] = React.useState(0);
   const [actualDatesWarning, setActualDatesWarning] = React.useState<string | null>(null);
 
+  // Ovulation upgrade dialog state
+  const [showOvulationUpgradeDialog, setShowOvulationUpgradeDialog] = React.useState(false);
+  const [pendingOvulationDate, setPendingOvulationDate] = React.useState<string>("");
+  const [pendingOvulationMethod, setPendingOvulationMethod] = React.useState<string>("");
+
   // Guidance card collapsed/expanded state - start collapsed by default
   const [guidanceCollapsed, setGuidanceCollapsed] = React.useState(true);
+
+  // Education wizard state for first-time lock education
+  const [showEducationWizard, setShowEducationWizard] = React.useState(false);
+  const { shouldShow: shouldShowEducationWizard, markCompleted: markWizardCompleted, markDismissed: markWizardDismissed } = useWizardCompletion();
 
   // Unsaved changes tracking
   const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
@@ -7774,6 +7881,12 @@ function PlanDetailsView(props: {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
+    // Show education wizard on first lock if user hasn't seen it
+    if (shouldShowEducationWizard) {
+      setShowEducationWizard(true);
+      // Continue with lock - wizard is informational, not blocking
+    }
+
     const expectedRaw = computeExpectedForPlan({
       species: row.species as any,
       lockedCycleStart: pendingCycle,
@@ -8081,6 +8194,90 @@ function PlanDetailsView(props: {
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
       setExpectedPreview(expected);
       setLockedPreview(Boolean(pendingCycle));
+    }
+  }
+
+  /**
+   * Upgrade from CYCLE_START anchor to OVULATION anchor.
+   * This provides higher accuracy for birth date predictions.
+   *
+   * @param ovulationDate - The confirmed ovulation date (ISO format)
+   * @param confirmationMethod - How ovulation was confirmed (e.g., "PROGESTERONE_TEST")
+   */
+  async function upgradeToOvulation(ovulationDate: string, confirmationMethod: string) {
+    if (isArchived) return;
+    if (!api) return;
+    if (!ovulationDate || !confirmationMethod) return;
+
+    // Validate: must have locked cycle start (CYCLE_START anchor)
+    const cycleStart = effective.lockedCycleStart;
+    if (!cycleStart) {
+      console.warn("[Breeding] Cannot upgrade - no locked cycle start");
+      return;
+    }
+
+    // Validate: species must support ovulation upgrade
+    if (!supportsOvulationUpgrade(effective.species)) {
+      console.warn("[Breeding] Cannot upgrade - species does not support ovulation upgrade");
+      return;
+    }
+
+    // Calculate variance (days between expected and actual ovulation)
+    const expectedOvulation = effective.lockedOvulationDate;
+    let varianceDays: number | null = null;
+    if (expectedOvulation) {
+      const expected = new Date(expectedOvulation + "T00:00:00");
+      const actual = new Date(ovulationDate + "T00:00:00");
+      varianceDays = Math.round((actual.getTime() - expected.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    // Build payload for upgrade
+    const payload: Record<string, unknown> = {
+      reproAnchorMode: "OVULATION",
+      ovulationConfirmed: ovulationDate,
+      ovulationConfirmedMethod: confirmationMethod,
+      cycleStartObserved: cycleStart, // Preserve the original cycle start
+      ovulationVarianceDays: varianceDays,
+
+      // Update locked dates based on ovulation
+      lockedOvulationDate: ovulationDate,
+    };
+
+    try {
+      await api.updatePlan(Number(row.id), payload as any);
+
+      await api.createEvent(Number(row.id), {
+        type: "ANCHOR_UPGRADED",
+        occurredAt: new Date().toISOString(),
+        label: `Upgraded to ovulation anchor (${confirmationMethod.replace(/_/g, " ").toLowerCase()})`,
+        data: {
+          fromAnchor: "CYCLE_START",
+          toAnchor: "OVULATION",
+          ovulationDate,
+          confirmationMethod,
+          varianceDays,
+          cycleStart,
+        },
+      });
+
+      // Refresh the row
+      const fresh = await api.getPlan(Number(row.id), "parents,org,program");
+      onPlanUpdated?.(row.id, fresh);
+
+      // Update snapshot
+      const freshAsRow = planToRow(fresh || { ...row, ...payload });
+      const newSnapshot = buildPlanSnapshot(freshAsRow);
+      setPersistedSnapshot(newSnapshot);
+      persistedSnapshotRef.current = newSnapshot;
+
+      // Clear dirty state
+      draftRef.current = {};
+      setDraftTick((t) => t + 1);
+      setDraft({});
+      setPendingSave(false);
+      pendingSaveRef.current = false;
+    } catch (e) {
+      console.error("[Breeding] upgradeToOvulation persist or audit failed", e);
     }
   }
 
@@ -9091,7 +9288,27 @@ function PlanDetailsView(props: {
             {/* Cycle Selection - only show for PLANNING/COMMITTED before cycle starts */}
             {/* Highlight when in EDIT mode, PLANNING phase, and cycle not locked */}
             {!effective.cycleStartDateActual && (statusU === "PLANNING" || statusU === "COMMITTED") && (
-            <SectionCard title={(isLocked || lockedPreview) ? <span className="text-green-400">Cycle Start Date (Estimated) — Locked!</span> : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !(isLocked || lockedPreview)} highlightGreen={isLocked || lockedPreview}>
+            <SectionCard title={
+              <div className="flex items-center gap-2">
+                <span className={(isLocked || lockedPreview) ? "text-green-400" : ""}>
+                  {(isLocked || lockedPreview) ? "Cycle Start Date (Estimated) — Locked!" : "Breeding Cycle Selection"}
+                </span>
+                <Tooltip content="Learn about anchor modes and timing">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEducationWizard(true);
+                    }}
+                    className="p-1 rounded-full hover:bg-white/10 transition-colors"
+                  >
+                    <svg className="w-4 h-4 text-secondary hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              </div>
+            } highlight={isEdit && statusU === "PLANNING" && !(isLocked || lockedPreview)} highlightGreen={isLocked || lockedPreview}>
               {/* Simple compact cycle selector - matches original design */}
               {/* Red border + glow when in view mode and no cycle selected */}
               {/* Yellow border + glow when in view mode and cycle selected but not locked */}
@@ -9285,6 +9502,104 @@ function PlanDetailsView(props: {
                 )}
               </div>
             </SectionCard>
+            )}
+
+            {/* Upgrade to Ovulation Section - shows when cycle is locked and species supports upgrade */}
+            {isLocked && supportsOvulationUpgrade(effective.species) && effective.reproAnchorMode !== "OVULATION" && statusU !== "BIRTHED" && statusU !== "WEANED" && statusU !== "PLACEMENT_STARTED" && statusU !== "PLACEMENT_COMPLETED" && statusU !== "COMPLETE" && (
+              <SectionCard
+                title={<span className="text-purple-400">Upgrade to Ovulation Anchor</span>}
+                highlight={isEdit}
+              >
+                <div className="space-y-3">
+                  <div className="text-sm text-secondary">
+                    You can upgrade this plan from {getCycleLabel(effective.species, true)} anchor to Ovulation anchor for improved accuracy.
+                    {effective.species === "Dog" && " Birth date accuracy improves from ±2-3 days to ±1 day."}
+                    {effective.species === "Horse" && " Foaling date accuracy improves from ±5-7 days to ±3 days."}
+                  </div>
+                  <div className="text-xs text-secondary">
+                    {getOvulationGuidance(effective.species)}
+                  </div>
+                  {isEdit ? (
+                    showOvulationUpgradeDialog ? (
+                      <div className="space-y-3 p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Ovulation Date</div>
+                            <DatePicker
+                              value={pendingOvulationDate}
+                              defaultDate={effective.lockedOvulationDate ?? undefined}
+                              onChange={(e) => setPendingOvulationDate(e.currentTarget.value)}
+                              className="w-full"
+                              inputClassName={dateInputCls}
+                              placeholder="mm/dd/yyyy"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Confirmation Method</div>
+                            <select
+                              value={pendingOvulationMethod}
+                              onChange={(e) => setPendingOvulationMethod(e.target.value)}
+                              className="w-full h-9 px-3 rounded-md border border-hairline bg-surface text-sm"
+                            >
+                              <option value="">Select method...</option>
+                              {getOvulationConfirmationMethods(effective.species).map((method) => (
+                                <option key={method} value={method.toUpperCase().replace(/\s+/g, "_")}>
+                                  {method}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            disabled={!pendingOvulationDate || !pendingOvulationMethod}
+                            className="bg-purple-600 hover:bg-purple-500"
+                            onClick={async () => {
+                              await upgradeToOvulation(pendingOvulationDate, pendingOvulationMethod);
+                              setShowOvulationUpgradeDialog(false);
+                              setPendingOvulationDate("");
+                              setPendingOvulationMethod("");
+                            }}
+                          >
+                            Confirm Upgrade
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowOvulationUpgradeDialog(false);
+                              setPendingOvulationDate("");
+                              setPendingOvulationMethod("");
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+                          onClick={() => setShowOvulationUpgradeDialog(true)}
+                        >
+                          Upgrade to Ovulation
+                        </Button>
+                        <span className="text-xs text-secondary">
+                          or enter ovulation date directly in the Actual Dates section below
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    <div className="text-xs text-amber-400">
+                      Enter edit mode to upgrade to ovulation anchor.
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
             )}
 
             {/* Glow pulse animation for lock button */}
@@ -9668,6 +9983,107 @@ function PlanDetailsView(props: {
                       </div>
                     </div>
                   </div>
+
+                  {/* Ovulation Section - only for species that support ovulation upgrade (dogs, horses) */}
+                  {supportsOvulationUpgrade(effective.species) && (
+                    <div className="mb-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
+                          <span className="text-xs">🧬</span>
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">Ovulation Confirmation</span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-purple-500/40 via-pink-500/20 to-transparent"></div>
+                        {/* Anchor mode badge */}
+                        {effective.reproAnchorMode && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                            effective.reproAnchorMode === "OVULATION"
+                              ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                              : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          }`}>
+                            {effective.reproAnchorMode === "OVULATION" ? "HIGH Accuracy" : "Standard"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                        <div>
+                          <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Ovulation Confirmed</div>
+                          <div className="flex items-center gap-2">
+                            <DatePicker
+                              value={normalizeDateISO(effective.ovulationConfirmed) ?? ""}
+                              defaultDate={effective.lockedOvulationDate ?? undefined}
+                              readOnly={!canEditDates}
+                              showIcon={canEditDates}
+                              onChange={(e) => {
+                                if (!canEditDates) return;
+                                const raw = e.currentTarget.value;
+                                if (!raw) {
+                                  setDraftLive({ ovulationConfirmed: null });
+                                  return;
+                                }
+                                if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+                                setDraftLive({ ovulationConfirmed: raw });
+                              }}
+                              className="flex-1"
+                              inputClassName={dateInputCls}
+                              placeholder="mm/dd/yyyy"
+                            />
+                            {canEditDates && effective.ovulationConfirmed && (
+                              <button
+                                type="button"
+                                onClick={() => setDraftLive({ ovulationConfirmed: null, ovulationConfirmedMethod: null })}
+                                className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Confirmation Method</div>
+                          <select
+                            value={effective.ovulationConfirmedMethod ?? ""}
+                            disabled={!canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              setDraftLive({ ovulationConfirmedMethod: e.target.value || null });
+                            }}
+                            className={`w-full h-9 px-3 rounded-md border border-hairline bg-surface text-sm ${
+                              !canEditDates ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            <option value="">Select method...</option>
+                            {getOvulationConfirmationMethods(effective.species).map((method) => (
+                              <option key={method} value={method.toUpperCase().replace(/\s+/g, "_")}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {/* Guidance text */}
+                      <div className="mt-2 pl-8 text-xs text-secondary">
+                        {getOvulationGuidance(effective.species)}
+                      </div>
+                      {/* Variance tracking display */}
+                      {effective.ovulationVarianceDays != null && (
+                        <div className="mt-2 pl-8">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            effective.ovulationVarianceDays === 0
+                              ? "bg-green-500/20 text-green-400"
+                              : effective.ovulationVarianceDays > 0
+                                ? "bg-amber-500/20 text-amber-400"
+                                : "bg-blue-500/20 text-blue-400"
+                          }`}>
+                            {effective.ovulationVarianceDays === 0
+                              ? "On-time ovulation"
+                              : effective.ovulationVarianceDays > 0
+                                ? `+${effective.ovulationVarianceDays} days (late)`
+                                : `${effective.ovulationVarianceDays} days (early)`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Phase 2: Birth → Placement */}
                   <div>
@@ -10384,6 +10800,10 @@ function PlanDetailsView(props: {
                 onRecalculateMilestones={handleRecalculateMilestones}
                 onDeleteMilestones={handleDeleteMilestones}
                 isLoading={foalingLoading}
+                // Anchor mode system props
+                reproAnchorMode={effective.reproAnchorMode}
+                ovulationConfirmed={effective.ovulationConfirmed}
+                ovulationConfirmedMethod={effective.ovulationConfirmedMethod}
               />
             )}
           </div>
@@ -10415,6 +10835,15 @@ function PlanDetailsView(props: {
           </div>
         )}
       </div>
+
+      {/* Education Wizard - shows on first lock to educate about anchor modes */}
+      <EducationWizard
+        open={showEducationWizard}
+        onClose={() => setShowEducationWizard(false)}
+        species={(effective.species?.toUpperCase() || "DOG") as any}
+        onComplete={() => markWizardCompleted(effective.species?.toUpperCase())}
+        onDismiss={markWizardDismissed}
+      />
     </DetailsScaffold>
   );
 }

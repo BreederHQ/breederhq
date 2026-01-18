@@ -462,7 +462,7 @@ function CreateContractModal({
             name: "Breeder", // Will be filled from tenant data on backend
             email: "", // Will be filled from tenant
             signer: true,
-            order: 1,
+            // order omitted = parallel signing (any party can sign)
           },
           {
             role: "BUYER",
@@ -470,7 +470,7 @@ function CreateContractModal({
             name: selectedParty.displayName,
             email: selectedParty.primaryEmail || "",
             signer: true,
-            order: 2,
+            // order omitted = parallel signing (any party can sign)
           },
         ],
       });
