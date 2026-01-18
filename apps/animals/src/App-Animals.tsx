@@ -2129,6 +2129,7 @@ function CycleTab({
       {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.cycleHistory.length > 0 && (
         <OvulationSummary
           ovulationPattern={cycleAnalysis.ovulationPattern}
+          cycleHistory={cycleAnalysis.cycleHistory}
           speciesDefault={species === "DOG" ? 12 : species === "HORSE" ? 5 : 12}
           species={species}
         />

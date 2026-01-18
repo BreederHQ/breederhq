@@ -1,21 +1,46 @@
-import { Tooltip } from "@bhq/ui";
-import type { OvulationPattern } from "./types";
+import * as React from "react";
+import { Tooltip, getBirthProcess } from "@bhq/ui";
+import type { OvulationPattern, CycleHistoryEntry, DataSource } from "./types";
 
 type OvulationSummaryProps = {
   ovulationPattern: OvulationPattern;
+  cycleHistory: CycleHistoryEntry[];
   speciesDefault: number;
   species: string;
 };
+
+function getSourceLabels(species: string): Record<DataSource, { label: string; color: string }> {
+  const birthTerm = getBirthProcess(species);
+  return {
+    HORMONE_TEST: { label: "Hormone test confirmed", color: "#22c55e" },
+    BIRTH_CALCULATED: { label: `Backdated from ${birthTerm}`, color: "#3b82f6" },
+    ESTIMATED: { label: "Estimated", color: "#71717a" },
+  };
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 // How many days from breed average before we show "early" or "late"
 const CLASSIFICATION_THRESHOLD = 1;
 
 export function OvulationSummary({
   ovulationPattern,
+  cycleHistory,
   speciesDefault,
   species,
 }: OvulationSummaryProps) {
-  const { avgOffsetDays, stdDeviation, classification, guidance } = ovulationPattern;
+  const [showHistory, setShowHistory] = React.useState(false);
+  const [showHowItWorks, setShowHowItWorks] = React.useState(false);
+
+  const { avgOffsetDays, stdDeviation, classification, guidance, confirmedCycles } = ovulationPattern;
+
+  // Filter to cycles with ovulation data (non-estimated)
+  const cyclesWithOvulation = cycleHistory.filter(
+    c => c.ovulation !== null && c.source !== "ESTIMATED"
+  );
 
   // Not enough data
   if (classification === "Insufficient Data" || avgOffsetDays === null) {
@@ -135,7 +160,7 @@ export function OvulationSummary({
         {/* Scale labels */}
         <div className="flex justify-between text-[10px] text-secondary px-1">
           <span>Early</span>
-          <span>Day {speciesDefault} (Breed Avg)</span>
+          <span>Day {speciesDefault} (Species Avg)</span>
           <span>Late</span>
         </div>
       </div>
@@ -150,7 +175,7 @@ export function OvulationSummary({
           <div className="text-xl font-bold" style={{ color: variance === 0 ? "#22c55e" : variance > 0 ? "#f59e0b" : "#3b82f6" }}>
             {variance === 0 ? "Avg" : variance > 0 ? `+${Math.round(variance)}` : Math.round(variance)}
           </div>
-          <div className="text-[10px] uppercase tracking-wide text-secondary">vs Breed Avg</div>
+          <div className="text-[10px] uppercase tracking-wide text-secondary">vs Species Avg</div>
         </div>
         <div className="text-center p-3 rounded-lg" style={{ backgroundColor: "rgba(60, 60, 60, 0.3)" }}>
           <div className="text-xl font-bold text-white">
@@ -175,6 +200,132 @@ export function OvulationSummary({
           </div>
         </div>
       )}
+
+      {/* Collapsible sections */}
+      <div className="mt-5 pt-4 space-y-2" style={{ borderTop: "1px solid rgba(60, 60, 60, 0.5)" }}>
+        {/* Ovulation History Toggle */}
+        {cyclesWithOvulation.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center gap-2 text-sm text-secondary hover:text-primary transition-colors w-full"
+            >
+              <svg
+                className={`w-4 h-4 transition-transform ${showHistory ? "rotate-90" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span>Ovulation history ({cyclesWithOvulation.length} recorded)</span>
+            </button>
+
+            {showHistory && (
+              <div className="mt-3 ml-6 space-y-2">
+                {cyclesWithOvulation.map((cycle) => {
+                  const sourceLabels = getSourceLabels(species);
+                  const sourceStyle = sourceLabels[cycle.source];
+                  return (
+                    <div
+                      key={cycle.id}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg"
+                      style={{ backgroundColor: "rgba(60, 60, 60, 0.2)" }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: sourceStyle.color }}
+                        />
+                        <span className="text-sm text-primary">{formatDate(cycle.ovulation!)}</span>
+                        {cycle.offsetDays !== null && (
+                          <span className="text-xs text-secondary">Day {cycle.offsetDays}</span>
+                        )}
+                      </div>
+                      <span
+                        className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: `${sourceStyle.color}20`, color: sourceStyle.color }}
+                      >
+                        {sourceStyle.label}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="text-xs text-secondary mt-2 pl-1">
+                  Pattern based on {confirmedCycles} confirmed cycle{confirmedCycles !== 1 ? "s" : ""}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* How This Works Toggle */}
+        <div>
+          <button
+            onClick={() => setShowHowItWorks(!showHowItWorks)}
+            className="flex items-center gap-2 text-sm text-secondary hover:text-primary transition-colors w-full"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showHowItWorks ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span>How this works</span>
+          </button>
+
+          {showHowItWorks && (
+            <div
+              className="mt-3 ml-6 p-4 rounded-lg space-y-3 text-sm"
+              style={{ backgroundColor: "rgba(60, 60, 60, 0.2)" }}
+            >
+              <div>
+                <div className="font-medium text-primary mb-1">Pattern Learning</div>
+                <p className="text-secondary">
+                  With 2+ confirmed ovulations, the system learns this individual's pattern and uses it
+                  instead of the species average. Ovulation can be confirmed via hormone testing, or
+                  back-calculated from offspring birth dates using gestation period.
+                </p>
+              </div>
+              <div>
+                <div className="font-medium text-primary mb-1">Personalized Projections</div>
+                <p className="text-secondary">
+                  {avgOffsetDays !== null && Math.abs(variance) >= 1 ? (
+                    <>
+                      The species average for {species.toLowerCase()}s is Day {speciesDefault}, but based on{" "}
+                      {confirmedCycles} recorded cycle{confirmedCycles !== 1 ? "s" : ""} for this female, projections use Day{" "}
+                      {Math.round(avgOffsetDays)} instead.
+                    </>
+                  ) : (
+                    <>
+                      Projections are based on observed data. The more cycles you record with confirmed
+                      ovulation, the more accurate predictions become.
+                    </>
+                  )}
+                </p>
+              </div>
+              <div>
+                <div className="font-medium text-primary mb-1">Variance Window</div>
+                <p className="text-secondary">
+                  {stdDeviation !== null && stdDeviation > 0 ? (
+                    <>
+                      Based on historical variance of ±{stdDeviation.toFixed(1)} days, ovulation windows
+                      account for natural variation rather than giving a single point estimate.
+                    </>
+                  ) : (
+                    <>
+                      As you record more cycles, the system calculates variance to give you a realistic
+                      window rather than a single point estimate.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
