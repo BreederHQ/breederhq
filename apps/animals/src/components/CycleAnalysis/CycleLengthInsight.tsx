@@ -1,18 +1,7 @@
 import * as React from "react";
+import { utils } from "@bhq/ui";
 
-// Species default cycle lengths (days between heat periods)
-const SPECIES_CYCLE_LENGTHS: Record<string, number> = {
-  DOG: 180,
-  CAT: 21,
-  HORSE: 21,
-  GOAT: 21,
-  SHEEP: 17,
-  PIG: 21,
-  CATTLE: 21,
-  RABBIT: 15,
-  ALPACA: 14,
-  LLAMA: 14,
-};
+const { getSpeciesDefaults } = utils.reproEngine;
 
 type CycleLengthClassification = "Short Cycler" | "Average" | "Long Cycler";
 
@@ -71,7 +60,7 @@ export function CycleLengthInsight({
   cycleLengthSource,
   species,
 }: CycleLengthInsightProps) {
-  const speciesDefault = SPECIES_CYCLE_LENGTHS[species?.toUpperCase()] ?? 180;
+  const speciesDefault = getSpeciesDefaults(species?.toUpperCase() ?? "DOG").cycleLenDays;
 
   // Only show insights when we have actual history data, not just biology defaults
   if (cycleLengthSource === "BIOLOGY") {
@@ -91,24 +80,25 @@ export function CycleLengthInsight({
 
   const isShort = classification === "Short Cycler";
   // Purple for short cyclers, amber for long cyclers
-  const badgeColor = isShort ? "#8b5cf6" : "#f59e0b";
-  const badgeBg = isShort ? "rgba(139, 92, 246, 0.15)" : "rgba(245, 158, 11, 0.15)";
+  const accentColor = isShort ? "#8b5cf6" : "#f59e0b";
+  const accentBg = isShort ? "rgba(139, 92, 246, 0.15)" : "rgba(245, 158, 11, 0.15)";
+  const accentBorder = isShort ? "rgba(139, 92, 246, 0.3)" : "rgba(245, 158, 11, 0.3)";
 
   return (
     <div
       className="rounded-xl p-4 mt-4"
       style={{
         backgroundColor: "#1a1a1a",
-        border: "1px solid rgba(139, 92, 246, 0.3)",
+        border: `1px solid ${accentBorder}`,
       }}
     >
       <div className="flex items-start gap-3">
         {/* Icon */}
         <div
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: "rgba(139, 92, 246, 0.15)" }}
+          style={{ backgroundColor: accentBg }}
         >
-          <svg className="w-5 h-5" style={{ color: "#8b5cf6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-5 h-5" style={{ color: accentColor }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
@@ -118,7 +108,7 @@ export function CycleLengthInsight({
           <div className="flex items-center gap-2 mb-1">
             <span
               className="text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: "rgba(139, 92, 246, 0.15)", color: "#8b5cf6" }}
+              style={{ backgroundColor: accentBg, color: accentColor }}
             >
               {classification}
             </span>
@@ -134,7 +124,7 @@ export function CycleLengthInsight({
 
           <p className="text-sm" style={{ color: "rgba(255, 255, 255, 0.7)" }}>
             This female's cycle is{" "}
-            <strong style={{ color: "#8b5cf6" }}>
+            <strong style={{ color: accentColor }}>
               {Math.abs(variance)} day{Math.abs(variance) !== 1 ? "s" : ""} {variance < 0 ? "shorter" : "longer"}
             </strong>{" "}
             than the species average of {speciesDefault} days. {guidance}

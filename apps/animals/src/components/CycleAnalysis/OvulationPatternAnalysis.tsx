@@ -1,27 +1,25 @@
 import * as React from "react";
-import { SectionCard, Button } from "@bhq/ui";
+import { SectionCard, Button, utils } from "@bhq/ui";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import type { CycleAnalysisResult, CycleHistoryEntry } from "./types";
+
+const { getSpeciesDefaults } = utils.reproEngine;
 
 type OvulationPatternAnalysisProps = {
   analysis: CycleAnalysisResult;
   onLearnMore?: () => void;
 };
 
-// Species defaults for ovulation offset (days from cycle start)
-const SPECIES_DEFAULTS: Record<string, number> = {
-  DOG: 12,
-  HORSE: 5,
-  CAT: 0,
-  GOAT: 2,
-  SHEEP: 2,
-  RABBIT: 0,
-  PIG: 2,
-  CATTLE: 1,
-};
+/**
+ * Parse an ISO date string (YYYY-MM-DD) as a local date to avoid timezone issues.
+ */
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 
 function formatMonth(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocalDate(iso);
   return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 }
 
@@ -131,7 +129,7 @@ export function OvulationPatternAnalysis({
   onLearnMore,
 }: OvulationPatternAnalysisProps) {
   const { ovulationPattern, cycleHistory, species } = analysis;
-  const speciesDefault = SPECIES_DEFAULTS[species] ?? 12;
+  const speciesDefault = getSpeciesDefaults(species).ovulationOffsetDays;
 
   // Filter to only cycles with ovulation data
   const cyclesWithOvulation = cycleHistory.filter(c => c.offsetDays !== null);

@@ -18,8 +18,16 @@ function getSourceLabels(species: string): Record<DataSource, { label: string; c
   };
 }
 
+/**
+ * Parse an ISO date string (YYYY-MM-DD) as a local date to avoid timezone issues.
+ */
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocalDate(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 

@@ -4,25 +4,34 @@ type NextCycleHeroProps = {
   projection: NextCycleProjection;
 };
 
+/**
+ * Parse an ISO date string (YYYY-MM-DD) as a local date to avoid timezone issues.
+ * new Date("2026-01-15") is interpreted as UTC midnight, which can shift the date
+ * in timezones behind UTC. This function parses the components manually.
+ */
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "-";
-  const d = new Date(iso);
+  const d = parseLocalDate(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatShortDate(iso: string | null): string {
   if (!iso) return "-";
-  const d = new Date(iso);
+  const d = parseLocalDate(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
-  const target = new Date(iso);
+  const target = parseLocalDate(iso);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
-  const diff = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   return diff;
 }
 
