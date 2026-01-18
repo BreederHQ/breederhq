@@ -287,35 +287,31 @@ let __tenantResolved: number | null = null;
 let __tenantResolving: Promise<number> | null = null;
 
 async function ensureTenantId(baseUrl: string): Promise<number> {
+  // Priority 1: Cookie-based fast path (most reliable - tied to session)
   const fast = readTenantIdFast();
   if (fast) {
     __tenantResolved = fast;
+    // Sync to runtime global for other modules
+    (window as any).__BHQ_TENANT_ID__ = fast;
     return fast;
   }
 
+  // Priority 2: Runtime global (set by platform after session fetch)
   try {
-    const w: any = window as any;
-    const runtimeTenant = Number(w?.__BHQ_TENANT_ID__);
-    const lsTenant = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const cached =
-      Number.isInteger(runtimeTenant) && runtimeTenant > 0
-        ? runtimeTenant
-        : Number.isInteger(lsTenant) && lsTenant > 0
-          ? lsTenant
-          : NaN;
-    if (Number.isInteger(cached) && cached > 0) {
-      __tenantResolved = cached;
-      return cached;
+    const runtimeTenant = Number((window as any)?.__BHQ_TENANT_ID__);
+    if (Number.isInteger(runtimeTenant) && runtimeTenant > 0) {
+      __tenantResolved = runtimeTenant;
+      return runtimeTenant;
     }
   } catch { }
 
+  // Priority 3: Resolve from session API (authoritative source)
+  // Note: We intentionally skip localStorage here to avoid cross-user contamination
   if (!__tenantResolving) {
     __tenantResolving = resolveTenantId({ baseUrl }).then(t => {
       __tenantResolved = t;
-      try {
-        (window as any).__BHQ_TENANT_ID__ = t;
-        localStorage.setItem("BHQ_TENANT_ID", String(t));
-      } catch { }
+      // Only set runtime global, not localStorage (localStorage can leak between users)
+      (window as any).__BHQ_TENANT_ID__ = t;
       return t;
     });
   }
@@ -495,6 +491,7 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       canonicalBreedId?: number | null;
       customBreedId?: number | null;
       organizationId?: number | null;
+      skipDuplicateCheck?: boolean;
     }) {
       return reqWithExtra<any>(`/animals`, { method: "POST", json: body });
     },

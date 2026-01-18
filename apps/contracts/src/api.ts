@@ -28,28 +28,22 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
     return fast;
   }
 
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
   try {
     const w: any = window as any;
     const runtimeTenant = Number(w?.__BHQ_TENANT_ID__);
-    const lsTenant = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const cached =
-      Number.isInteger(runtimeTenant) && runtimeTenant > 0
-        ? runtimeTenant
-        : Number.isInteger(lsTenant) && lsTenant > 0
-          ? lsTenant
-          : NaN;
-    if (Number.isInteger(cached) && cached > 0) {
-      __tenantResolved = cached;
-      return cached;
+    if (Number.isInteger(runtimeTenant) && runtimeTenant > 0) {
+      __tenantResolved = runtimeTenant;
+      return runtimeTenant;
     }
   } catch { }
 
   if (!__tenantResolving) {
     __tenantResolving = resolveTenantId({ baseUrl }).then(t => {
       __tenantResolved = t;
+      // Only set runtime global (skip localStorage to avoid cross-user contamination)
       try {
         (window as any).__BHQ_TENANT_ID__ = t;
-        localStorage.setItem("BHQ_TENANT_ID", String(t));
       } catch { }
       return t;
     });

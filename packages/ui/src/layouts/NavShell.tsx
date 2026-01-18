@@ -1,7 +1,7 @@
 // packages/ui/src/layouts/NavShell.tsx
 import * as React from "react";
 import logoUrl from "../assets/logo.png";
-import { AccountMenu, type TenantMembership } from "../components/AccountMenu";
+import { AccountMenu, type TenantMembership, type UserInfo } from "../components/AccountMenu";
 
 export type NavItem = {
   key: string;
@@ -49,6 +49,8 @@ export type NavShellProps = {
   isDemoTenant?: boolean;
   /** Called when user clicks reset demo tenant */
   onDemoReset?: () => void;
+  /** Current user information for account menu display */
+  user?: UserInfo | null;
 };
 
 const Icon = {
@@ -149,6 +151,7 @@ export const NavShell: React.FC<NavShellProps> = ({
   isSuperAdmin,
   isDemoTenant,
   onDemoReset,
+  user,
 }) => {
   const [announcedTitle, setAnnouncedTitle] = React.useState<string>();
 
@@ -305,51 +308,54 @@ export const NavShell: React.FC<NavShellProps> = ({
               )}
 
               {/* Right: actions + auth */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-5">
                 {actions}
 
-                <button
-                  aria-label="Messages"
-                  onClick={onMessagesClick}
-                  className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
-                >
-                  <Icon.Message className="h-5 w-5" />
-                  {unreadMessagesCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[hsl(var(--brand-orange))] px-1 text-[11px] font-semibold text-white">
-                      {unreadMessagesCount > 99 ? "99+" : unreadMessagesCount}
-                    </span>
-                  )}
-                </button>
-
-                <div className="relative">
+                {/* Icon buttons group */}
+                <div className="flex items-center gap-1">
                   <button
-                    aria-label="Notifications"
-                    onClick={() => {
-                      if (notificationsDropdownContent) {
-                        setNotificationsOpen((v) => !v);
-                      } else {
-                        onNotificationsClick?.();
-                      }
-                    }}
-                    className={cls(
-                      "relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition",
-                      notificationsOpen && "bg-surface-strong"
-                    )}
+                    aria-label="Messages"
+                    onClick={onMessagesClick}
+                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
                   >
-                    <Icon.Bell className="h-5 w-5" />
-                    {unreadCount > 0 && (
+                    <Icon.Message className="h-5 w-5" />
+                    {unreadMessagesCount > 0 && (
                       <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[hsl(var(--brand-orange))] px-1 text-[11px] font-semibold text-white">
-                        {unreadCount > 99 ? "99+" : unreadCount}
+                        {unreadMessagesCount > 99 ? "99+" : unreadMessagesCount}
                       </span>
                     )}
                   </button>
-                  {notificationsOpen && notificationsDropdownContent && (
-                    <div className="absolute right-0 top-full mt-2 z-50">
-                      {React.cloneElement(notificationsDropdownContent as React.ReactElement<{ onClose?: () => void }>, {
-                        onClose: () => setNotificationsOpen(false),
-                      })}
-                    </div>
-                  )}
+
+                  <div className="relative">
+                    <button
+                      aria-label="Notifications"
+                      onClick={() => {
+                        if (notificationsDropdownContent) {
+                          setNotificationsOpen((v) => !v);
+                        } else {
+                          onNotificationsClick?.();
+                        }
+                      }}
+                      className={cls(
+                        "relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition",
+                        notificationsOpen && "bg-surface-strong"
+                      )}
+                    >
+                      <Icon.Bell className="h-5 w-5" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[hsl(var(--brand-orange))] px-1 text-[11px] font-semibold text-white">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                    {notificationsOpen && notificationsDropdownContent && (
+                      <div className="absolute right-0 top-full mt-2 z-50">
+                        {React.cloneElement(notificationsDropdownContent as React.ReactElement<{ onClose?: () => void }>, {
+                          onClose: () => setNotificationsOpen(false),
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Account Menu - combines tenant switching, settings, and logout */}
@@ -363,6 +369,7 @@ export const NavShell: React.FC<NavShellProps> = ({
                     isSuperAdmin={isSuperAdmin}
                     isDemoTenant={isDemoTenant}
                     onDemoReset={onDemoReset}
+                    user={user}
                   />
                 ) : (
                   <button

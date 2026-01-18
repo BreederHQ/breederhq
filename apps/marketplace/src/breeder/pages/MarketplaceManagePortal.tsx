@@ -61,13 +61,27 @@ import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 import { ImageUpload } from "../../shared/ImageUpload";
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ProgramSummaryStats {
+  totalPlans: number;
+  activePlans: number;
+  statusBreakdown: Record<string, number>;
+  upcomingLitters: number;
+  nextExpectedBirth: string | null;
+  availableCount: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }
@@ -247,7 +261,7 @@ export function MarketplaceManagePortal({ embedded = false }: MarketplaceManageP
         // and might have strings instead of objects
         const rawBreeds = merged.breeds || (merged as any).listedBreeds || [];
         if (Array.isArray(rawBreeds)) {
-          merged.breeds = rawBreeds.map((b: unknown) => {
+          merged.breeds = rawBreeds.map((b: unknown): { name: string; species?: string | null; isPublic?: boolean } | null => {
             if (typeof b === "string") {
               return { name: b, species: "Dog", isPublic: true }; // Default to Dog for legacy data
             }
@@ -263,14 +277,11 @@ export function MarketplaceManagePortal({ embedded = false }: MarketplaceManageP
               return {
                 name: (b as any).name,
                 species,
-                breedId: (b as any).breedId,
-                customBreedId: (b as any).customBreedId,
-                source: (b as any).source,
                 isPublic: (b as any).isPublic ?? true,
               };
             }
             return null;
-          }).filter(Boolean);
+          }).filter((x): x is { name: string; species?: string | null; isPublic?: boolean } => x !== null);
         }
 
         // Normalize listedPrograms: v1 data might use "programs" instead of "listedPrograms"

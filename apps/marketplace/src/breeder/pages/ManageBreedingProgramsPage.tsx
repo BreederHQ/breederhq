@@ -212,10 +212,11 @@ const STATUS_LABELS: Record<string, string> = {
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }
@@ -2309,7 +2310,7 @@ export function ManageBreedingProgramsPage() {
                         </div>
                         {(selectedBreedingPlan.depositsPaidCents ?? 0) > 0 && (
                           <div className="text-xs text-green-400">
-                            ${(selectedBreedingPlan.depositsPaidCents / 100).toLocaleString()} paid
+                            ${((selectedBreedingPlan.depositsPaidCents ?? 0) / 100).toLocaleString()} paid
                           </div>
                         )}
                       </div>

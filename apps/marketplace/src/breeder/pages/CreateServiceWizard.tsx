@@ -39,10 +39,11 @@ const STEPS: { id: WizardStep; label: string; icon: React.ReactNode }[] = [
   { id: "review", label: "Review", icon: <Check size={16} /> },
 ];
 
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }

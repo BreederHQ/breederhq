@@ -1,2 +1,2 @@
 // packages/ui/src/components/AccountMenu/index.ts
-export { AccountMenu, type AccountMenuProps, type TenantMembership } from "./AccountMenu";
+export { AccountMenu, type AccountMenuProps, type TenantMembership, type UserInfo } from "./AccountMenu";

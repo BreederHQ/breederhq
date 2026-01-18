@@ -704,7 +704,7 @@ function GeneticsSection({ animalData, config, setConfig }: Omit<SectionDetailPr
     );
   }
 
-  const geneticsConfig = config.genetics || {};
+  const geneticsConfig = config.genetics ?? {} as NonNullable<DataDrawerConfig["genetics"]>;
 
   const toggleField = (field: keyof NonNullable<DataDrawerConfig["genetics"]>) => {
     setConfig((prev) => ({
@@ -954,7 +954,7 @@ function RegistrySection({ animalData, config, setConfig }: Omit<SectionDetailPr
 }
 
 function LineageSection({ animalData, config, setConfig }: Omit<SectionDetailProps, "sectionKey" | "onSelectAll" | "onDeselectAll">) {
-  const lineageConfig = config.lineage || {};
+  const lineageConfig = config.lineage ?? {} as NonNullable<DataDrawerConfig["lineage"]>;
 
   const toggleField = (field: "showSire" | "showDam") => {
     setConfig((prev) => ({
@@ -1000,7 +1000,7 @@ function LineageSection({ animalData, config, setConfig }: Omit<SectionDetailPro
 }
 
 function BreedingSection({ animalData, config, setConfig }: Omit<SectionDetailProps, "sectionKey" | "onSelectAll" | "onDeselectAll">) {
-  const breedingConfig = config.breeding || {};
+  const breedingConfig = config.breeding ?? {} as NonNullable<DataDrawerConfig["breeding"]>;
 
   const toggleField = (field: "showOffspringCount") => {
     setConfig((prev) => ({

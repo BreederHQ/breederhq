@@ -57,16 +57,10 @@ function readCookie(name: string): string {
 }
 
 function getTenantId(): number | null {
+  // Only use runtime global - localStorage can leak between users on same browser
   const w = window as any;
   const fromRuntime = Number(w?.__BHQ_TENANT_ID__);
   if (Number.isFinite(fromRuntime) && fromRuntime > 0) return fromRuntime;
-  try {
-    const ls = localStorage.getItem("BHQ_TENANT_ID");
-    if (ls) {
-      const id = Number(ls);
-      if (Number.isFinite(id) && id > 0) return id;
-    }
-  } catch { }
   return null;
 }
 
@@ -264,6 +258,7 @@ export const adminApi = {
       makeDefault?: boolean;
       tempPassword?: string;
       generateTempPassword?: boolean;
+      sendWelcomeEmail?: boolean;
     };
     billing?: Partial<TenantDTO["billing"]> | undefined;
   }) {
@@ -284,6 +279,24 @@ export const adminApi = {
     }>(`/admin/tenants/${encodeURIComponent(String(tenantId))}/owner/reset-password`, {
       method: "POST",
       body,
+      tenantScoped: false,
+    });
+  },
+
+  /**
+   * PERMANENTLY DELETE a tenant and ALL associated data.
+   * SUPER ADMIN ONLY - This action cannot be undone.
+   * Requires confirmation by providing exact tenant name.
+   */
+  adminDeleteTenant(tenantId: ID, confirmationName: string) {
+    return request<{
+      ok: boolean;
+      message: string;
+      deletedTenantId: number;
+      deletedTenantName: string;
+    }>(`/admin/tenants/${encodeURIComponent(String(tenantId))}`, {
+      method: "DELETE",
+      body: { confirmationName },
       tenantScoped: false,
     });
   },

@@ -32,6 +32,7 @@ import {
   removeProgramParticipant,
   type AnimalProgram,
   type AnimalProgramCreate,
+  type AnimalProgramParticipant,
   type TemplateType,
   type DataDrawerConfig,
 } from "../../api/client";
@@ -53,10 +54,11 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "preview", label: "Preview", icon: <EyeOff size={16} /> },
 ];
 
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }
@@ -101,7 +103,7 @@ export function ProgramDetailPage() {
     headline: "",
     description: "",
     coverImageUrl: "",
-    defaultPriceModel: "inquire",
+    defaultPriceModel: "inquire" as "fixed" | "range" | "inquire",
     defaultPriceCents: null as number | null,
     defaultPriceMinCents: null as number | null,
     defaultPriceMaxCents: null as number | null,
@@ -123,10 +125,10 @@ export function ProgramDetailPage() {
         headline: data.headline || "",
         description: data.description || "",
         coverImageUrl: data.coverImageUrl || "",
-        defaultPriceModel: data.defaultPriceModel,
-        defaultPriceCents: data.defaultPriceCents,
-        defaultPriceMinCents: data.defaultPriceMinCents,
-        defaultPriceMaxCents: data.defaultPriceMaxCents,
+        defaultPriceModel: data.defaultPriceModel ?? data.priceModel ?? "inquire",
+        defaultPriceCents: data.defaultPriceCents ?? data.priceCents ?? null,
+        defaultPriceMinCents: data.defaultPriceMinCents ?? data.priceMinCents ?? null,
+        defaultPriceMaxCents: data.defaultPriceMaxCents ?? data.priceMaxCents ?? null,
         published: data.published,
         acceptInquiries: data.acceptInquiries,
         openWaitlist: data.openWaitlist,
@@ -315,7 +317,7 @@ export function ProgramDetailPage() {
                 <Button variant="secondary" onClick={() => setEditing(false)} disabled={saving}>
                   Cancel
                 </Button>
-                <Button variant="primary" onClick={handleSave} disabled={saving}>
+                <Button variant="primary" onClick={() => handleSave()} disabled={saving}>
                   <Save size={16} className="mr-1.5" />
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
@@ -378,7 +380,7 @@ export function ProgramDetailPage() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function OverviewTab({ program, form, setForm, editing, handleSave }: any) {
-  const activeParticipants = program.participants.filter((p) => p.listed).length;
+  const activeParticipants = program.participants.filter((p: AnimalProgramParticipant) => p.listed).length;
 
   return (
     <div className="space-y-6">
@@ -826,10 +828,10 @@ function ParticipantsTab({ program, tenantId, onUpdate }: { program: AnimalProgr
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-3">
-                  {participant.animal.photoUrl ? (
+                  {participant.photoUrl ? (
                     <img
-                      src={participant.animal.photoUrl}
-                      alt={participant.animal.name}
+                      src={participant.photoUrl}
+                      alt={participant.name}
                       className="w-12 h-12 rounded-lg object-cover"
                     />
                   ) : (
@@ -838,9 +840,9 @@ function ParticipantsTab({ program, tenantId, onUpdate }: { program: AnimalProgr
                     </div>
                   )}
                   <div>
-                    <h4 className="text-sm font-semibold text-white">{participant.animal.name}</h4>
+                    <h4 className="text-sm font-semibold text-white">{participant.name}</h4>
                     <p className="text-xs text-text-tertiary">
-                      {participant.animal.breed} • {participant.animal.sex}
+                      {participant.breed} • {participant.sex}
                     </p>
                   </div>
                 </div>

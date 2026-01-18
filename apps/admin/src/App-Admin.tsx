@@ -260,9 +260,9 @@ export default function AppAdmin() {
   React.useEffect(() => {
     if (tenantId == null) return; // wait until we know the id
 
-    // 1) Persist tenant id synchronously so request() can attach X-Tenant-Id
+    // 1) Set tenant id in runtime global so request() can attach X-Tenant-Id
+    // Note: We intentionally skip localStorage to avoid cross-user contamination
     try {
-      localStorage.setItem("BHQ_TENANT_ID", String(tenantId));
       (window as any).__BHQ_TENANT_ID__ = tenantId;
     } catch { }
 
@@ -333,6 +333,18 @@ export default function AppAdmin() {
   const [createErr, setCreateErr] = React.useState<string | null>(null);
   const [createdPassword, setCreatedPassword] = React.useState<string | null>(null);
 
+  // ── DELETE TENANT MODAL STATE
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<TenantRow | null>(null);
+  const [deleteStep, setDeleteStep] = React.useState<1 | 2 | 3>(1); // 1=initial warning, 2=type confirmation, 3=final confirm
+  const [deleteConfirmText, setDeleteConfirmText] = React.useState("");
+  const [deleteWorking, setDeleteWorking] = React.useState(false);
+  const [deleteErr, setDeleteErr] = React.useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = React.useState(false);
+
+  // Selected tenants for bulk operations
+  const [selectedTenantIds, setSelectedTenantIds] = React.useState<Set<number>>(new Set());
+
   // form fields
   const [newName, setNewName] = React.useState("");
   const [newEmail, setNewEmail] = React.useState("");
@@ -340,6 +352,7 @@ export default function AppAdmin() {
   const [newOwnerLastName, setNewOwnerLastName] = React.useState("");
   const [newTempPassword, setNewTempPassword] = React.useState("");
   const [generatePassword, setGeneratePassword] = React.useState(true);
+  const [sendWelcomeEmail, setSendWelcomeEmail] = React.useState(true);
 
   // simple email check
   const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
@@ -365,6 +378,7 @@ export default function AppAdmin() {
           makeDefault: false,
           tempPassword: generatePassword ? undefined : newTempPassword.trim(),
           generateTempPassword: generatePassword,
+          sendWelcomeEmail: sendWelcomeEmail,
         },
       });
 
@@ -394,6 +408,52 @@ export default function AppAdmin() {
     setNewOwnerLastName("");
     setNewTempPassword("");
     setGeneratePassword(true);
+    setSendWelcomeEmail(true);
+  };
+
+  // ── DELETE TENANT HANDLERS
+  const openDeleteModal = (tenant: TenantRow) => {
+    setDeleteTarget(tenant);
+    setDeleteStep(1);
+    setDeleteConfirmText("");
+    setDeleteErr(null);
+    setDeleteSuccess(false);
+    setDeleteOpen(true);
+  };
+
+  const resetDeleteModal = () => {
+    setDeleteOpen(false);
+    setDeleteTarget(null);
+    setDeleteStep(1);
+    setDeleteConfirmText("");
+    setDeleteErr(null);
+    setDeleteWorking(false);
+    setDeleteSuccess(false);
+  };
+
+  const doDeleteTenant = async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmText !== deleteTarget.name) {
+      setDeleteErr("Tenant name does not match. Please type the exact name.");
+      return;
+    }
+    try {
+      setDeleteWorking(true);
+      setDeleteErr(null);
+      await adminApi.adminDeleteTenant(deleteTarget.id, deleteConfirmText);
+      // Remove from local state
+      setRows(prev => prev.filter(r => r.id !== deleteTarget.id));
+      setSelectedTenantIds(prev => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
+      setDeleteSuccess(true);
+    } catch (e: any) {
+      setDeleteErr(e?.message || "Failed to delete tenant");
+    } finally {
+      setDeleteWorking(false);
+    }
   };
 
   /* ── sorting (state + server sort param) — MUST be declared before any effect that uses sortParam ── */
@@ -829,6 +889,22 @@ export default function AppAdmin() {
           className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
           style={{ zIndex: 5, pointerEvents: "auto" }}
         >
+          {/* Delete selected tenant (super admin only, single selection) */}
+          {isSuper && selectedTenantIds.size === 1 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-500 text-red-500 hover:bg-red-500/10"
+              onClick={() => {
+                const selectedId = Array.from(selectedTenantIds)[0];
+                const tenant = rows.find(r => r.id === selectedId);
+                if (tenant) openDeleteModal(tenant);
+              }}
+            >
+              Delete Tenant
+            </Button>
+          )}
+
           {/* New Tenant (left) */}
           {((!meLoading && !!me?.isSuperAdmin) || canAdminTenants) && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -852,6 +928,8 @@ export default function AppAdmin() {
             onColumnStateChange={setAll}
             getRowId={(r: TenantRow) => r.id}
             pageSize={25}
+            selectedIds={isSuper ? Array.from(selectedTenantIds) : undefined}
+            onSelectionChange={isSuper ? (ids) => setSelectedTenantIds(new Set(ids as number[])) : undefined}
             renderStickyRight={() => (
               <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={COLUMNS} triggerClassName="bhq-columns-trigger" />
             )}
@@ -1055,6 +1133,24 @@ export default function AppAdmin() {
                     )}
                   </div>
 
+                  <div className="border-t border-hairline pt-3 mt-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="send-welcome"
+                        checked={sendWelcomeEmail}
+                        onChange={(e) => setSendWelcomeEmail(e.currentTarget.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="send-welcome" className="text-sm cursor-pointer">
+                        Send welcome email with login credentials
+                      </label>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 ml-5">
+                      The owner will receive an email with their login details and getting started guide.
+                    </div>
+                  </div>
+
                   {createErr && <div className="text-sm text-red-600">{createErr}</div>}
 
                   <div className="flex items-center justify-between pt-2">
@@ -1114,6 +1210,172 @@ export default function AppAdmin() {
                       Done
                     </Button>
                   </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────── Delete Tenant Modal (Multi-Step Confirmation) ───────────────────── */}
+      {deleteOpen && deleteTarget && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* backdrop */}
+          <div className="absolute inset-0 bg-black/60" onClick={() => !deleteWorking && !deleteSuccess && resetDeleteModal()} />
+
+          {/* card */}
+          <div className="relative w-[540px] max-w-[92vw] rounded-xl border border-red-500/50 bg-surface shadow-xl p-4">
+            {deleteSuccess ? (
+              /* ─── Success State ─── */
+              <>
+                <div className="text-lg font-semibold mb-1 text-green-400">Tenant Deleted</div>
+                <div className="text-sm text-neutral-400 mb-4">
+                  The tenant and all associated data have been permanently removed.
+                </div>
+                <div className="bg-green-950 border border-green-700 rounded-lg p-3 mb-4">
+                  <div className="text-sm text-neutral-200">
+                    <strong className="text-white">{deleteTarget.name}</strong> (ID: {deleteTarget.id}) has been deleted.
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={resetDeleteModal}>Done</Button>
+                </div>
+              </>
+            ) : deleteStep === 1 ? (
+              /* ─── Step 1: Initial Warning ─── */
+              <>
+                <div className="text-lg font-semibold mb-1 text-red-600 flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Delete Tenant Permanently
+                </div>
+                <div className="text-sm text-secondary mb-4">
+                  You are about to permanently delete a tenant and ALL of its data. This action <strong>CANNOT be undone</strong>.
+                </div>
+
+                <div className="bg-red-950 border border-red-700 rounded-lg p-4 mb-4 space-y-3">
+                  <div className="font-medium text-red-400">Tenant to be deleted:</div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-neutral-400">Name:</span> <strong className="text-white">{deleteTarget.name}</strong></div>
+                    <div><span className="text-neutral-400">ID:</span> <strong className="text-white">{deleteTarget.id}</strong></div>
+                    <div><span className="text-neutral-400">Animals:</span> <strong className="text-white">{deleteTarget.animalsCount}</strong></div>
+                    <div><span className="text-neutral-400">Contacts:</span> <strong className="text-white">{deleteTarget.contactsCount}</strong></div>
+                    <div><span className="text-neutral-400">Users:</span> <strong className="text-white">{deleteTarget.usersCount}</strong></div>
+                    <div><span className="text-neutral-400">Orgs:</span> <strong className="text-white">{deleteTarget.organizationsCount}</strong></div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-950 border border-amber-700 rounded-lg p-3 mb-4 text-xs">
+                  <div className="font-medium mb-1 text-amber-400">The following will be permanently deleted:</div>
+                  <ul className="list-disc list-inside pl-2 space-y-0.5 text-neutral-300">
+                    <li>All animals, health records, and breeding data</li>
+                    <li>All contacts, organizations, and CRM data</li>
+                    <li>All contracts, documents, and signatures</li>
+                    <li>All invoices, payments, and financial records</li>
+                    <li>All user accounts and memberships</li>
+                    <li>All marketplace listings and communications</li>
+                  </ul>
+                </div>
+
+                {deleteErr && <div className="text-sm text-red-600 mb-3">{deleteErr}</div>}
+
+                <div className="flex items-center justify-between pt-2">
+                  <Button variant="outline" onClick={resetDeleteModal}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => setDeleteStep(2)}
+                  >
+                    I understand, continue
+                  </Button>
+                </div>
+              </>
+            ) : deleteStep === 2 ? (
+              /* ─── Step 2: Type Tenant Name to Confirm ─── */
+              <>
+                <div className="text-lg font-semibold mb-1 text-red-600 flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Confirm Deletion
+                </div>
+                <div className="text-sm text-secondary mb-4">
+                  To confirm deletion, please type the exact tenant name below:
+                </div>
+
+                <div className="bg-neutral-800 border border-neutral-600 rounded-lg p-3 mb-4 text-center">
+                  <code className="text-lg font-mono font-semibold text-red-400">{deleteTarget.name}</code>
+                </div>
+
+                <div className="mb-4">
+                  <div className="text-xs text-secondary mb-1">Type tenant name to confirm:</div>
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.currentTarget.value)}
+                    placeholder="Type tenant name here..."
+                    className="font-mono"
+                    autoFocus
+                  />
+                </div>
+
+                {deleteErr && <div className="text-sm text-red-600 mb-3">{deleteErr}</div>}
+
+                <div className="flex items-center justify-between pt-2">
+                  <Button variant="outline" onClick={() => { setDeleteStep(1); setDeleteConfirmText(""); setDeleteErr(null); }}>
+                    Back
+                  </Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => {
+                      if (deleteConfirmText !== deleteTarget.name) {
+                        setDeleteErr("Tenant name does not match. Please type the exact name.");
+                        return;
+                      }
+                      setDeleteErr(null);
+                      setDeleteStep(3);
+                    }}
+                    disabled={deleteConfirmText !== deleteTarget.name}
+                  >
+                    Continue
+                  </Button>
+                </div>
+              </>
+            ) : (
+              /* ─── Step 3: Final Confirmation ─── */
+              <>
+                <div className="text-lg font-semibold mb-1 text-red-500 flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Final Confirmation
+                </div>
+                <div className="text-sm text-neutral-400 mb-4">
+                  This is your last chance to cancel. Click the button below to permanently delete this tenant.
+                </div>
+
+                <div className="bg-neutral-900 border-2 border-red-600 rounded-lg p-4 mb-4 text-center">
+                  <div className="text-sm text-neutral-500 mb-1">You are about to delete:</div>
+                  <div className="text-xl font-bold text-white">{deleteTarget.name}</div>
+                  <div className="text-xs text-neutral-500 mt-2">
+                    {deleteTarget.animalsCount} animals · {deleteTarget.contactsCount} contacts · {deleteTarget.usersCount} users
+                  </div>
+                </div>
+
+                {deleteErr && <div className="text-sm text-red-400 mb-3">{deleteErr}</div>}
+
+                <div className="flex items-center justify-between pt-2">
+                  <Button variant="outline" onClick={() => setDeleteStep(2)} disabled={deleteWorking}>
+                    Back
+                  </Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={doDeleteTenant}
+                    disabled={deleteWorking}
+                  >
+                    {deleteWorking ? "Deleting..." : "DELETE TENANT PERMANENTLY"}
+                  </Button>
                 </div>
               </>
             )}

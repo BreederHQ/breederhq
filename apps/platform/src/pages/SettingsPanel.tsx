@@ -152,14 +152,7 @@ async function resolveTenantIdSafe(): Promise<string | null> {
   );
   if (hinted) return (TENANT_ID_CACHE = hinted);
 
-  try {
-    const ls =
-      localStorage.getItem("BHQ_TENANT_ID") ||
-      localStorage.getItem("X_TENANT_ID") ||
-      localStorage.getItem("x-tenant-id") || "";
-    const s = cleanTenantId(ls);
-    if (s) return (TENANT_ID_CACHE = s);
-  } catch { }
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
 
   const cookieTenant = cleanTenantId(readCookie("X-Tenant-Id") || readCookie("x-tenant-id"));
   if (cookieTenant) return (TENANT_ID_CACHE = cookieTenant);

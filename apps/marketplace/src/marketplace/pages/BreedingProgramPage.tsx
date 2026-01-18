@@ -195,7 +195,7 @@ function ProgramHero({ program, activeTab, onTabChange }: ProgramHeroProps) {
 }
 
 function HeroContent({ program, activeTab, onTabChange }: ProgramHeroProps) {
-  const showImage = program.showCoverImage && program.coverImageUrl;
+  const showImage = Boolean(program.showCoverImage && program.coverImageUrl);
 
   return (
     <div className={showImage ? "absolute inset-0 flex flex-col justify-end p-8" : ""}>

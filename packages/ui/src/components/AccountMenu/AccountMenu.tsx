@@ -10,6 +10,12 @@ export interface TenantMembership {
   role: string | null;
 }
 
+export interface UserInfo {
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
 export interface AccountMenuProps {
   /** Current active tenant */
   currentTenant?: { id: number; name: string; slug: string } | null;
@@ -27,6 +33,8 @@ export interface AccountMenuProps {
   isDemoTenant?: boolean;
   /** Called when user clicks reset demo tenant */
   onDemoReset?: () => void;
+  /** Current user information for display */
+  user?: UserInfo | null;
 }
 
 // Icons
@@ -75,6 +83,49 @@ function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
 
+/** Get initials from user info */
+function getUserInitials(user?: UserInfo | null): string {
+  if (!user) return "?";
+
+  // Try firstName + lastName first
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+  if (first && last) {
+    return `${first[0]}${last[0]}`.toUpperCase();
+  }
+  if (first) {
+    return first.slice(0, 2).toUpperCase();
+  }
+  if (last) {
+    return last.slice(0, 2).toUpperCase();
+  }
+
+  // Fall back to email
+  if (user.email) {
+    const emailName = user.email.split("@")[0];
+    // If email has a dot (like first.last@...), use initials from that
+    if (emailName.includes(".")) {
+      const parts = emailName.split(".");
+      return `${parts[0][0]}${parts[1]?.[0] ?? ""}`.toUpperCase();
+    }
+    return emailName.slice(0, 2).toUpperCase();
+  }
+
+  return "?";
+}
+
+/** Get display name from user info */
+function getUserDisplayName(user?: UserInfo | null): string | null {
+  if (!user) return null;
+
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+  if (first && last) return `${first} ${last}`;
+  if (first) return first;
+  if (last) return last;
+  return user.email ?? null;
+}
+
 export const AccountMenu: React.FC<AccountMenuProps> = ({
   currentTenant,
   memberships = [],
@@ -84,10 +135,14 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
   isSuperAdmin,
   isDemoTenant,
   onDemoReset,
+  user,
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [showResetConfirm, setShowResetConfirm] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  const initials = getUserInitials(user);
+  const displayName = getUserDisplayName(user);
 
   // Close menu when clicking outside
   React.useEffect(() => {
@@ -148,17 +203,15 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={cls(
-          "inline-flex h-9 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 hover:bg-surface-strong transition",
-          isOpen && "bg-surface-strong"
-        )}
+        className="inline-flex items-center gap-1.5 rounded-full p-0.5 hover:bg-surface-strong/50 transition"
         aria-label="Account menu"
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        <Icon.CircleUser className="h-5 w-5" />
-        <span className="hidden md:inline text-sm">Account</span>
-        <Icon.ChevronDown className={cls("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-600 text-white text-xs font-semibold">
+          {initials}
+        </div>
+        <Icon.ChevronDown className={cls("h-4 w-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
       </button>
 
       {/* Dropdown Menu */}
@@ -167,6 +220,25 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
           className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-hairline bg-surface shadow-lg z-50 overflow-hidden"
           role="menu"
         >
+          {/* User Info Section */}
+          {(displayName || user?.email) && (
+            <div className="p-3 border-b border-hairline">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-orange))]/15 text-[hsl(var(--brand-orange))] text-sm font-semibold shrink-0">
+                  {initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  {displayName && displayName !== user?.email && (
+                    <div className="text-sm font-medium truncate">{displayName}</div>
+                  )}
+                  {user?.email && (
+                    <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Current Tenant Section */}
           {currentTenant && (
             <div className="p-3 border-b border-hairline">

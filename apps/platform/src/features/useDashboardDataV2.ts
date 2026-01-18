@@ -20,16 +20,13 @@ import {
 async function directFetch<T>(path: string, fallback: T): Promise<T> {
   try {
     // Resolve scope headers
+    // Note: We intentionally skip localStorage to avoid cross-user contamination
     const w = (typeof window !== "undefined" ? window : {}) as any;
     const rtTid = Number(w?.__BHQ_TENANT_ID__);
-    let lsTid = NaN;
-    try { lsTid = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN"); } catch {}
-    const tenantId = (Number.isFinite(rtTid) && rtTid > 0 && rtTid) || (Number.isFinite(lsTid) && lsTid > 0 && lsTid) || undefined;
+    const tenantId = (Number.isFinite(rtTid) && rtTid > 0 && rtTid) || undefined;
 
     const rtOid = Number(w?.__BHQ_ORG_ID__);
-    let lsOid = NaN;
-    try { lsOid = Number(localStorage.getItem("BHQ_ORG_ID") || "NaN"); } catch {}
-    const orgId = (Number.isFinite(rtOid) && rtOid > 0 && rtOid) || (Number.isFinite(lsOid) && lsOid > 0 && lsOid) || undefined;
+    const orgId = (Number.isFinite(rtOid) && rtOid > 0 && rtOid) || undefined;
 
     const headers: Record<string, string> = { Accept: "application/json" };
     if (tenantId) headers["x-tenant-id"] = String(tenantId);

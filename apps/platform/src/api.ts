@@ -206,27 +206,23 @@ function readCookie(name: string): string {
   return m ? decodeURIComponent(m[2]) : "";
 }
 
-/** Resolve tenant and org once per request (runtime, localStorage, env) */
+/** Resolve tenant and org once per request (runtime global only - no localStorage to avoid cross-user leakage) */
 function resolveScope(): { tenantId?: number; orgId?: number } {
   const w: any = (typeof window !== "undefined" ? window : {}) as any;
 
-  // tenant
+  // tenant - only use runtime global, not localStorage
   const rtTid = Number(w?.__BHQ_TENANT_ID__);
-  const lsTid = (() => { try { return Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN"); } catch { return NaN; } })();
   const envTid = Number(((import.meta as any)?.env?.VITE_DEV_TENANT_ID) || "");
   const tenantId =
     (Number.isFinite(rtTid) && rtTid > 0 && rtTid) ||
-    (Number.isFinite(lsTid) && lsTid > 0 && lsTid) ||
     (Number.isFinite(envTid) && envTid > 0 && envTid) ||
     undefined;
 
-  // org
+  // org - only use runtime global, not localStorage
   const rtOid = Number(w?.__BHQ_ORG_ID__);
-  const lsOid = (() => { try { return Number(localStorage.getItem("BHQ_ORG_ID") || "NaN"); } catch { return NaN; } })();
   const envOid = Number(((import.meta as any)?.env?.VITE_DEV_ORG_ID) || "");
   const orgId =
     (Number.isFinite(rtOid) && rtOid > 0 && rtOid) ||
-    (Number.isFinite(lsOid) && lsOid > 0 && lsOid) ||
     (Number.isFinite(envOid) && envOid > 0 && envOid) ||
     undefined;
 

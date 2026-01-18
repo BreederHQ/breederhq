@@ -4,9 +4,9 @@
 
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { apiGet, submitWaitlistRequest, getPublicAnimalPrograms, getPublicServices } from "../../api/client";
+import { apiGet, submitWaitlistRequest, getPublicAnimalPrograms, getPublicServices, type PublicServiceListing } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
-import type { PublicAnimalProgramSummaryDTO, PublicServiceListing } from "../../api/types";
+import type { PublicAnimalProgramSummaryDTO } from "../../api/types";
 import { AnimalProgramTile } from "../components/AnimalProgramTile";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useStartConversation } from "../../messages/hooks";
@@ -87,6 +87,7 @@ interface BreederProfileResponse {
     acceptInquiries: boolean;
     openWaitlist: boolean;
     comingSoon: boolean;
+    mediaAssetIds?: string[];
   }>;
   standardsAndCredentials: StandardsAndCredentials | null;
   placementPolicies: PlacementPolicies | null;
@@ -282,8 +283,9 @@ function NotFoundState() {
       const isStandalone = typeof window !== "undefined" &&
         window.location.hostname.startsWith("marketplace.");
       if (isStandalone) return false;
+      // Note: We intentionally skip localStorage to avoid cross-user contamination
       const w: any = typeof window !== "undefined" ? window : {};
-      return !!(w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID"));
+      return !!w.__BHQ_TENANT_ID__;
     } catch {
       return false;
     }
@@ -875,9 +877,10 @@ function FeaturedProgramCardInner({
 }) {
   const showInquireButton = program.acceptInquiries;
   const showWaitlistBadge = program.openWaitlist;
-  const hasPhotos = program.mediaAssetIds && program.mediaAssetIds.length > 0;
-  const coverPhotoId = hasPhotos ? program.mediaAssetIds[0] : null;
-  const photoCount = hasPhotos ? program.mediaAssetIds.length : 0;
+  const mediaIds = program.mediaAssetIds ?? [];
+  const hasPhotos = mediaIds.length > 0;
+  const coverPhotoId = hasPhotos ? mediaIds[0] : null;
+  const photoCount = mediaIds.length;
 
   // Determine status badge
   const getStatusBadge = () => {
@@ -1022,7 +1025,8 @@ function FeaturedProgramDetailsModal({
   const showInquireButton = program.acceptInquiries;
   const showWaitlistButton = program.openWaitlist;
   const hasActions = showInquireButton || showWaitlistButton;
-  const hasPhotos = program.mediaAssetIds && program.mediaAssetIds.length > 0;
+  const mediaIds = program.mediaAssetIds ?? [];
+  const hasPhotos = mediaIds.length > 0;
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
 
   return (
@@ -1035,7 +1039,7 @@ function FeaturedProgramDetailsModal({
             {/* Main photo */}
             <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-t-2xl">
               <img
-                src={`/api/assets/${program.mediaAssetIds[activePhotoIndex]}`}
+                src={`/api/assets/${mediaIds[activePhotoIndex]}`}
                 alt={`${program.name} - Photo ${activePhotoIndex + 1}`}
                 className="w-full h-full object-cover"
               />
@@ -1052,11 +1056,11 @@ function FeaturedProgramDetailsModal({
               </button>
 
               {/* Photo navigation arrows */}
-              {program.mediaAssetIds.length > 1 && (
+              {mediaIds.length > 1 && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setActivePhotoIndex((prev) => (prev === 0 ? program.mediaAssetIds.length - 1 : prev - 1))}
+                    onClick={() => setActivePhotoIndex((prev) => (prev === 0 ? mediaIds.length - 1 : prev - 1))}
                     className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-all"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1065,7 +1069,7 @@ function FeaturedProgramDetailsModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActivePhotoIndex((prev) => (prev === program.mediaAssetIds.length - 1 ? 0 : prev + 1))}
+                    onClick={() => setActivePhotoIndex((prev) => (prev === mediaIds.length - 1 ? 0 : prev + 1))}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition-all"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1076,17 +1080,17 @@ function FeaturedProgramDetailsModal({
               )}
 
               {/* Photo counter */}
-              {program.mediaAssetIds.length > 1 && (
+              {mediaIds.length > 1 && (
                 <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm text-xs text-white">
-                  {activePhotoIndex + 1} / {program.mediaAssetIds.length}
+                  {activePhotoIndex + 1} / {mediaIds.length}
                 </div>
               )}
             </div>
 
             {/* Thumbnail strip */}
-            {program.mediaAssetIds.length > 1 && (
+            {mediaIds.length > 1 && (
               <div className="flex gap-2 px-4 py-3 bg-portal-card border-b border-border-subtle overflow-x-auto">
-                {program.mediaAssetIds.map((assetId, idx) => (
+                {mediaIds.map((assetId: string, idx: number) => (
                   <button
                     key={assetId}
                     type="button"

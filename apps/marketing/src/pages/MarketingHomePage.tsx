@@ -252,7 +252,7 @@ export default function MarketingHomePage() {
               </p>
               <div className="mt-4 flex justify-center">
                 <Button
-                  size="lg"
+                  size="md"
                   className="open-hub-btn w-full"
                 >
                   Open Hub

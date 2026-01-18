@@ -42,10 +42,11 @@ const STEPS: { id: WizardStep; label: string; icon: React.ReactNode }[] = [
   { id: "review", label: "Review", icon: <Check size={16} /> },
 ];
 
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }
@@ -118,7 +119,7 @@ export function CreateProgramWizard() {
     slug: "",
     headline: "",
     description: "",
-    defaultPriceModel: "inquire",
+    defaultPriceModel: "inquire" as "fixed" | "range" | "inquire",
     defaultPriceCents: null as number | null,
     defaultPriceMinCents: null as number | null,
     defaultPriceMaxCents: null as number | null,
@@ -196,26 +197,26 @@ export function CreateProgramWizard() {
     }
 
     setSaving(true);
-    try {
-      const input: AnimalProgramCreate = {
-        name: form.name.trim(),
-        slug: slug,
-        templateType: form.templateType,
-        headline: form.headline.trim() || undefined,
-        description: form.description.trim() || undefined,
-        dataDrawerConfig: {} as DataDrawerConfig,
-        programContent: {},
-        defaultPriceModel: form.defaultPriceModel,
-        defaultPriceCents: form.defaultPriceModel === "fixed" ? form.defaultPriceCents : undefined,
-        defaultPriceMinCents: form.defaultPriceModel === "range" ? form.defaultPriceMinCents : undefined,
-        defaultPriceMaxCents: form.defaultPriceModel === "range" ? form.defaultPriceMaxCents : undefined,
-        published: form.published,
-        listed: form.published,
-        acceptInquiries: form.acceptInquiries,
-        openWaitlist: form.openWaitlist,
-        selectedAnimalIds: form.selectedAnimalIds.length > 0 ? form.selectedAnimalIds : undefined,
-      };
+    const input: AnimalProgramCreate = {
+      name: form.name.trim(),
+      slug: slug,
+      templateType: form.templateType,
+      headline: form.headline.trim() || undefined,
+      description: form.description.trim() || undefined,
+      dataDrawerConfig: {} as DataDrawerConfig,
+      programContent: {},
+      defaultPriceModel: form.defaultPriceModel,
+      defaultPriceCents: form.defaultPriceModel === "fixed" ? form.defaultPriceCents : undefined,
+      defaultPriceMinCents: form.defaultPriceModel === "range" ? form.defaultPriceMinCents : undefined,
+      defaultPriceMaxCents: form.defaultPriceModel === "range" ? form.defaultPriceMaxCents : undefined,
+      published: form.published,
+      listed: form.published,
+      acceptInquiries: form.acceptInquiries,
+      openWaitlist: form.openWaitlist,
+      selectedAnimalIds: form.selectedAnimalIds.length > 0 ? form.selectedAnimalIds : undefined,
+    };
 
+    try {
       console.log("Sending program data:", input);
       const result = await saveAnimalProgram(tenantId, input);
       navigate(`/manage/animal-programs`);

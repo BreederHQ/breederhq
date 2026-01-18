@@ -143,22 +143,18 @@ function pickName(u: any): string {
 function resolveScopeHeaders(): HeadersInit {
   const w: any = (typeof window !== "undefined" ? window : {}) as any;
   const rtTid = Number(w?.__BHQ_TENANT_ID__);
-  let lsTid = NaN;
-  try { lsTid = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN"); } catch {}
   const envTid = Number(((import.meta as any)?.env?.VITE_DEV_TENANT_ID) || "");
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
   const tenantId =
     (Number.isFinite(rtTid) && rtTid > 0 && rtTid) ||
-    (Number.isFinite(lsTid) && lsTid > 0 && lsTid) ||
     (Number.isFinite(envTid) && envTid > 0 && envTid) ||
     undefined;
 
   const rtOid = Number(w?.__BHQ_ORG_ID__);
-  let lsOid = NaN;
-  try { lsOid = Number(localStorage.getItem("BHQ_ORG_ID") || "NaN"); } catch {}
   const envOid = Number(((import.meta as any)?.env?.VITE_DEV_ORG_ID) || "");
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
   const orgId =
     (Number.isFinite(rtOid) && rtOid > 0 && rtOid) ||
-    (Number.isFinite(lsOid) && lsOid > 0 && lsOid) ||
     (Number.isFinite(envOid) && envOid > 0 && envOid) ||
     undefined;
 

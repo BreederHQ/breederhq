@@ -5,7 +5,7 @@ import { Button } from "../Button";
 import { Tabs } from "../Tabs";
 import { Check } from "lucide-react";
 
-type Tab = { key: string; label: string; badge?: React.ReactNode };
+type Tab = { key: string; label: React.ReactNode; badge?: React.ReactNode };
 
 export function DetailsScaffold({
   title,

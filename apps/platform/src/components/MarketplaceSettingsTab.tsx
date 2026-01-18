@@ -289,8 +289,9 @@ async function unpublishMarketplaceProfile(
 
 function getTenantId(): string {
   try {
+    // Note: We intentionally skip localStorage to avoid cross-user contamination
     const w: any = typeof window !== "undefined" ? window : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "default";
+    return w.__BHQ_TENANT_ID__ || "default";
   } catch { return "default"; }
 }
 

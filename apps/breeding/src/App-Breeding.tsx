@@ -134,7 +134,7 @@ const HORSE_TABS = [
 
 // Helper to get tabs based on species
 function getTabsForSpecies(species: string | null | undefined): { key: string; label: string }[] {
-  const baseTabs = [...PLAN_TABS];
+  const baseTabs: { key: string; label: string }[] = [...PLAN_TABS];
   if (species?.toUpperCase() === "HORSE") {
     // Insert horse tabs after "dates" tab
     const datesIndex = baseTabs.findIndex(t => t.key === "dates");
@@ -4600,8 +4600,8 @@ export default function AppBreeding() {
                 if (!tags || tags.length === 0) return row;
                 return {
                   ...row,
-                  tags: tags.map((t) => t.name),
-                  tagObjects: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+                  tags: tags.map((t: { name: string }) => t.name),
+                  tagObjects: tags.map((t: { id: number; name: string; color: string | null }) => ({ id: t.id, name: t.name, color: t.color })),
                 };
               })
             );
@@ -6016,7 +6016,7 @@ export default function AppBreeding() {
                 species: r.species || "",
                 dam: r.damId ? { id: typeof r.damId === "string" ? parseInt(r.damId, 10) : r.damId, name: r.damName || "Unknown" } : null,
                 sire: r.sireId ? { id: typeof r.sireId === "string" ? parseInt(r.sireId, 10) : r.sireId, name: r.sireName || "Unknown" } : null,
-                expectedBirthDate: r.lockedDueDate ?? r.expectedDue ?? null,
+                expectedBirthDate: r.lockedDueDate ?? r.expectedBirthDate ?? null,
                 birthDateActual: r.birthDateActual ?? null,
                 breedDateActual: r.lockedCycleStart ?? null,
               }))}
@@ -6031,7 +6031,7 @@ export default function AppBreeding() {
                   });
                   if (!res.ok) throw new Error("Failed to record foaling");
                   // Refresh plans
-                  const freshPlans = await api.plans.list();
+                  const freshPlans = await api!.listPlans({});
                   setRows(Array.isArray(freshPlans) ? freshPlans.map(planToRow) : []);
                 } catch (err) {
                   console.error("Error recording foaling:", err);
@@ -6039,7 +6039,7 @@ export default function AppBreeding() {
                 }
               }}
               onRefresh={async () => {
-                const freshPlans = await api.plans.list();
+                const freshPlans = await api!.listPlans({});
                 setRows(Array.isArray(freshPlans) ? freshPlans.map(planToRow) : []);
               }}
             />

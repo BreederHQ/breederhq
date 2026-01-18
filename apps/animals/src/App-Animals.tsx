@@ -75,12 +75,18 @@ import { projectUpcomingCycleStarts } from "@bhq/ui/utils/reproEngine/projectUpc
 import {
   OvulationPatternBadge,
   NextCycleProjectionCard,
-  CycleHistoryEntry,
+  CycleHistoryEntry as CycleHistoryEntryComponent,
   OvulationPatternAnalysis,
   CycleAlertBadge,
   calculateDaysUntilCycle,
+  NextCycleHero,
+  OvulationDotPlot,
+  CollapsibleCycleHistory,
+  CollapsibleOverride,
+  CycleAlerts,
   type CycleAnalysisResult,
 } from "./components/CycleAnalysis";
+import type { CycleHistoryEntry } from "./components/CycleAnalysis/types";
 
 import {
   DogPlaceholder,
@@ -226,7 +232,7 @@ type AnimalRow = {
   microchip?: string | null;
   tags: string[];
   /** Full tag objects with id, name, color for rich display */
-  tagObjects?: Array<{ id: number; name: string; color: string | null }>;
+  tagObjects?: Array<{ id: number; name: string; color?: string | null }>;
   notes?: string | null;
   photoUrl?: string | null;
   dob?: string | null;
@@ -595,7 +601,8 @@ function BreedingStatusSection({ animalId, sex, dob, api }: {
 
         const response = await fetch(`/api/v1/breeding/plans?${params.toString()}`, {
           headers: {
-            "x-tenant-id": String((window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || ""),
+            // Note: We intentionally skip localStorage to avoid cross-user contamination
+            "x-tenant-id": String((window as any).__BHQ_TENANT_ID__ || ""),
           },
         });
 
@@ -1974,341 +1981,222 @@ function CycleTab({
     [proj]
   );
 
-return (
-    <div className="space-y-2">
-      <SectionCard title="Cycle Summary">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-          <div>
-            <div className="text-xs text-secondary">Last Heat Start</div>
-            <div>{pretty(lastHeatIso)}</div>
-          </div>
-          <div>
-            <div className="text-xs text-secondary">Cycle Length (days)</div>
-            <div>
-              {learned.days}{" "}
-              <span className="text-secondary text-xs">
-                ({learned.source})
-              </span>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-secondary">
-              Upcoming Projected Cycle Start
-            </div>
-            <div>
-              {projected.length ? projected.slice(0, 2).map(pretty).join(" • ") : "—"}
-            </div>
-          </div>
-          {/* Ovulation Pattern */}
-          <div>
-            <div className="text-xs text-secondary flex items-center gap-1">
-              Ovulation Pattern
-              <Tooltip content="Based on this female's breeding history with confirmed or calculated ovulation dates">
-                <span className="cursor-help text-secondary">?</span>
-              </Tooltip>
-            </div>
-            <div className="flex items-center gap-2">
-              {cycleAnalysis?.ovulationPattern ? (
-                <>
-                  {cycleAnalysis.ovulationPattern.avgOffsetDays !== null && (
-                    <span>
-                      Day {Math.round(cycleAnalysis.ovulationPattern.avgOffsetDays)}
-                      {cycleAnalysis.ovulationPattern.stdDeviation !== null && cycleAnalysis.ovulationPattern.stdDeviation > 0 && (
-                        <span className="text-secondary"> +/-{Math.round(cycleAnalysis.ovulationPattern.stdDeviation)}</span>
-                      )}
-                    </span>
-                  )}
-                  <OvulationPatternBadge
-                    classification={cycleAnalysis.ovulationPattern.classification}
-                    confidence={cycleAnalysis.ovulationPattern.confidence}
-                    sampleSize={cycleAnalysis.ovulationPattern.confirmedCycles}
-                  />
-                </>
-              ) : cycleAnalysisLoading ? (
-                <span className="text-secondary">Loading...</span>
-              ) : (
-                <span className="text-secondary">—</span>
-              )}
-            </div>
-          </div>
-        </div>
+// State for the record heat popover
+  const [showRecordPopover, setShowRecordPopover] = React.useState(false);
 
-        {/* Next Cycle Projection Card */}
-        {cycleAnalysis?.nextCycleProjection && cycleAnalysis.ovulationPattern && (
-          <NextCycleProjectionCard
-            projection={cycleAnalysis.nextCycleProjection}
-            ovulationPattern={cycleAnalysis.ovulationPattern}
-            species={species}
+  // State for editing a cycle date
+  const [editingCycleId, setEditingCycleId] = React.useState<number | null>(null);
+  const [editingDateIso, setEditingDateIso] = React.useState("");
+
+  // Convert raw heat dates to CycleHistoryEntry format for CollapsibleCycleHistory
+  const cycleHistoryEntries: CycleHistoryEntry[] = dates.map((d, idx) => ({
+    id: idx,
+    cycleStart: d,
+    ovulation: null,
+    birthDate: null,
+    offsetDays: null,
+    variance: null,
+    confidence: "LOW" as const,
+    source: "ESTIMATED" as const,
+    ovulationMethod: null,
+    breedingPlanId: null,
+    notes: null,
+  }));
+
+  // Ref for hidden DatePicker
+  const recordDatePickerRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-4">
+      {/* ════════════════════════════════════════════════════════════════
+          RECORD HEAT CYCLE - BIG BUTTON that opens date picker
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-col items-center">
+        {/* Hidden DatePicker - only for the popover */}
+        <div className="hidden">
+          <DatePicker
+            value={newDateIso}
+            onChange={async (e: React.ChangeEvent<HTMLInputElement>) => {
+              const iso = e.currentTarget.value || "";
+              if (!iso) return;
+              // Immediately save
+              let next = [...dates];
+              if (!next.includes(iso)) {
+                next.push(iso);
+              }
+              next = next.sort();
+              await persist(next);
+              setNewDateIso("");
+            }}
+            inputClassName="record-heat-picker-input"
           />
-        )}
-
-        <div className="mt-4 pt-4 border-t border-hairline">
-          <div className="text-sm font-medium mb-2">Cycle Length Override</div>
-          {learned.warningConflict && (
-            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-              <strong>Warning:</strong> Override differs by more than 20% from historical average.
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={overrideInput}
-              onChange={(e) => setOverrideInput(e.target.value)}
-              placeholder={learned.source === "HISTORY" || learned.source === "BIOLOGY" ? `Default: ${learned.days} days` : "Enter days"}
-              className="flex-1 max-w-xs px-3 py-2 text-sm border border-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
-              disabled={overrideSaving}
-            />
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={saveOverride}
-              disabled={overrideSaving || overrideInput === (animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : "")}
-            >
-              {overrideSaving ? "Saving..." : "Save"}
-            </Button>
-            {animal.femaleCycleLenOverrideDays != null && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={clearOverride}
-                disabled={overrideSaving}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-          <div className="mt-2 text-xs text-secondary">
-            Override the automatic cycle length calculation. Leave blank to use {learned.source === "HISTORY" ? "historical average" : "biology default"}.
-          </div>
         </div>
 
-
-      </SectionCard>
-
-      <SectionCard title="Record Heat Cycle">
-        {(() => {
-          // Calculate if we're in the "attention window" (within 2 weeks of projected cycle)
-          const nextProjected = projected[0];
-          const daysUntilNext = nextProjected
-            ? Math.ceil((new Date(nextProjected).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-            : null;
-          const needsAttention = daysUntilNext !== null && daysUntilNext <= 14 && daysUntilNext >= -7;
-          const isOverdue = daysUntilNext !== null && daysUntilNext < 0;
-
-          return (
-            <div className="space-y-4">
-              {/* Alert banner when attention needed */}
-              {needsAttention && (
-                <div className={`p-3 rounded-lg border ${isOverdue
-                  ? "bg-amber-900/20 border-amber-500/50 text-amber-200"
-                  : "bg-blue-900/20 border-blue-500/50 text-blue-200"}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span className="font-semibold">
-                      {isOverdue
-                        ? `Heat cycle may have started - ${Math.abs(daysUntilNext)} days past projected`
-                        : `Heat cycle expected in ${daysUntilNext} days`}
-                    </span>
-                  </div>
-                  <p className="text-sm opacity-80">
-                    Watch for signs of heat (swelling, bleeding, behavior changes) and record the start date below.
-                  </p>
-                </div>
-              )}
-
-              {/* Main action: Record new heat start */}
-              <div className="p-4 rounded-lg border-2 border-dashed border-brand-orange/50 bg-brand-orange/5">
-                <div className="text-sm font-medium text-primary mb-3">
-                  When did heat start?
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 max-w-xs">
-                    <DatePicker
-                      value={newDateIso}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const v = e.currentTarget.value;
-                        setNewDateIso(v || "");
-                      }}
-                      placeholder="Select date..."
-                      showIcon
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => {
-                      if (!newDateIso) return;
-                      let next = [...dates];
-                      if (!next.includes(newDateIso)) {
-                        next.push(newDateIso);
-                      }
-                      next = next.sort();
-                      persist(next);
-                      setNewDateIso("");
-                    }}
-                    disabled={working || !newDateIso}
-                  >
-                    {working ? "Saving…" : "Record Heat Start"}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Collapsed history */}
-              {dates.length > 0 && (
-                <div className="pt-2 border-t border-hairline">
-                  <button
-                    type="button"
-                    className="text-sm text-secondary hover:text-primary flex items-center gap-1 w-full"
-                    onClick={() => setCycleHistoryExpanded(!cycleHistoryExpanded)}
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-transform ${cycleHistoryExpanded ? "rotate-90" : ""}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    {cycleHistoryExpanded ? "Hide" : "View"} cycle history ({dates.length} recorded)
-                  </button>
-
-                  {cycleHistoryExpanded && (
-                    <div className="mt-2 rounded-md border border-hairline divide-y divide-hairline">
-                      {[...dates].reverse().map((d) => {
-                        const isEditingDate = editing[d];
-                        return (
-                          <div
-                            key={d}
-                            className="p-2 flex items-center justify-between gap-3 text-sm"
-                          >
-                            {!isEditingDate && (
-                              <>
-                                <div className="min-w-[10rem]">{pretty(d)}</div>
-                                <div className="flex items-center gap-2 ml-auto">
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      setEditing((prev) => ({
-                                        ...prev,
-                                        [d]: true,
-                                      }))
-                                    }
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setConfirmDeleteIso(d);
-                                    }}
-                                  >
-                                    Delete
-                                  </Button>
-                                </div>
-                              </>
-                            )}
-
-                            {isEditingDate && (
-                              <div className="flex items-center gap-2 w-full">
-                                <DatePicker
-                                  value={d}
-                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                    const v = e.currentTarget.value;
-                                    if (!v) return;
-                                    setDates((prev) => {
-                                      const next = prev.filter((x) => x !== d);
-                                      if (!next.includes(v)) next.push(v);
-                                      return next.sort();
-                                    });
-                                  }}
-                                  placeholder="mm/dd/yyyy"
-                                  showIcon
-                                />
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  onClick={() =>
-                                    setEditing((prev) => {
-                                      const next = { ...prev };
-                                      delete next[d];
-                                      return next;
-                                    })
-                                  }
-                                >
-                                  Done
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="xs"
-                                  variant="ghost"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setConfirmDeleteIso(d);
-                                  }}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-      </SectionCard>
-
-      {/* Ovulation Pattern Analysis Section */}
-      {cycleAnalysis && !cycleAnalysisLoading && (
-        <OvulationPatternAnalysis
-          analysis={cycleAnalysis}
-          onLearnMore={() => {
-            // Could open an education dialog here
-            console.log("Learn more about ovulation tracking");
+        {/* THE BIG BUTTON */}
+        <button
+          onClick={() => {
+            // Find the hidden input and click it to open the picker
+            const hiddenInput = document.querySelector('.record-heat-picker-input') as HTMLInputElement;
+            if (hiddenInput) {
+              hiddenInput.click();
+            }
           }}
+          disabled={working}
+          className="w-full max-w-md h-14 px-8 rounded-xl font-bold text-lg bg-orange-500 text-white hover:bg-orange-400 active:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-orange-500/20"
+        >
+          {working ? "Saving..." : "Record Cycle Start Date"}
+        </button>
+
+        {/* Current cycle length - centered under button */}
+        <div className="flex items-center justify-center gap-2 text-sm mt-2">
+          <span className="text-secondary">Current cycle length:</span>
+          <span className="font-medium text-primary">{learned.days} days</span>
+          <span className="text-xs text-secondary">
+            ({learned.source === "OVERRIDE" ? "manual override" : learned.source === "HISTORY" ? "from history" : "species default"})
+          </span>
+        </div>
+
+        {/* Toggles row - cycle history and override settings */}
+        <div className="mt-3 flex items-start justify-center gap-6">
+          {/* Cycle History toggle */}
+          {cycleHistoryEntries.length > 0 && (
+            <CollapsibleCycleHistory
+              cycles={cycleHistoryEntries}
+              editingCycleId={editingCycleId}
+              onEditCycle={(cycleId) => {
+                setEditingCycleId(cycleId);
+              }}
+              onEditComplete={async (cycleId, newDateIso) => {
+                const oldDate = dates[cycleId];
+                if (!oldDate || !newDateIso) {
+                  setEditingCycleId(null);
+                  return;
+                }
+                // Replace old date with new date
+                let next = dates.filter(d => d !== oldDate);
+                if (!next.includes(newDateIso)) {
+                  next.push(newDateIso);
+                }
+                next = next.sort();
+                await persist(next);
+                setEditingCycleId(null);
+              }}
+              onEditCancel={() => setEditingCycleId(null)}
+              onDeleteCycle={(cycleId) => {
+                const dateToDelete = dates[cycleId];
+                if (dateToDelete) {
+                  setConfirmDeleteIso(dateToDelete);
+                }
+              }}
+            />
+          )}
+
+          {/* Override Cycle Length toggle */}
+          <CollapsibleOverride
+            currentDays={learned.days}
+            overrideInput={overrideInput}
+            onOverrideInputChange={setOverrideInput}
+            onSave={saveOverride}
+            onClear={clearOverride}
+            saving={overrideSaving}
+            hasOverride={animal.femaleCycleLenOverrideDays != null}
+            warningConflict={learned.warningConflict}
+          />
+        </div>
+      </div>
+
+      {/* LOADING STATE */}
+      {cycleAnalysisLoading && (
+        <div className="rounded-xl border border-hairline bg-surface p-5 animate-pulse">
+          <div className="h-6 w-48 bg-surface-strong rounded mb-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="rounded-lg p-4 border border-hairline bg-surface-strong">
+                <div className="h-3 w-20 bg-zinc-700 rounded mb-2" />
+                <div className="h-8 w-16 bg-zinc-700 rounded mb-1" />
+                <div className="h-4 w-24 bg-zinc-700 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CYCLE ALERTS */}
+      {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.nextCycleProjection && (
+        <CycleAlerts
+          projection={cycleAnalysis.nextCycleProjection}
+          ovulationPattern={cycleAnalysis.ovulationPattern}
         />
       )}
 
+      {/* NEXT CYCLE PREDICTION */}
+      {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.nextCycleProjection?.projectedHeatStart && (
+        <NextCycleHero
+          projection={cycleAnalysis.nextCycleProjection}
+          ovulationPattern={cycleAnalysis.ovulationPattern}
+          species={species}
+        />
+      )}
+
+      {/* OVULATION PATTERN */}
+      {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.cycleHistory.length > 0 && (
+        <SectionCard title="Ovulation Pattern">
+          <OvulationDotPlot
+            cycles={cycleAnalysis.cycleHistory}
+            avgOffset={cycleAnalysis.ovulationPattern.avgOffsetDays}
+            speciesDefault={species === "DOG" ? 12 : species === "HORSE" ? 5 : 12}
+            species={species}
+            showAllOption
+          />
+          {cycleAnalysis.ovulationPattern.classification !== "Insufficient Data" && cycleAnalysis.ovulationPattern.guidance && (
+            <div className="mt-3 pt-3 border-t border-hairline flex items-start gap-2 text-sm">
+              <span className="text-emerald-500 font-medium">{cycleAnalysis.ovulationPattern.classification}:</span>
+              <span className="text-secondary">{cycleAnalysis.ovulationPattern.guidance}</span>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
       {confirmDeleteIso && getOverlayRoot() &&
         createPortal(
           <div
-            className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={(e) => {
-              // Click on the backdrop closes if not working
               e.stopPropagation();
               if (!working) setConfirmDeleteIso(null);
             }}
           >
             <div
-              className="w-full max-w-sm rounded-md border border-hairline bg-surface p-4 shadow-lg"
-              onClick={(e) => {
-                // Keep clicks inside the dialog from bubbling to the backdrop
-                e.stopPropagation();
-              }}
+              className="w-full max-w-sm rounded-lg border border-hairline bg-surface p-5 shadow-xl mx-4"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-2 text-lg font-semibold">
-                Remove cycle start date
+              {/* Header with warning icon */}
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Remove Cycle Date</h3>
+                  <p className="text-sm text-secondary mt-1">
+                    Are you sure you want to remove this date?
+                  </p>
+                </div>
               </div>
 
-              <div className="mb-4 text-sm text-secondary">
-                Remove {pretty(confirmDeleteIso)} from this female&apos;s cycle history?
-                You can add it back later if needed.
+              {/* Date being deleted - highlighted */}
+              <div className="mb-4 p-3 rounded-md bg-red-500/10 border border-red-500/20">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span className="font-medium text-primary">{pretty(confirmDeleteIso)}</span>
+                </div>
               </div>
+
+              <p className="text-sm text-secondary mb-4">
+                This will remove the heat start date from {animal.name || "this female"}&apos;s cycle history. You can add it back later if needed.
+              </p>
 
               <div className="flex justify-end gap-2">
                 <Button
@@ -2328,6 +2216,8 @@ return (
                 <Button
                   type="button"
                   size="sm"
+                  variant="primary"
+                  className="!bg-red-600 hover:!bg-red-700"
                   onClick={async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -2335,7 +2225,7 @@ return (
                   }}
                   disabled={working}
                 >
-                  Remove date
+                  {working ? "Removing..." : "Remove Date"}
                 </Button>
               </div>
             </div>
@@ -5541,7 +5431,7 @@ function HealthTab({
     );
 
     if (itemsToUpdate.length === 0) {
-      toast("All items in this section have individual overrides");
+      toast.info("All items in this section have individual overrides");
       return;
     }
 
@@ -9076,7 +8966,7 @@ export default function AppAnimals() {
     () => ({
       idParam: "animalId",
       getRowId: (r: AnimalRow) => r.id,
-      width: 800,
+      width: 960,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: string | number) => {
@@ -9912,6 +9802,9 @@ export default function AppAnimals() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createWorking, setCreateWorking] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = React.useState<{
+    duplicates: Array<{ id: number; name: string; species: string; sex: string; birthDate: string | null; microchip: string | null }>;
+  } | null>(null);
 
   // More actions menu state
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -9964,6 +9857,7 @@ export default function AppAnimals() {
     setTagsStr("");
     setNotes("");
     setCreateErr(null);
+    setDuplicateWarning(null);
   };
 
   const canCreate =
@@ -9981,7 +9875,7 @@ export default function AppAnimals() {
     setNickname((e.currentTarget as HTMLInputElement).value);
   }, []);
 
-  const doCreateAnimal = async () => {
+  const doCreateAnimal = async (forceCreate = false) => {
     if (!canCreate) {
       setCreateErr("Please complete required fields.");
       return;
@@ -9989,6 +9883,9 @@ export default function AppAnimals() {
     try {
       setCreateWorking(true);
       setCreateErr(null);
+      if (forceCreate) {
+        setDuplicateWarning(null);
+      }
 
       const payload: any = {
         name: newName.trim(),
@@ -10004,6 +9901,7 @@ export default function AppAnimals() {
           .map((s) => s.trim())
           .filter(Boolean),
         notes: notes || null,
+        skipDuplicateCheck: forceCreate,
       };
 
       const created = await (api.animals as any).create?.(payload);
@@ -10061,6 +9959,12 @@ export default function AppAnimals() {
       resetCreateForm();
       setCreateOpen(false);
     } catch (e: any) {
+      // Handle duplicate animal error - show warning UI instead of error
+      if (e?.status === 409 && e?.data?.error === "potential_duplicate") {
+        setDuplicateWarning({ duplicates: e.data.duplicates || [] });
+        setCreateErr(null);
+        return;
+      }
       setCreateErr(e?.message || "Failed to create animal");
     } finally {
       setCreateWorking(false);
@@ -10692,6 +10596,50 @@ export default function AppAnimals() {
                 />
               </div>
 
+              {duplicateWarning && duplicateWarning.duplicates.length > 0 && (
+                <div className="sm:col-span-2 rounded-md border border-amber-500 bg-amber-500/10 p-3">
+                  <div className="mb-2 text-sm font-medium text-amber-600">
+                    Potential Duplicate Detected
+                  </div>
+                  <div className="mb-2 text-xs text-secondary">
+                    An animal with the same name, species, and sex already exists:
+                  </div>
+                  <ul className="mb-3 space-y-1 text-xs text-secondary">
+                    {duplicateWarning.duplicates.map((dup) => (
+                      <li key={dup.id} className="flex items-center gap-2">
+                        <span className="font-medium text-primary">{dup.name}</span>
+                        <span>({dup.sex})</span>
+                        {dup.birthDate && (
+                          <span>DOB: {new Date(dup.birthDate).toLocaleDateString()}</span>
+                        )}
+                        {dup.microchip && (
+                          <span>Microchip: {dup.microchip}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDuplicateWarning(null)}
+                      disabled={createWorking}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
+                      onClick={() => doCreateAnimal(true)}
+                      disabled={createWorking}
+                    >
+                      {createWorking ? "Creating…" : "Create Anyway"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {createErr && (
                 <div className="sm:col-span-2 text-sm text-red-600">
                   {createErr}
@@ -10710,8 +10658,8 @@ export default function AppAnimals() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={doCreateAnimal}
-                  disabled={!canCreate || createWorking}
+                  onClick={() => doCreateAnimal(false)}
+                  disabled={!canCreate || createWorking || !!duplicateWarning}
                 >
                   {createWorking ? "Saving…" : "Save"}
                 </Button>

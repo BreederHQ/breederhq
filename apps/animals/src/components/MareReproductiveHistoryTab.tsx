@@ -363,7 +363,7 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
           <div className="grid grid-cols-3 gap-4">
             <div>
               <div className={labelClass}>Average Days</div>
-              <div className={valueClass}>{history.avgPostFoalingHeatDays.toFixed(1)}</div>
+              <div className={valueClass}>{history.avgPostFoalingHeatDays?.toFixed(1) ?? "—"}</div>
             </div>
             <div>
               <div className={labelClass}>Min Days</div>
@@ -376,7 +376,7 @@ export function MareReproductiveHistoryTab({ animal, mode, api }: MareReproducti
           </div>
           <div className="mt-3 text-xs text-secondary">
             Typical foal heat occurs 7-12 days after foaling. This mare averages{" "}
-            {history.avgPostFoalingHeatDays.toFixed(1)} days.
+            {history.avgPostFoalingHeatDays?.toFixed(1) ?? "—"} days.
           </div>
         </div>
       )}

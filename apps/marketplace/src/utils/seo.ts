@@ -1,6 +1,8 @@
 // apps/marketplace/src/utils/seo.ts
 // SEO utilities for dynamically updating meta tags, titles, and structured data
 
+import * as React from "react";
+
 interface SEOConfig {
   title: string;
   description: string;
@@ -318,7 +320,6 @@ export function useSEO(config: SEOConfig, structuredData?: Record<string, any>) 
   if (typeof window !== "undefined") {
     // Client-side only
     try {
-      const React = require("react");
       React.useEffect(() => {
         updateSEO(config);
         if (structuredData) {

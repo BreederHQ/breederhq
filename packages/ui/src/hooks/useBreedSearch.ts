@@ -12,12 +12,11 @@ function normBase(): string {
 let __tenantResolving: Promise<number> | null = null;
 
 async function ensureTenantId(baseUrl: string): Promise<number> {
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
   try {
     const w: any = window as any;
     const rt = Number(w?.__BHQ_TENANT_ID__);
-    const ls = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const t = Number.isInteger(rt) && rt > 0 ? rt : (Number.isInteger(ls) && ls > 0 ? ls : NaN);
-    if (Number.isInteger(t) && t > 0) return t;
+    if (Number.isInteger(rt) && rt > 0) return rt;
   } catch {}
   if (!__tenantResolving) {
     __tenantResolving = fetch(`${baseUrl}/session`, { credentials: "include" })
@@ -25,7 +24,8 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
       .then((data: any) => {
         const t = Number(data?.tenantId ?? data?.tenant_id ?? data?.tenant?.id);
         if (t && typeof window !== "undefined") {
-          try { (window as any).__BHQ_TENANT_ID__ = t; localStorage.setItem("BHQ_TENANT_ID", String(t)); } catch {}
+          // Only set runtime global (skip localStorage to avoid cross-user contamination)
+          try { (window as any).__BHQ_TENANT_ID__ = t; } catch {}
         }
         return t || 0;
       });

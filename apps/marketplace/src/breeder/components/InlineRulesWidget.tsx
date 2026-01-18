@@ -16,11 +16,12 @@ import {
   type CreateRuleParams,
 } from "../../api/client";
 
-// Helper to get tenant ID from window/localStorage
+// Helper to get tenant ID from window global
+// Note: We intentionally skip localStorage to avoid cross-user contamination
 function getTenantId(): string {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    return w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || "";
+    return w.__BHQ_TENANT_ID__ || "";
   } catch {
     return "";
   }

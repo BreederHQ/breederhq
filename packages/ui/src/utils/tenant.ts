@@ -107,14 +107,18 @@ export async function resolveTenantId(opts: ResolveOpts = {}): Promise<number> {
   const baseUrl = opts.baseUrl ?? "/api/v1";
   const fetchFn = opts.fetchFn ?? fetch;
 
-  // Fast path (cookie/window)
+  // Fast path (cookie/window globals only - no localStorage to avoid cross-user leakage)
   const fast = readTenantIdFast();
   if (fast) {
     _tenantCache = fast;
+    // Sync to runtime global for other modules
+    if (typeof window !== "undefined") {
+      (window as any).__BHQ_TENANT_ID__ = fast;
+    }
     return fast;
   }
 
-  // Cached result
+  // Cached result (in-memory only, cleared on page reload)
   if (!opts.noCache && _tenantCache) return _tenantCache;
 
   // De-dupe concurrent callers

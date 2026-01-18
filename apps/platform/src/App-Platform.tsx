@@ -49,7 +49,7 @@ type TenantMembership = {
 };
 
 type AuthState = {
-  user?: { id: string; email?: string | null; isSuperAdmin?: boolean } | null;
+  user?: { id: string; email?: string | null; firstName?: string | null; lastName?: string | null; isSuperAdmin?: boolean } | null;
   tenant?: { id: number; name: string; slug: string | null; isDemoTenant?: boolean; demoResetType?: string | null } | null;
   org?: { id: number; name?: string | null } | null;
   memberships?: TenantMembership[];
@@ -222,22 +222,27 @@ export default function AppPlatform() {
     }
   }, [computedOrgId]);
 
-  // Bootstrap tenant
+  // Bootstrap tenant from session (authoritative source)
   useEffect(() => {
     if (loading) return;
     let cancelled = false;
 
     (async () => {
       try {
-        const t = await resolveTenantId({ baseUrl: "/api/v1" });
-        if (cancelled) return;
-        (window as any).__BHQ_TENANT_ID__ = t;
-        try { localStorage.setItem("BHQ_TENANT_ID", String(t)); } catch { /* ignore */ }
+        // Use the tenant from the session response if available
+        const sessionTenant = auth?.tenant?.id;
+        if (sessionTenant && Number.isFinite(sessionTenant) && sessionTenant > 0) {
+          (window as any).__BHQ_TENANT_ID__ = sessionTenant;
+        } else {
+          // Fall back to resolveTenantId which will fetch from session API
+          const t = await resolveTenantId({ baseUrl: "/api/v1" });
+          if (cancelled) return;
+          (window as any).__BHQ_TENANT_ID__ = t;
+        }
       } catch (e) {
         const envTid = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
         if (Number.isFinite(envTid) && envTid > 0) {
           (window as any).__BHQ_TENANT_ID__ = envTid;
-          try { localStorage.setItem("BHQ_TENANT_ID", String(envTid)); } catch { /* ignore */ }
         } else {
           console.warn("[platform] tenant could not be resolved; x-tenant-id may be missing", e);
         }
@@ -247,7 +252,7 @@ export default function AppPlatform() {
     })();
 
     return () => { cancelled = true; };
-  }, [loading]);
+  }, [loading, auth?.tenant?.id]);
 
   // Fetch unread message count and pending waitlist count
   useEffect(() => {
@@ -422,15 +427,15 @@ export default function AppPlatform() {
         ? String(auth.org.name).trim()
         : "Organization";
 
-  // Transform memberships for AccountMenu (filter out nulls)
+  // Transform memberships for AccountMenu (filter out entries without a name)
   const menuMemberships = (auth?.memberships ?? [])
-    .filter((m): m is TenantMembership & { tenantName: string; tenantSlug: string } =>
-      m.tenantName !== null && m.tenantSlug !== null
+    .filter((m): m is TenantMembership & { tenantName: string } =>
+      m.tenantName !== null
     )
     .map((m) => ({
       tenantId: m.tenantId,
       tenantName: m.tenantName,
-      tenantSlug: m.tenantSlug,
+      tenantSlug: m.tenantSlug ?? "",
       role: m.role ?? "member",
     }));
 
@@ -449,11 +454,14 @@ export default function AppPlatform() {
       });
 
       if (res.ok) {
-        // Clear caches and reload to pick up new tenant context
+        // Clear any stale cached values before reload
+        // The new tenant will be read from the session cookie after reload
         try { localStorage.removeItem("BHQ_TENANT_ID"); } catch { /* ignore */ }
         try { localStorage.removeItem("BHQ_ORG_ID"); } catch { /* ignore */ }
         (window as any).__BHQ_TENANT_ID__ = undefined;
         (window as any).__BHQ_ORG_ID__ = undefined;
+
+        // Force full page reload to reset all module state
         window.location.href = "/";
       } else {
         console.error("Failed to switch tenant:", await res.text());
@@ -530,6 +538,11 @@ export default function AppPlatform() {
             isSuperAdmin={auth?.user?.isSuperAdmin}
             isDemoTenant={auth?.tenant?.isDemoTenant}
             onDemoReset={handleDemoReset}
+            user={auth?.user ? {
+              email: auth.user.email ?? null,
+              firstName: auth.user.firstName ?? null,
+              lastName: auth.user.lastName ?? null,
+            } : null}
             onSettingsClick={() => setSettingsOpen(true)}
             onMessagesClick={() => window.location.assign("/marketing/messages")}
             unreadMessagesCount={unreadCount}

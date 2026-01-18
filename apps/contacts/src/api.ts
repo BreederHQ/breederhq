@@ -112,13 +112,10 @@ export function getTenantHeaders(): Record<string, string> {
   const fromBhqObj = Number(w?.__bhq?.tenantId);
   const fromLegacyGlobal = Number(w?.__BHQ_TENANT_ID__);
 
-  // 4) LocalStorage + .env fallback for dev
-  const fromLS = (() => {
-    try { const n = Number(localStorage.getItem("BHQ_TENANT_ID") || ""); return Number.isInteger(n) ? n : undefined; } catch { return undefined; }
-  })();
+  // 4) .env fallback for dev (skip localStorage to avoid cross-user contamination)
   const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
 
-  const tenantId = firstValidInt(fast, fromSessionCookie, fromBhqObj, fromLegacyGlobal, fromLS, fromEnv);
+  const tenantId = firstValidInt(fast, fromSessionCookie, fromBhqObj, fromLegacyGlobal, fromEnv);
 
   if (!tenantId) {
     // one-time noisy log so you can see why the header is missing
@@ -128,7 +125,6 @@ export function getTenantHeaders(): Record<string, string> {
       fromSessionCookie,
       fromBhqObj,
       fromLegacyGlobal,
-      fromLS,
       fromEnv,
       cookie_surface_present: !!document.cookie.match(new RegExp(`(?:^|; )${surfaceCookie}=`)),
       cookie_legacy_present: !!document.cookie.match(/(?:^|; )bhq_s=/),

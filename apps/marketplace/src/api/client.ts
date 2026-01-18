@@ -14,8 +14,6 @@ import type {
   PublicDirectListingDTO,
 } from "./types";
 
-export type { GetAnimalProgramsParams };
-
 /**
  * API client utilities for marketplace.
  */
@@ -1710,7 +1708,9 @@ export interface PublicServiceListing {
   id: number;
   slug: string | null;
   listingType: ServiceListingType;
+  type?: string;
   title: string;
+  summary?: string | null;
   description: string | null;
   customServiceType: string | null; // For OTHER_SERVICE - custom service type name
   tags: ServiceTag[]; // Associated service tags
@@ -1719,6 +1719,8 @@ export interface PublicServiceListing {
   country: string | null;
   priceCents: number | null;
   priceType: "fixed" | "starting_at" | "contact" | null;
+  priceDisplay?: string | null;
+  coverImageUrl?: string | null;
   images: string[] | null;
   publishedAt: string | null;
   provider: {
@@ -1740,6 +1742,7 @@ export interface PublicServicesResponse {
 }
 
 export interface GetPublicServicesParams {
+  tenantId?: string;
   type?: string;
   search?: string;
   city?: string;
@@ -2425,6 +2428,8 @@ export interface BreederOffspringIndividual {
   keeperIntent: OffspringKeeperIntent;
   marketplaceListed: boolean;
   marketplacePriceCents: number | null;
+  priceCents: number | null;
+  headlineOverride: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2448,6 +2453,7 @@ export interface BreederOffspringGroupItem {
   // Species/breed inferred
   species: string;
   breed: string | null;
+  breedText: string | null;
   // Marketplace fields
   listingTitle: string | null;
   listingDescription: string | null;
@@ -3245,7 +3251,14 @@ export interface MarketplaceProfileDraft {
     requireApplication?: boolean;
     requireInterview?: boolean;
     requireContract?: boolean;
+    requireDeposit?: boolean;
+    requireReservationFee?: boolean;
+    depositRefundable?: boolean;
+    requireHomeVisit?: boolean;
+    requireVetReference?: boolean;
+    requireSpayNeuter?: boolean;
     hasReturnPolicy?: boolean;
+    lifetimeTakeBack?: boolean;
     offersSupport?: boolean;
     note?: string | null;
     showPolicies?: boolean;
@@ -3398,6 +3411,193 @@ export async function unpublishMarketplaceProfile(
 
   const data = await safeReadJson<{ ok: boolean }>(response);
   return data || { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// V2 MARKETPLACE - TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Template types for V2 marketplace listings and programs.
+ */
+export type TemplateType =
+  | "STUD_SERVICES"
+  | "GUARDIAN"
+  | "TRAINED"
+  | "REHOME"
+  | "CO_OWNERSHIP"
+  | "CUSTOM";
+
+/**
+ * Status for direct animal listings.
+ */
+export type DirectListingStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "SOLD" | "ARCHIVED";
+
+/**
+ * Participant in an animal program.
+ */
+export interface AnimalProgramParticipant {
+  id: number;
+  animalId: number;
+  name: string;
+  photoUrl: string | null;
+  species: string;
+  breed: string | null;
+  sex: string | null;
+  birthDate: string | null;
+  headlineOverride: string | null;
+  descriptionOverride: string | null;
+  priceModel: string | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  featured: boolean;
+  // Joined animal data
+  animal?: {
+    id: number;
+    name: string;
+    photoUrl: string | null;
+  } | null;
+  listed: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Direct Animal Listing - V2 individual animal listing for breeder management.
+ */
+export interface DirectAnimalListing {
+  id: number;
+  tenantId: number;
+  animalId: number;
+  slug: string;
+  templateType: TemplateType;
+  status: DirectListingStatus;
+  headline: string | null;
+  title: string | null;
+  summary: string | null;
+  description: string | null;
+  priceModel: "fixed" | "range" | "inquire";
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  locationCountry: string | null;
+  programContent: Record<string, unknown> | null;
+  dataDrawerConfig: DataDrawerConfig | null;
+  acceptInquiries: boolean;
+  listed: boolean;
+  viewCount: number;
+  inquiryCount: number;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Joined animal data
+  animal?: {
+    id: number;
+    name: string;
+    photoUrl: string | null;
+    species: string;
+    breed: string | null;
+    sex: string | null;
+    birthDate: string | null;
+  } | null;
+}
+
+/**
+ * Input for creating or updating a direct animal listing.
+ */
+export interface DirectAnimalListingCreate {
+  id?: number;
+  animalId: number;
+  slug?: string;
+  templateType?: TemplateType;
+  status?: DirectListingStatus;
+  headline?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  priceModel?: "fixed" | "range" | "inquire";
+  priceCents?: number | null;
+  priceMinCents?: number | null;
+  priceMaxCents?: number | null;
+  locationCity?: string | null;
+  locationRegion?: string | null;
+  locationCountry?: string | null;
+  programContent?: Record<string, unknown> | null;
+  listingContent?: Record<string, unknown> | null;
+  dataDrawerConfig?: DataDrawerConfig | null;
+  acceptInquiries?: boolean;
+  listed?: boolean;
+}
+
+/**
+ * Animal Program - V2 grouped animal program for breeder management.
+ */
+export interface AnimalProgram {
+  id: number;
+  tenantId: number;
+  slug: string;
+  name: string;
+  headline: string | null;
+  description: string | null;
+  templateType: TemplateType;
+  coverImageUrl: string | null;
+  priceModel: "fixed" | "range" | "inquire";
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  // Default pricing (alternative naming for backward compat)
+  defaultPriceModel?: "fixed" | "range" | "inquire";
+  defaultPriceCents?: number | null;
+  defaultPriceMinCents?: number | null;
+  defaultPriceMaxCents?: number | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  programContent: Record<string, unknown> | null;
+  dataDrawerConfig: DataDrawerConfig | null;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  published: boolean;
+  viewCount: number;
+  inquiryCount: number;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  participants: AnimalProgramParticipant[];
+}
+
+/**
+ * Input for creating or updating an animal program.
+ */
+export interface AnimalProgramCreate {
+  id?: number;
+  slug?: string;
+  name: string;
+  headline?: string | null;
+  description?: string | null;
+  templateType: TemplateType;
+  coverImageUrl?: string | null;
+  priceModel?: "fixed" | "range" | "inquire";
+  priceCents?: number | null;
+  priceMinCents?: number | null;
+  priceMaxCents?: number | null;
+  // Default pricing fields (alternative naming)
+  defaultPriceModel?: "fixed" | "range" | "inquire";
+  defaultPriceCents?: number | null;
+  defaultPriceMinCents?: number | null;
+  defaultPriceMaxCents?: number | null;
+  locationCity?: string | null;
+  locationRegion?: string | null;
+  programContent?: Record<string, unknown> | null;
+  dataDrawerConfig?: DataDrawerConfig | null;
+  acceptInquiries?: boolean;
+  openWaitlist?: boolean;
+  published?: boolean;
+  listed?: boolean;
+  selectedAnimalIds?: number[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3841,6 +4041,10 @@ export async function removeAnimalFromProgram(
   return data || { success: true };
 }
 
+// Alias exports for backward compatibility
+export const addProgramParticipant = addAnimalsToProgram;
+export const removeProgramParticipant = removeAnimalFromProgram;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TENANT ANIMALS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3899,6 +4103,8 @@ export async function getTenantAnimals(
 export interface DataDrawerConfig {
   // Note: Identity (name, photo, DOB) is always included based on animal-level privacy settings
   // The Data Drawer controls only optional data sections
+  // Index signature for dynamic section key access
+  [key: string]: { enabled: boolean; [k: string]: unknown } | undefined;
   registry?: {
     enabled: boolean;
     registryIds?: number[];
@@ -4047,6 +4253,7 @@ export interface DocumentItem {
   id: number;
   kind: string;
   filename: string;
+  title?: string | null;
 }
 
 /**
@@ -4604,7 +4811,7 @@ export async function getServiceAnalytics(
 // BREEDING PROGRAM RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type BreedingRuleLevel = 'PROGRAM' | 'PLAN' | 'GROUP' | 'OFFSPRING';
+export type BreedingRuleLevel = 'TENANT' | 'PROGRAM' | 'PLAN' | 'GROUP' | 'OFFSPRING';
 export type BreedingRuleCategory = 'LISTING' | 'PRICING' | 'VISIBILITY' | 'BUYER_INTERACTION' | 'STATUS' | 'NOTIFICATIONS';
 
 export interface BreedingProgramRule {

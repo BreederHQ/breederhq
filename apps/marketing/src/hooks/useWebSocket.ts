@@ -18,10 +18,11 @@ interface UseWebSocketOptions {
 
 /**
  * Get tenant ID from platform context
+ * Note: We intentionally skip localStorage to avoid cross-user contamination
  */
 function getTenantId(): number | null {
   const w = window as any;
-  const tenantId = w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+  const tenantId = w.__BHQ_TENANT_ID__;
   return tenantId ? Number(tenantId) : null;
 }
 

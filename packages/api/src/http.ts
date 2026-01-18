@@ -32,13 +32,10 @@ function getOrgId(): string | null {
 }
 
 function getTenantId(): string | null {
+  // Note: We intentionally skip localStorage to avoid cross-user contamination
   const w = (window as any) || {};
   const fromWin = w.__BHQ_TENANT_ID__;
   if (fromWin != null && String(fromWin).trim() !== "") return String(fromWin);
-  try {
-    const ls = localStorage.getItem("BHQ_TENANT_ID");
-    if (ls && ls.trim() !== "") return ls;
-  } catch { }
   return null;
 }
 

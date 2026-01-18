@@ -3,7 +3,7 @@
 import { Link } from "react-router-dom";
 import { useSpeciesTerminology } from "@bhq/ui";
 import { SponsorDisclosure } from "./SponsorDisclosure";
-import { DefaultCoverImage } from "../shared/DefaultCoverImage";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 
 interface ProgramTileProps {
   slug: string;

@@ -33,13 +33,14 @@ import { GateContext, type GateContextValue } from "../gate/MarketplaceGate";
 const BASE_PATH = "/marketplace";
 
 /**
- * Get tenant ID from window global or localStorage.
+ * Get tenant ID from window global.
  * This is set by the Platform when it loads.
+ * Note: We intentionally skip localStorage to avoid cross-user contamination.
  */
 function getTenantId(): string | null {
   try {
     const w = typeof window !== "undefined" ? (window as any) : {};
-    const tenantId = w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+    const tenantId = w.__BHQ_TENANT_ID__;
     return tenantId ? String(tenantId) : null;
   } catch {
     return null;

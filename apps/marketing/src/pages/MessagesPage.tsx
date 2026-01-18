@@ -376,7 +376,8 @@ function BlockUserAction({ buyerPartyId, buyerName, marketplaceUserId }: BlockUs
 
     setLoading(true);
     const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
-    const tenantId = (window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+    // Note: We intentionally skip localStorage to avoid cross-user contamination
+    const tenantId = (window as any).__BHQ_TENANT_ID__;
 
     try {
       const res = await fetch("/api/v1/contacts/block-marketplace-user", {
@@ -570,7 +571,8 @@ function WaitlistAction({ buyerPartyId, buyerName, buyerEmail }: WaitlistActionP
     async function checkWaitlistStatus() {
       try {
         // Get tenant ID from platform context
-        const tenantId = (window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+        // Note: We intentionally skip localStorage to avoid cross-user contamination
+        const tenantId = (window as any).__BHQ_TENANT_ID__;
         if (!tenantId) {
           setCheckingStatus(false);
           return;
@@ -604,8 +606,9 @@ function WaitlistAction({ buyerPartyId, buyerName, buyerEmail }: WaitlistActionP
     setShowOptions(false);
 
     // Get CSRF token and tenant ID
+    // Note: We intentionally skip localStorage to avoid cross-user contamination
     const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
-    const tenantId = (window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+    const tenantId = (window as any).__BHQ_TENANT_ID__;
 
     if (!tenantId) {
       setToastMessage({ text: "Missing tenant context", type: "error" });

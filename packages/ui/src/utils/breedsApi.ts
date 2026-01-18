@@ -24,9 +24,9 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
   if (!__tenantResolving) {
     __tenantResolving = resolveTenantId({ baseUrl }).then((t) => {
       __tenantResolved = t;
+      // Only set runtime global (skip localStorage to avoid cross-user contamination)
       try {
         (window as any).__BHQ_TENANT_ID__ = t;
-        localStorage.setItem("BHQ_TENANT_ID", String(t));
       } catch {}
       return t;
     });
