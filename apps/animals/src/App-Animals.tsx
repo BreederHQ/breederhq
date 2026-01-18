@@ -80,10 +80,9 @@ import {
   CycleAlertBadge,
   calculateDaysUntilCycle,
   NextCycleHero,
-  OvulationDotPlot,
+  OvulationSummary,
   CollapsibleCycleHistory,
   CollapsibleOverride,
-  CycleAlerts,
   type CycleAnalysisResult,
 } from "./components/CycleAnalysis";
 import type { CycleHistoryEntry } from "./components/CycleAnalysis/types";
@@ -2121,40 +2120,18 @@ function CycleTab({
         </div>
       )}
 
-      {/* CYCLE ALERTS */}
-      {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.nextCycleProjection && (
-        <CycleAlerts
-          projection={cycleAnalysis.nextCycleProjection}
-          ovulationPattern={cycleAnalysis.ovulationPattern}
-        />
-      )}
-
-      {/* NEXT CYCLE PREDICTION */}
+      {/* NEXT CYCLE COUNTDOWN TILES */}
       {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.nextCycleProjection?.projectedHeatStart && (
-        <NextCycleHero
-          projection={cycleAnalysis.nextCycleProjection}
-          ovulationPattern={cycleAnalysis.ovulationPattern}
-          species={species}
-        />
+        <NextCycleHero projection={cycleAnalysis.nextCycleProjection} />
       )}
 
       {/* OVULATION PATTERN */}
       {cycleAnalysis && !cycleAnalysisLoading && cycleAnalysis.cycleHistory.length > 0 && (
-        <SectionCard title="Ovulation Pattern">
-          <OvulationDotPlot
-            cycles={cycleAnalysis.cycleHistory}
-            avgOffset={cycleAnalysis.ovulationPattern.avgOffsetDays}
-            speciesDefault={species === "DOG" ? 12 : species === "HORSE" ? 5 : 12}
-            species={species}
-            showAllOption
-          />
-          {cycleAnalysis.ovulationPattern.classification !== "Insufficient Data" && cycleAnalysis.ovulationPattern.guidance && (
-            <div className="mt-3 pt-3 border-t border-hairline flex items-start gap-2 text-sm">
-              <span className="text-emerald-500 font-medium">{cycleAnalysis.ovulationPattern.classification}:</span>
-              <span className="text-secondary">{cycleAnalysis.ovulationPattern.guidance}</span>
-            </div>
-          )}
-        </SectionCard>
+        <OvulationSummary
+          ovulationPattern={cycleAnalysis.ovulationPattern}
+          speciesDefault={species === "DOG" ? 12 : species === "HORSE" ? 5 : 12}
+          species={species}
+        />
       )}
 
       {/* DELETE CONFIRMATION MODAL */}

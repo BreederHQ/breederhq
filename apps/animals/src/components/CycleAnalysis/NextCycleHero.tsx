@@ -1,11 +1,7 @@
-import * as React from "react";
-import { Tooltip } from "@bhq/ui";
-import type { NextCycleProjection, OvulationPattern } from "./types";
+import type { NextCycleProjection } from "./types";
 
 type NextCycleHeroProps = {
   projection: NextCycleProjection;
-  ovulationPattern: OvulationPattern;
-  species: string;
 };
 
 function formatDate(iso: string | null): string {
@@ -42,18 +38,9 @@ function getCountdownLabel(days: number | null): { text: string; urgency: "norma
 
 export function NextCycleHero({
   projection,
-  ovulationPattern,
-  species,
 }: NextCycleHeroProps) {
   if (!projection || !projection.projectedHeatStart) {
-    return (
-      <div className="rounded-xl border border-hairline bg-surface p-6 text-center">
-        <div className="text-secondary mb-2">No cycle data available</div>
-        <p className="text-sm text-secondary">
-          Record heat start dates to see cycle predictions.
-        </p>
-      </div>
-    );
+    return null;
   }
 
   const daysToHeat = daysUntil(projection.projectedHeatStart);
@@ -62,32 +49,10 @@ export function NextCycleHero({
   const testingCountdown = getCountdownLabel(daysToTesting);
 
   return (
-    <div className="rounded-xl border border-hairline bg-gradient-to-br from-surface to-surface-strong p-5">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-primary">Next Projected Cycle</h3>
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${
-            projection.confidence === "HIGH" ? "bg-emerald-500" :
-            projection.confidence === "MEDIUM" ? "bg-blue-500" :
-            "bg-zinc-400"
-          }`} />
-          <span className="text-sm text-secondary">
-            {projection.confidence === "HIGH" ? "High Confidence" :
-             projection.confidence === "MEDIUM" ? "Medium Confidence" :
-             "Low Confidence"}
-            {ovulationPattern.classification !== "Insufficient Data" && ovulationPattern.sampleSize > 0 && (
-              <> - {ovulationPattern.confirmedCycles} of {ovulationPattern.sampleSize} cycles with ovulation data</>
-            )}
-          </span>
-        </div>
-      </div>
-
-      {/* Countdown Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Heat Expected */}
         <div
-          className="rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5"
+          className="rounded-xl p-4"
           style={{
             backgroundColor: "#1a1a1a",
             border: heatCountdown.urgency === "imminent" ? "1px solid rgba(245, 158, 11, 0.5)" :
@@ -130,7 +95,7 @@ export function NextCycleHero({
         {/* Start Testing */}
         {projection.recommendedTestingStart && (
           <div
-            className="rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5"
+            className="rounded-xl p-4"
             style={{
               backgroundColor: "#1a1a1a",
               border: testingCountdown.urgency === "imminent" ? "1px solid rgba(59, 130, 246, 0.5)" :
@@ -173,13 +138,13 @@ export function NextCycleHero({
         {/* Ovulation Window */}
         {projection.projectedOvulationWindow && (
           <div
-            className="rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5"
+            className="rounded-xl p-4"
             style={{
               backgroundColor: "#1a1a1a",
               border: "1px solid rgba(60, 60, 60, 0.5)",
             }}
           >
-            <div className="flex items-start justify-between mb-3">
+            <div className="mb-3">
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center"
                 style={{ backgroundColor: "rgba(34, 197, 94, 0.15)" }}
@@ -188,28 +153,6 @@ export function NextCycleHero({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              {ovulationPattern.guidance && ovulationPattern.classification !== "Insufficient Data" && (
-                <Tooltip
-                  side="left"
-                  content={
-                    <div className="flex items-start gap-2 max-w-xs">
-                      <svg className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-secondary">{ovulationPattern.guidance}</span>
-                    </div>
-                  }
-                >
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center cursor-help"
-                    style={{ backgroundColor: "rgba(59, 130, 246, 0.15)" }}
-                  >
-                    <svg className="w-3.5 h-3.5 animate-pulse" style={{ color: "#3b82f6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </Tooltip>
-              )}
             </div>
             <div className="text-xs uppercase tracking-wide mb-1" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Ovulation Window</div>
             <div className="text-xl font-bold" style={{ color: "#22c55e" }}>
@@ -220,7 +163,6 @@ export function NextCycleHero({
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }
