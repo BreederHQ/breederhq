@@ -9068,7 +9068,13 @@ export default function AppAnimals() {
 
       tabs: (r: AnimalRow) => {
         const tabs = [{ key: "overview", label: "Overview" } as const];
-        if ((r.sex || "").toLowerCase().startsWith("f")) {
+        // Cycle tracking only makes sense for spontaneous ovulators (dogs, horses, cattle, etc.)
+        // Induced ovulators (cats, rabbits, ferrets, etc.) ovulate in response to mating,
+        // so cycle prediction/tracking has no practical value for those species.
+        const INDUCED_OVULATORS = ["CAT", "RABBIT", "FERRET", "CAMEL", "LLAMA", "ALPACA"];
+        const species = (String(r.species || "DOG").toUpperCase());
+        const isSpontaneousOvulator = !INDUCED_OVULATORS.includes(species);
+        if ((r.sex || "").toLowerCase().startsWith("f") && isSpontaneousOvulator) {
           const cycleAlert = cycleAlerts[r.id];
           tabs.push({
             key: "cycle",

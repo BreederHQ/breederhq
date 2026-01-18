@@ -73,11 +73,11 @@ export function NextCycleHero({
             "bg-zinc-400"
           }`} />
           <span className="text-sm text-secondary">
-            {projection.confidence === "HIGH" ? "Hormone Tested" :
-             projection.confidence === "MEDIUM" ? "Back-calculated" :
-             "Estimated"}
-            {ovulationPattern.classification !== "Insufficient Data" && (
-              <> - {ovulationPattern.confirmedCycles} Cycle{ovulationPattern.confirmedCycles !== 1 ? "s" : ""}</>
+            {projection.confidence === "HIGH" ? "High Confidence" :
+             projection.confidence === "MEDIUM" ? "Medium Confidence" :
+             "Low Confidence"}
+            {ovulationPattern.classification !== "Insufficient Data" && ovulationPattern.sampleSize > 0 && (
+              <> - {ovulationPattern.confirmedCycles} of {ovulationPattern.sampleSize} cycles with ovulation data</>
             )}
           </span>
         </div>

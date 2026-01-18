@@ -1,4 +1,4 @@
-import { defineConfig, devices } from 'playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -42,24 +42,5 @@ export default defineConfig({
         headless: process.env.CI ? true : (process.env.HEADLESS === 'true'),
       },
     },
-
-    // Optional: test on multiple browsers
-    // Uncomment to enable Firefox and WebKit testing
-    // {
-    //   name: 'firefox',
-    //   use: { ...devices['Desktop Firefox'] },
-    // },
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
   ],
-
-  // Don't start dev server automatically - assume it's already running
-  // If you want Playwright to start the dev server, uncomment below:
-  // webServer: {
-  //   command: 'npm run dev',
-  //   port: 5173,
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });

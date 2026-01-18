@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Tooltip } from "@bhq/ui";
-import type { CycleHistoryEntry, ConfidenceLevel } from "./types";
+import type { CycleHistoryEntry, ConfidenceLevel, DataSource } from "./types";
 
 type OvulationDotPlotProps = {
   cycles: CycleHistoryEntry[];
@@ -15,10 +15,18 @@ function formatMonth(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 }
 
-const CONFIDENCE_STYLES: Record<ConfidenceLevel, { fill: string; ring: string; label: string }> = {
-  HIGH: { fill: "bg-emerald-500", ring: "ring-emerald-500/30", label: "Hormone-tested" },
-  MEDIUM: { fill: "bg-blue-500", ring: "ring-blue-500/30", label: "Back-calculated" },
-  LOW: { fill: "bg-zinc-500", ring: "ring-zinc-500/30", label: "Estimated" },
+// Confidence determines fill opacity/style
+const CONFIDENCE_STYLES: Record<ConfidenceLevel, { opacity: string; label: string }> = {
+  HIGH: { opacity: "opacity-100", label: "High" },
+  MEDIUM: { opacity: "opacity-70", label: "Medium" },
+  LOW: { opacity: "opacity-40", label: "Low" },
+};
+
+// Data source determines border color
+const SOURCE_STYLES: Record<DataSource, { border: string; label: string }> = {
+  HORMONE_TEST: { border: "ring-emerald-500", label: "Tested" },
+  BIRTH_CALCULATED: { border: "ring-blue-500", label: "From birth" },
+  ESTIMATED: { border: "ring-zinc-400", label: "Estimated" },
 };
 
 export function OvulationDotPlot({
@@ -73,7 +81,8 @@ export function OvulationDotPlot({
         {/* Y-axis labels and dots */}
         <div className="space-y-3">
           {visibleCycles.map((cycle, idx) => {
-            const style = CONFIDENCE_STYLES[cycle.confidence];
+            const confStyle = CONFIDENCE_STYLES[cycle.confidence];
+            const srcStyle = SOURCE_STYLES[cycle.source];
             const position = getPosition(cycle.offsetDays!);
 
             return (
@@ -108,7 +117,7 @@ export function OvulationDotPlot({
                       <div className="text-xs">
                         <div className="font-medium">{formatMonth(cycle.cycleStart)}</div>
                         <div>Day {cycle.offsetDays} ovulation</div>
-                        <div className="text-secondary">{style.label}</div>
+                        <div className="text-secondary">{srcStyle.label} • {confStyle.label} confidence</div>
                         {cycle.variance !== null && cycle.variance !== 0 && (
                           <div className={cycle.variance > 0 ? "text-amber-400" : "text-emerald-400"}>
                             {cycle.variance > 0 ? "+" : ""}{cycle.variance} from avg
@@ -118,11 +127,11 @@ export function OvulationDotPlot({
                     }
                   >
                     <div
-                      className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${style.fill} ring-2 ${style.ring} cursor-pointer transition-all hover:scale-125 hover:ring-4 focus:scale-125 focus:ring-4 focus:outline-none z-20`}
+                      className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white ${confStyle.opacity} ring-2 ${srcStyle.border} cursor-pointer transition-all hover:scale-125 hover:ring-4 focus:scale-125 focus:ring-4 focus:outline-none z-20`}
                       style={{ left: `calc(${position}% - 8px)` }}
                       tabIndex={0}
                       role="button"
-                      aria-label={`${formatMonth(cycle.cycleStart)}: Day ${cycle.offsetDays} ovulation, ${style.label}${cycle.variance !== null && cycle.variance !== 0 ? `, ${cycle.variance > 0 ? "+" : ""}${cycle.variance} from average` : ""}`}
+                      aria-label={`${formatMonth(cycle.cycleStart)}: Day ${cycle.offsetDays} ovulation, ${srcStyle.label}, ${confStyle.label} confidence${cycle.variance !== null && cycle.variance !== 0 ? `, ${cycle.variance > 0 ? "+" : ""}${cycle.variance} from average` : ""}`}
                     />
                   </Tooltip>
 
@@ -169,23 +178,42 @@ export function OvulationDotPlot({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-secondary pt-2">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-emerald-500" />
-          <span>Hormone-tested</span>
+      {/* Legend - Data Source (border color) */}
+      <div className="space-y-2 pt-2">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-secondary">
+          <span className="font-medium text-primary/70">Source:</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white ring-2 ring-emerald-500" />
+            <span>Tested</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white ring-2 ring-blue-500" />
+            <span>From birth</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white ring-2 ring-zinc-400" />
+            <span>Estimated</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-blue-500" />
-          <span>Back-calculated</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-zinc-500" />
-          <span>Estimated</span>
-        </div>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <div className="w-4 h-px bg-zinc-600" />
-          <span>Breed average (Day {speciesDefault})</span>
+        {/* Legend - Confidence (fill opacity) */}
+        <div className="flex flex-wrap items-center gap-4 text-xs text-secondary">
+          <span className="font-medium text-primary/70">Confidence:</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white opacity-100 ring-2 ring-zinc-500" />
+            <span>High</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white opacity-70 ring-2 ring-zinc-500" />
+            <span>Medium</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white opacity-40 ring-2 ring-zinc-500" />
+            <span>Low</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <div className="w-4 h-px bg-zinc-600" />
+            <span>Breed average (Day {speciesDefault})</span>
+          </div>
         </div>
       </div>
 
