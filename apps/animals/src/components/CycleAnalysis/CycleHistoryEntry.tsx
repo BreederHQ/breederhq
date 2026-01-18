@@ -82,7 +82,7 @@ export function CycleHistoryEntry({
               </svg>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wide" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Heat Start</div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Cycle Start</div>
               <div className="font-semibold text-white">{formatDate(cycle.cycleStart)}</div>
             </div>
           </div>

@@ -25,3 +25,6 @@ export * from "./useViewMode";
 // Species Terminology System (STS)
 export { useSpeciesTerminology } from "./useSpeciesTerminology";
 export type { UseSpeciesTerminologyReturn } from "./useSpeciesTerminology";
+
+// Tab preferences
+export * from "./useTabPreferences";

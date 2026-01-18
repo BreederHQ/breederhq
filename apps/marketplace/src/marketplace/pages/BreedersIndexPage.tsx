@@ -656,9 +656,9 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
 
   return (
     <Link to={`/breeders/${breeder.tenantSlug}`} className="block group">
-      <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
+      <div className="flex flex-col min-h-[240px] rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
         {/* Image area - using logo or default */}
-        <div className="relative aspect-video bg-border-default overflow-hidden">
+        <div className="relative aspect-[4/3] bg-border-default overflow-hidden">
           {breeder.logoAssetId ? (
             <img
               src={`/api/assets/${breeder.logoAssetId}`}
@@ -682,20 +682,20 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
         </div>
 
         {/* Content area */}
-        <div className="p-4">
+        <div className="p-4 flex flex-col flex-grow">
           {/* Breeder name */}
-          <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-1">
+          <h3 className="text-[15px] font-semibold text-white leading-snug line-clamp-2 group-hover:text-[hsl(var(--brand-orange))] transition-colors">
             {breeder.businessName}
           </h3>
 
           {/* Location */}
           {showLocation && (
-            <p className="text-[13px] text-text-tertiary mb-3">{breeder.location}</p>
+            <p className="text-[12px] text-text-tertiary mt-1">{breeder.location}</p>
           )}
 
           {/* Breeds */}
           {visibleBreeds.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-wrap gap-1.5 mt-2">
               {visibleBreeds.map((breed, i) => (
                 <span
                   key={i}
@@ -712,8 +712,8 @@ function BreederCard({ breeder, lightMode = false }: { breeder: BreederSummary; 
             </div>
           )}
 
-          {/* Footer - availability or CTA */}
-          <div className="flex items-center justify-between text-sm">
+          {/* Footer - pushed to bottom with mt-auto */}
+          <div className="mt-auto pt-3 flex items-center justify-between text-sm">
             {breeder.availabilityStatus?.availableNowCount > 0 ? (
               <span className="text-[13px] text-green-400 font-medium">
                 {breeder.availabilityStatus.availableNowCount} Available

@@ -1286,7 +1286,7 @@ function confirmModal(
     const r = createRoot(host);
     r.render(
       <div className="fixed inset-0 z-[2147483647]">
-        <div className="absolute inset-0 bg-black/50" onClick={() => close(false)} />
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => close(false)} />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="relative w-[420px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
             <div className="text-base font-semibold mb-2">{title}</div>
@@ -9467,7 +9467,7 @@ function PlanDetailsView(props: {
                                   className={`w-full h-10 rounded-lg px-3 text-sm text-primary bg-[#3d3d3d] focus:outline-none focus:ring-2 ${
                                     hasCycleSelected
                                       ? "border-2 border-green-500 focus:ring-green-500/50"
-                                      : "border-0 focus:ring-[hsl(var(--brand-orange))]/50"
+                                      : "border-2 border-amber-500 focus:ring-amber-500/50"
                                   }`}
                                   value={pendingCycle ?? ""}
                                   onChange={(e) => {
@@ -9545,102 +9545,98 @@ function PlanDetailsView(props: {
             </SectionCard>
             )}
 
-            {/* Upgrade to Ovulation Section - shows when cycle is locked and species supports upgrade */}
-            {isLocked && supportsOvulationUpgrade(effective.species) && effective.reproAnchorMode !== "OVULATION" && statusU !== "BIRTHED" && statusU !== "WEANED" && statusU !== "PLACEMENT_STARTED" && statusU !== "PLACEMENT_COMPLETED" && statusU !== "COMPLETE" && (
-              <SectionCard
-                title={<span className="text-purple-400">Upgrade to Ovulation Anchor</span>}
-                highlight={isEdit}
-              >
-                <div className="space-y-3">
-                  <div className="text-sm text-secondary">
-                    You can upgrade this plan from {getCycleLabel(effective.species, true)} anchor to Ovulation anchor for improved accuracy.
-                    {effective.species === "Dog" && " Birth date accuracy improves from ±2-3 days to ±1 day."}
-                    {effective.species === "Horse" && " Foaling date accuracy improves from ±5-7 days to ±3 days."}
-                  </div>
-                  <div className="text-xs text-secondary">
-                    {getOvulationGuidance(effective.species)}
-                  </div>
-                  {isEdit ? (
-                    showOvulationUpgradeDialog ? (
-                      <div className="space-y-3 p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Ovulation Date</div>
-                            <DatePicker
-                              value={pendingOvulationDate}
-                              defaultDate={effective.lockedOvulationDate ?? undefined}
-                              onChange={(e) => setPendingOvulationDate(e.currentTarget.value)}
-                              className="w-full"
-                              inputClassName={dateInputCls}
-                              placeholder="mm/dd/yyyy"
-                            />
-                          </div>
-                          <div>
-                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Confirmation Method</div>
-                            <select
-                              value={pendingOvulationMethod}
-                              onChange={(e) => setPendingOvulationMethod(e.target.value)}
-                              className="w-full h-9 px-3 rounded-md border border-hairline bg-surface text-sm"
-                            >
-                              <option value="">Select method...</option>
-                              {getOvulationConfirmationMethods(effective.species).map((method) => (
-                                <option key={method} value={method.toUpperCase().replace(/\s+/g, "_")}>
-                                  {method}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+            {/* Upgrade to Ovulation Section - shows when cycle is locked, past PLANNING phase, and species supports upgrade */}
+            {isLocked && supportsOvulationUpgrade(effective.species) && effective.reproAnchorMode !== "OVULATION" && statusU !== "PLANNING" && statusU !== "BIRTHED" && statusU !== "WEANED" && statusU !== "PLACEMENT_STARTED" && statusU !== "PLACEMENT_COMPLETED" && statusU !== "COMPLETE" && (
+              <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
+                <div className="text-sm font-medium text-purple-400">Upgrade to Ovulation Anchor</div>
+                <div className="text-sm text-secondary">
+                  You can upgrade this plan from {getCycleLabel(effective.species, true)} anchor to Ovulation anchor for improved accuracy.
+                  {effective.species === "Dog" && " Birth date accuracy improves from ±2-3 days to ±1 day."}
+                  {effective.species === "Horse" && " Foaling date accuracy improves from ±5-7 days to ±3 days."}
+                </div>
+                <div className="text-xs text-secondary">
+                  {getOvulationGuidance(effective.species)}
+                </div>
+                {isEdit ? (
+                  showOvulationUpgradeDialog ? (
+                    <div className="space-y-3 p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Ovulation Date</div>
+                          <DatePicker
+                            value={pendingOvulationDate}
+                            defaultDate={effective.lockedOvulationDate ?? undefined}
+                            onChange={(e) => setPendingOvulationDate(e.currentTarget.value)}
+                            className="w-full"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="default"
-                            size="sm"
-                            disabled={!pendingOvulationDate || !pendingOvulationMethod}
-                            className="bg-purple-600 hover:bg-purple-500"
-                            onClick={async () => {
-                              await upgradeToOvulation(pendingOvulationDate, pendingOvulationMethod);
-                              setShowOvulationUpgradeDialog(false);
-                              setPendingOvulationDate("");
-                              setPendingOvulationMethod("");
-                            }}
+                        <div>
+                          <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Confirmation Method</div>
+                          <select
+                            value={pendingOvulationMethod}
+                            onChange={(e) => setPendingOvulationMethod(e.target.value)}
+                            className="w-full h-9 px-3 rounded-md border border-hairline bg-surface text-sm"
                           >
-                            Confirm Upgrade
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setShowOvulationUpgradeDialog(false);
-                              setPendingOvulationDate("");
-                              setPendingOvulationMethod("");
-                            }}
-                          >
-                            Cancel
-                          </Button>
+                            <option value="">Select method...</option>
+                            {getOvulationConfirmationMethods(effective.species).map((method) => (
+                              <option key={method} value={method.toUpperCase().replace(/\s+/g, "_")}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          disabled={!pendingOvulationDate || !pendingOvulationMethod}
+                          className="bg-purple-600 hover:bg-purple-500"
+                          onClick={async () => {
+                            await upgradeToOvulation(pendingOvulationDate, pendingOvulationMethod);
+                            setShowOvulationUpgradeDialog(false);
+                            setPendingOvulationDate("");
+                            setPendingOvulationMethod("");
+                          }}
+                        >
+                          Confirm Upgrade
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
-                          onClick={() => setShowOvulationUpgradeDialog(true)}
+                          onClick={() => {
+                            setShowOvulationUpgradeDialog(false);
+                            setPendingOvulationDate("");
+                            setPendingOvulationMethod("");
+                          }}
                         >
-                          Upgrade to Ovulation
+                          Cancel
                         </Button>
-                        <span className="text-xs text-secondary">
-                          or enter ovulation date directly in the Actual Dates section below
-                        </span>
                       </div>
-                    )
-                  ) : (
-                    <div className="text-xs text-amber-400">
-                      Enter edit mode to upgrade to ovulation anchor.
                     </div>
-                  )}
-                </div>
-              </SectionCard>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+                        onClick={() => setShowOvulationUpgradeDialog(true)}
+                      >
+                        Upgrade to Ovulation
+                      </Button>
+                      <span className="text-xs text-secondary">
+                        or enter ovulation date directly in the Actual Dates section below
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-xs text-amber-400">
+                    Enter edit mode to upgrade to ovulation anchor.
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Glow pulse animation for lock button */}

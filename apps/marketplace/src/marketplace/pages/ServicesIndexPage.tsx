@@ -505,9 +505,9 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
   const imageUrl = service.images?.[0] ?? null;
 
   return (
-    <div className="group rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
-      {/* Image area - video aspect ratio to match other cards */}
-      <div className="relative aspect-video overflow-hidden flex-shrink-0">
+    <div className="group flex flex-col min-h-[240px] rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
+      {/* Image area - 4:3 aspect ratio to match other cards */}
+      <div className="relative aspect-[4/3] overflow-hidden flex-shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -526,42 +526,47 @@ function ServiceCard({ service, lightMode = false }: { service: PublicServiceLis
       </div>
 
       {/* Content area */}
-      <div className="p-4">
+      <div className="p-4 flex flex-col flex-grow">
         {/* Service title */}
-        <h3 className="text-[15px] font-semibold text-white mb-1 group-hover:text-[hsl(var(--brand-orange))] transition-colors line-clamp-2">
+        <h3 className="text-[15px] font-semibold text-white leading-snug line-clamp-2 group-hover:text-[hsl(var(--brand-orange))] transition-colors">
           {service.title}
         </h3>
 
         {/* Description */}
         {service.description && (
-          <p className="text-sm text-text-secondary mb-3 flex-grow line-clamp-2">
+          <p className="text-[12px] text-text-secondary mt-1 line-clamp-2">
             {service.description}
           </p>
         )}
 
         {/* Provider and location */}
-        <div className="text-[13px] text-text-tertiary mb-3">
-          {service.provider && (
-            <div className="font-medium text-text-secondary">
-              {service.provider.name}
-            </div>
-          )}
-          {location && <div>{location}</div>}
-        </div>
+        {service.provider && (
+          <p className="text-[12px] text-text-tertiary mt-1">
+            {service.provider.name}
+          </p>
+        )}
 
-        {/* Price and CTA */}
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[15px] text-[hsl(var(--brand-orange))] font-semibold">
-            {priceText}
-          </span>
-          {providerLink && (
-            <Link
-              to={providerLink}
-              className="text-[13px] text-text-secondary hover:text-white transition-colors"
-            >
-              View provider
-            </Link>
+        {/* Bottom section - pushed to bottom with mt-auto */}
+        <div className="mt-auto pt-3 space-y-2">
+          {/* Location */}
+          {location && (
+            <div className="text-[12px] text-text-tertiary">{location}</div>
           )}
+
+          {/* Price and CTA */}
+          <div className="flex items-center justify-between">
+            <span className="text-[15px] text-[hsl(var(--brand-orange))] font-semibold">
+              {priceText}
+            </span>
+            {providerLink && (
+              <Link
+                to={providerLink}
+                className="text-[13px] text-text-secondary hover:text-white transition-colors"
+              >
+                View provider
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -767,8 +772,8 @@ function ServiceListRow({ service }: { service: PublicServiceListing }) {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
-      <div className="aspect-video bg-border-default" />
+    <div className="flex flex-col min-h-[240px] rounded-xl border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
+      <div className="aspect-[4/3] bg-border-default" />
       <div className="p-4 space-y-3">
         <div className="h-5 bg-border-default rounded w-3/4" />
         <div className="h-4 bg-border-default rounded w-full" />

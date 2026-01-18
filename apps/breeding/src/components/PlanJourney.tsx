@@ -549,7 +549,31 @@ export function PlanJourney({
         {guidanceCollapsed && nextPhase && allRequirementsMet && onAdvancePhase && isEdit && (
           <button
             type="button"
-            onClick={() => onAdvancePhase(nextPhase.key)}
+            onClick={async () => {
+              // Show confirmation dialog when advancing to Committed phase
+              if (nextPhase.key === "COMMITTED" && confirmModal) {
+                const confirmed = await confirmModal({
+                  title: "Commit to This Breeding Plan?",
+                  message: (
+                    <div className="space-y-3">
+                      <p>You are about to commit to this breeding plan. This confirms that you have:</p>
+                      <ul className="list-disc list-inside space-y-1 text-secondary">
+                        <li>Finalized your dam and sire selection</li>
+                        <li>Locked in your estimated cycle start date</li>
+                        <li>Every intention to proceed with breeding this pairing</li>
+                      </ul>
+                      <p className="text-sm text-secondary mt-2">
+                        You can still make changes after committing, but this marks the plan as actively in progress.
+                      </p>
+                    </div>
+                  ),
+                  confirmText: "I'm Committed",
+                  cancelText: "Not Yet",
+                });
+                if (!confirmed) return;
+              }
+              onAdvancePhase(nextPhase.key);
+            }}
             className="mt-3 w-full py-2 px-4 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors animate-pulse"
           >
             Advance to {nextPhase.label} Phase

@@ -80,15 +80,15 @@ export function UpgradePathStep({ species }: UpgradePathStepProps) {
           <ol className="space-y-2 text-xs text-secondary">
             <li className="flex items-start gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">1</span>
-              <span>Create your plan using {cycle.startLabelCap} as the initial anchor.</span>
+              <span>Create your plan using {cycle.startLabelCap} Date as the initial anchor.</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">2</span>
-              <span>When your {ovulation.confirmationMethod} confirms ovulation, look for the "Upgrade to Ovulation" option.</span>
+              <span>When {ovulation.confirmationMethod} confirms ovulation, look for the "Upgrade to Ovulation" option.</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">3</span>
-              <span>Enter the confirmed ovulation date and your expected dates will automatically recalculate.</span>
+              <span>Enter the confirmed ovulation date and all system calculated values will automatically recalculate to more accurate dates.</span>
             </li>
           </ol>
         </div>

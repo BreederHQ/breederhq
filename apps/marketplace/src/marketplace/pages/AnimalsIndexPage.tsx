@@ -19,6 +19,7 @@ import { AnimalProgramTile } from "../components/AnimalProgramTile";
 import { updateSEO } from "../../utils/seo";
 import { useSpeciesTerminology } from "@bhq/ui";
 import { useMarketplaceTheme } from "../../context/MarketplaceThemeContext";
+import { DefaultCoverImage } from "../../shared/DefaultCoverImage";
 
 // =============================================================================
 // Icons
@@ -570,6 +571,7 @@ interface AnimalCardProps {
   href: string;
   listingType: "animal" | "offspring";
   badge?: string;
+  lightMode?: boolean;
 }
 
 function AnimalCard({
@@ -590,6 +592,7 @@ function AnimalCard({
   href,
   listingType,
   badge,
+  lightMode = false,
 }: AnimalCardProps) {
   // Use the save hook - map listingType to savedListingType
   const savedListingType = listingType === "offspring" ? "offspring_group" : "animal";
@@ -620,9 +623,9 @@ function AnimalCard({
 
   return (
     <Link to={href} className="group block">
-      <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
+      <div className="flex flex-col min-h-[240px] rounded-lg border border-border-subtle bg-portal-card overflow-hidden transition-all hover:border-border-default hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5">
         {/* Image */}
-        <div className="relative aspect-video bg-border-default">
+        <div className="relative aspect-[4/3] bg-border-default">
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -630,11 +633,7 @@ function AnimalCard({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <svg className="w-12 h-12 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
+            <DefaultCoverImage lightMode={lightMode} />
           )}
 
           {/* Left badges */}
@@ -674,45 +673,50 @@ function AnimalCard({
         </div>
 
         {/* Content */}
-        <div className="p-4">
-          <h3 className="text-base font-semibold text-white line-clamp-1 group-hover:text-accent transition-colors">
+        <div className="p-4 flex flex-col flex-grow">
+          <h3 className="text-[15px] font-semibold text-white leading-snug line-clamp-2 group-hover:text-accent transition-colors">
             {title}
           </h3>
 
           {breed && (
-            <p className="text-sm text-text-secondary">{breed}</p>
+            <p className="text-[12px] text-text-secondary mt-1">{breed}</p>
           )}
 
           {breederName && (
-            <p className="text-sm text-text-tertiary">{breederName}</p>
+            <p className="text-[12px] text-text-tertiary">{breederName}</p>
           )}
 
-          <div className="flex items-center justify-between text-sm">
-            {priceDisplay && (
-              <span className="text-[15px] font-semibold text-accent">{priceDisplay}</span>
-            )}
+          {/* Bottom section - pushed to bottom with mt-auto */}
+          <div className="mt-auto pt-3 space-y-2">
+            {/* Location */}
             {location && (
-              <span className="text-[12px] text-text-tertiary">{location}</span>
+              <div className="text-[12px] text-text-tertiary">{location}</div>
             )}
-          </div>
 
-          {/* Rating display */}
-          {rating != null && rating > 0 && (
-            <div className="flex items-center gap-1">
-              <div className="flex items-center">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <StarIcon
-                    key={star}
-                    className={`w-3.5 h-3.5 ${star <= Math.round(rating) ? "text-yellow-400" : "text-text-muted"}`}
-                    filled={star <= Math.round(rating)}
-                  />
-                ))}
-              </div>
-              {reviewCount != null && reviewCount > 0 && (
-                <span className="text-[11px] text-text-tertiary">({reviewCount})</span>
+            {/* Price row */}
+            <div className="flex items-center justify-between">
+              {priceDisplay && (
+                <span className="text-[15px] font-semibold text-accent">{priceDisplay}</span>
+              )}
+              {/* Rating display */}
+              {rating != null && rating > 0 && (
+                <div className="flex items-center gap-1">
+                  <div className="flex items-center">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <StarIcon
+                        key={star}
+                        className={`w-3.5 h-3.5 ${star <= Math.round(rating) ? "text-yellow-400" : "text-text-muted"}`}
+                        filled={star <= Math.round(rating)}
+                      />
+                    ))}
+                  </div>
+                  {reviewCount != null && reviewCount > 0 && (
+                    <span className="text-[11px] text-text-tertiary">({reviewCount})</span>
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </Link>
@@ -981,8 +985,8 @@ function AnimalListRow({
 
 function SkeletonCard() {
   return (
-    <div className="rounded-lg border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
-      <div className="aspect-video bg-border-default" />
+    <div className="flex flex-col min-h-[240px] rounded-lg border border-border-subtle bg-portal-card overflow-hidden animate-pulse">
+      <div className="aspect-[4/3] bg-border-default" />
       <div className="p-4 space-y-3">
         <div className="h-4 bg-border-default rounded w-3/4" />
         <div className="h-3 bg-border-default rounded w-1/2" />
@@ -1648,6 +1652,16 @@ export function AnimalsIndexPage() {
 
                   const CardComponent = displayMode === "grid" ? AnimalCard : AnimalListRow;
 
+                  // Map intent to badge label
+                  const intentBadge = listing.intent === "STUD" ? "Stud Services" :
+                                      listing.intent === "BROOD_PLACEMENT" ? "Brood" :
+                                      listing.intent === "REHOME" ? "Rehome" :
+                                      listing.intent === "GUARDIAN" ? "Guardian" :
+                                      listing.intent === "TRAINED" ? "Trained" :
+                                      listing.intent === "WORKING" ? "Working" :
+                                      listing.intent === "STARTED" ? "Started" :
+                                      listing.intent === "CO_OWNERSHIP" ? "Co-Own" : undefined;
+
                   return (
                     <CardComponent
                       key={`animal-${listing.id}`}
@@ -1664,6 +1678,8 @@ export function AnimalsIndexPage() {
                       breederName={listing.programName}
                       href={`/programs/${listing.programSlug}/animals/${listing.urlSlug}`}
                       listingType="animal"
+                      badge={intentBadge}
+                      lightMode={isLightMode}
                     />
                   );
                 })}
@@ -1698,6 +1714,7 @@ export function AnimalsIndexPage() {
                              listing.templateType === "CO_OWNERSHIP" ? "Co-Own" :
                              listing.templateType === "REHOME" ? "Rehome" :
                              listing.templateType === "TRAINED" ? "Trained" : undefined}
+                      lightMode={isLightMode}
                     />
                   );
                 })}
@@ -1728,6 +1745,7 @@ export function AnimalsIndexPage() {
                       breederName={listing.breeder?.name || null}
                       href={href}
                       listingType="offspring"
+                      lightMode={isLightMode}
                     />
                   );
                 })}

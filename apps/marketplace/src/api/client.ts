@@ -350,10 +350,10 @@ export async function getPublicDirectListings(params: GetDirectListingsParams = 
 
 /**
  * Get a single direct animal listing by slug.
- * Note: Uses V2 endpoint which has detailed data drawer filtering.
+ * Uses public V1 endpoint with data drawer filtering.
  */
 export async function getPublicDirectListing(slug: string): Promise<PublicDirectListingDTO> {
-  const path = `/api/v2/marketplace/listings/${encodeURIComponent(slug)}`;
+  const path = `/api/v1/marketplace/direct-listings/${encodeURIComponent(slug)}`;
   devLogFetch(path);
   const { data } = await apiGet<PublicDirectListingDTO>(path);
   return data;
@@ -4485,7 +4485,7 @@ export interface PublicListingResponse {
  * Fetch a public listing by slug (no authentication required)
  */
 export async function getPublicListing(slug: string): Promise<PublicListingResponse> {
-  const response = await fetch(joinApi(`/api/v2/marketplace/listings/${slug}`), {
+  const response = await fetch(joinApi(`/api/v1/marketplace/direct-listings/${slug}`), {
     method: "GET",
     credentials: "include",
   });

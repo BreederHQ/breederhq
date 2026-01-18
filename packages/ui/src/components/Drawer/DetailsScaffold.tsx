@@ -3,9 +3,10 @@ import * as React from "react";
 import { DrawerHeader } from "./DrawerParts";
 import { Button } from "../Button";
 import { Tabs } from "../Tabs";
+import { CollapsibleTabs, CustomizeTabsModal, type CollapsibleTab, type TabPreferences } from "../Tabs/CollapsibleTabs";
 import { Check } from "lucide-react";
 
-type Tab = { key: string; label: React.ReactNode; badge?: React.ReactNode };
+type Tab = { key: string; label: React.ReactNode; badge?: React.ReactNode; hasAlert?: boolean };
 
 export function DetailsScaffold({
   title,
@@ -26,6 +27,11 @@ export function DetailsScaffold({
   hideCloseButton,
   showFooterClose,
   justSaved,
+  // Collapsible tabs props
+  tabPreferences,
+  onTabPreferencesChange,
+  defaultPinnedTabs,
+  useCollapsibleTabs = false,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -48,7 +54,16 @@ export function DetailsScaffold({
   showFooterClose?: boolean;
   /** Show a brief "Saved" indicator */
   justSaved?: boolean;
+  /** User's saved tab preferences (for collapsible tabs) */
+  tabPreferences?: TabPreferences | null;
+  /** Callback when tab preferences change (for collapsible tabs) */
+  onTabPreferencesChange?: (prefs: TabPreferences) => void;
+  /** Default pinned tabs if no preferences saved (for collapsible tabs) */
+  defaultPinnedTabs?: string[];
+  /** Enable collapsible tabs with overflow menu */
+  useCollapsibleTabs?: boolean;
 }) {
+  const [customizeModalOpen, setCustomizeModalOpen] = React.useState(false);
   // When in edit mode without pending changes, Close should exit edit mode
   // When in edit mode with pending changes, Close should trigger the unsaved changes flow
   // When in view mode, Close should close the drawer
@@ -101,28 +116,64 @@ export function DetailsScaffold({
       {/* Shared Tabs — pills variant with prominent styling */}
       {tabs?.length > 0 && (
         <div className="px-4 pt-3 pb-3 flex items-start justify-between border-b border-white/10">
-          <Tabs
-            items={tabs.map(t => ({
-              value: t.key,
-              label: (
-                <span className="uppercase tracking-wide flex items-center gap-1.5">
-                  {t.label}
-                  {t.badge}
-                </span>
-              ),
-            }))}
-            value={activeTab}
-            onValueChange={onTabChange}
-            variant="pills"
-            size="md"
-            showActiveUnderline
-            aria-label="Details sections"
-          />
+          {useCollapsibleTabs ? (
+            <CollapsibleTabs
+              tabs={tabs.map(t => ({
+                key: t.key,
+                label: t.label,
+                badge: t.badge,
+                hasAlert: t.hasAlert ?? !!t.badge,
+              }))}
+              activeTab={activeTab}
+              onTabChange={onTabChange}
+              preferences={tabPreferences ?? undefined}
+              onPreferencesChange={onTabPreferencesChange}
+              defaultPinnedTabs={defaultPinnedTabs}
+              showCustomize={!!onTabPreferencesChange}
+              onCustomize={() => setCustomizeModalOpen(true)}
+            />
+          ) : (
+            <Tabs
+              items={tabs.map(t => ({
+                value: t.key,
+                label: (
+                  <span className="uppercase tracking-wide flex items-center gap-1.5">
+                    {t.label}
+                    {t.badge}
+                  </span>
+                ),
+              }))}
+              value={activeTab}
+              onValueChange={onTabChange}
+              variant="pills"
+              size="md"
+              showActiveUnderline
+              aria-label="Details sections"
+            />
+          )}
           {tabsRightContent}
         </div>
       )}
 
-      <div className="p-4 space-y-4">{children}</div>
+      {/* Customize tabs modal */}
+      {useCollapsibleTabs && onTabPreferencesChange && (
+        <CustomizeTabsModal
+          open={customizeModalOpen}
+          onClose={() => setCustomizeModalOpen(false)}
+          tabs={tabs.map(t => ({
+            key: t.key,
+            label: t.label,
+            badge: t.badge,
+            hasAlert: t.hasAlert ?? !!t.badge,
+          }))}
+          preferences={tabPreferences ?? { pinnedTabs: defaultPinnedTabs || [] }}
+          onSave={onTabPreferencesChange}
+          defaultPinnedTabs={defaultPinnedTabs}
+        />
+      )}
+
+      {/* Content area with min-height to prevent layout shifts when switching tabs */}
+      <div className="p-4 space-y-4 min-h-[300px]">{children}</div>
 
       {/* Footer Close button */}
       {showFooterClose && onClose && (

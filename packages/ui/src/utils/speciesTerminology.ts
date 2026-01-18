@@ -81,7 +81,7 @@ export interface SpeciesTerminology {
 
   /** Reproductive cycle terminology for anchor mode */
   cycle: {
-    /** Cycle start label (e.g., "heat start" for dogs, "cycle start" for horses, "breeding" for cats) */
+    /** Cycle start label (e.g., "cycle start" for dogs/horses, "breeding" for cats) */
     startLabel: string;
     startLabelCap: string;
     /** What to call the anchor date in UI */
@@ -201,9 +201,9 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       usesLitterWaitlist: true,
     },
     cycle: {
-      startLabel: "heat start",
-      startLabelCap: "Heat Start",
-      anchorDateLabel: "Heat start date",
+      startLabel: "cycle start",
+      startLabelCap: "Cycle Start",
+      anchorDateLabel: "Cycle start date",
       cycleExplanation:
         "First day of visible bleeding (proestrus). Note: 50% of bitches have minimal bleeding initially.",
       cycleStartHelp:
@@ -215,7 +215,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       dateLabel: "Ovulation date",
       confirmationMethod: "progesterone blood test",
       guidanceText:
-        "Ovulation occurs 12±2 days after heat start. Progesterone testing provides ±1 day accuracy. Testing should begin day 5-6 after heat signs appear.",
+        "Ovulation typically occurs 10-14 days after cycle start. Progesterone testing provides ±1-2 day accuracy. Testing should begin day 5-6 after heat signs appear.",
       confirmationMethods: ["Progesterone Test", "LH Test", "Vaginal Cytology"],
       testingGuidance:
         "Start progesterone testing on day 5-6 after heat signs appear. Test every 2-3 days until levels reach 5.0-6.0 ng/mL.",
@@ -224,9 +224,11 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       options: [
         {
           type: "CYCLE_START",
-          label: "Heat Start Date",
+          label: "Cycle Start Date",
           description: "Best for: Getting started quickly",
-          accuracy: "±2-3 days",
+          accuracyDetails:
+            "Casual observation: ±7-10 days (easy to miss early signs)\nDaily monitoring: ±4-6 days\nIntensive monitoring: ±3-4 days",
+          accuracy: "±3-10 days",
           recommended: false,
           testingAvailable: false,
         },
@@ -234,7 +236,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
           type: "OVULATION",
           label: "Ovulation Date",
           description: "Best for: Maximum accuracy (recommended)",
-          accuracy: "±1 day",
+          accuracy: "±1-2 days",
           recommended: true,
           testingAvailable: true,
           confirmationMethods: ["Progesterone Test", "LH Test", "Vaginal Cytology"],
@@ -249,14 +251,14 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       upgradeTo: "OVULATION",
       isInducedOvulator: false,
       guidanceText:
-        "For best accuracy, use progesterone testing to confirm ovulation. Birth is 63 days from ovulation (±1 day) vs 75 days from heat start (±2-3 days).",
+        "For best accuracy, use progesterone testing to confirm ovulation. Birth is typically 63 days from ovulation (±1-2 days) vs ~75 days from cycle start (±3-10 days depending on observation).",
     },
     weaning: {
       weaningType: "GRADUAL_PROCESS",
       required: false,
       estimatedDurationWeeks: 8,
       guidanceText:
-        "Weaning is a gradual 3-4 week process (weeks 3-8). Puppies benefit from staying with mother 10-12 weeks for behavioral development. Recording weaning date is optional.",
+        "Weaning is a gradual 3-4 week process (weeks 3-8). Puppies benefit from staying with mother 10-12 weeks for behavioral development. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Completed",
     },
@@ -343,7 +345,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 8,
       guidanceText:
-        "Kittens wean gradually over 4-8 weeks. Recording weaning date is optional.",
+        "Kittens wean gradually over 4-8 weeks. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Completed (Optional)",
     },
@@ -527,7 +529,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 6,
       guidanceText:
-        "Kits wean gradually over 4-6 weeks. Recording weaning date is optional.",
+        "Kits wean gradually over 4-6 weeks. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Completed (Optional)",
     },
@@ -613,7 +615,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 8,
       guidanceText:
-        "Kids wean gradually over 6-8 weeks. Recording weaning date is optional.",
+        "Kids wean gradually over 6-8 weeks. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -699,7 +701,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 8,
       guidanceText:
-        "Lambs wean gradually over 6-8 weeks. Recording weaning date is optional.",
+        "Lambs wean gradually over 6-8 weeks. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -785,7 +787,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 4,
       guidanceText:
-        "Piglets are typically weaned at 3-4 weeks. Recording weaning date is optional.",
+        "Piglets are typically weaned at 3-4 weeks. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -871,7 +873,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 26,
       guidanceText:
-        "Calves are typically weaned at 6-8 months. Recording weaning date is optional.",
+        "Calves are typically weaned at 6-8 months. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -1044,7 +1046,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 26,
       guidanceText:
-        "Crias are typically weaned at 5-6 months. Recording weaning date is optional.",
+        "Crias are typically weaned at 5-6 months. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -1131,7 +1133,7 @@ const SPECIES_TERMINOLOGY: Record<SpeciesCode, SpeciesTerminology> = {
       required: false,
       estimatedDurationWeeks: 26,
       guidanceText:
-        "Crias are typically weaned at 5-6 months. Recording weaning date is optional.",
+        "Crias are typically weaned at 5-6 months. Recording a weaning date is optional.",
       statusLabel: "Weaned",
       actualDateLabel: "Weaning Date (Optional)",
     },
@@ -1366,12 +1368,12 @@ export function speciesUsesLitterWaitlist(species: string | null | undefined): b
  *
  * @param species - Species code
  * @param capitalize - Whether to capitalize (default: false)
- * @returns Cycle start label ("heat start" for dogs, "cycle start" for horses, "breeding" for cats)
+ * @returns Cycle start label ("cycle start" for dogs/horses, "breeding" for cats)
  *
  * @example
  * ```ts
- * getCycleLabel('DOG', false);   // "heat start"
- * getCycleLabel('DOG', true);    // "Heat Start"
+ * getCycleLabel('DOG', false);   // "cycle start"
+ * getCycleLabel('DOG', true);    // "Cycle Start"
  * getCycleLabel('CAT', false);   // "breeding"
  * ```
  */
@@ -1389,7 +1391,7 @@ export function getCycleLabel(species: string | null | undefined, capitalize: bo
  * @example
  * ```ts
  * getOvulationGuidance('DOG');
- * // "Ovulation occurs 12±2 days after heat start..."
+ * // "Ovulation occurs 12±2 days after cycle start..."
  * ```
  */
 export function getOvulationGuidance(species: string | null | undefined): string {
@@ -1480,7 +1482,7 @@ export function getWeaningGuidance(species: string | null | undefined): string {
  * @example
  * ```ts
  * getAvailableAnchors('DOG');
- * // [{ type: 'CYCLE_START', label: 'Heat Start Date', ... }, { type: 'OVULATION', ... }]
+ * // [{ type: 'CYCLE_START', label: 'Cycle Start Date', ... }, { type: 'OVULATION', ... }]
  * getAvailableAnchors('CAT');
  * // [{ type: 'BREEDING_DATE', label: 'Breeding Date', ... }]
  * ```
@@ -1659,7 +1661,7 @@ export function getBreedingDateLabel(species: string | null | undefined): string
  *
  * @example
  * ```ts
- * getAnchorDateLabel('DOG');   // "Heat start date"
+ * getAnchorDateLabel('DOG');   // "Cycle start date"
  * getAnchorDateLabel('HORSE'); // "Cycle start date"
  * getAnchorDateLabel('CAT');   // "Breeding date"
  * ```

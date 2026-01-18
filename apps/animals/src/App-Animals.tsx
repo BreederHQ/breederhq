@@ -38,6 +38,7 @@ import {
   SortDropdown,
   type SortOption,
 } from "@bhq/ui";
+import { useTabPreferences, getDefaultPinnedTabs } from "@bhq/ui/hooks";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 
@@ -8996,6 +8997,12 @@ export default function AppAnimals() {
     [api]
   );
 
+  // Tab preferences for collapsible tabs
+  const {
+    preferences: tabPreferences,
+    savePreferences: saveTabPreferences,
+  } = useTabPreferences();
+
   const detailsConfig = React.useMemo(
     () => ({
       idParam: "animalId",
@@ -9110,10 +9117,11 @@ export default function AppAnimals() {
         const isSpontaneousOvulator = !INDUCED_OVULATORS.includes(species);
         if ((r.sex || "").toLowerCase().startsWith("f") && isSpontaneousOvulator) {
           const cycleAlert = cycleAlerts[r.id];
+          const hasCycleAlert = cycleAlert?.needsAttention;
           tabs.push({
             key: "cycle",
             label: "Cycle Info",
-            badge: cycleAlert?.needsAttention ? (
+            badge: hasCycleAlert ? (
               <CycleAlertBadge
                 daysUntilExpected={cycleAlert.daysUntilCycle}
                 species={species}
@@ -9121,6 +9129,7 @@ export default function AppAnimals() {
                 dotOnly
               />
             ) : undefined,
+            hasAlert: hasCycleAlert,
           } as any);
         }
         tabs.push({ key: "program", label: "Program" } as any);
@@ -9128,10 +9137,11 @@ export default function AppAnimals() {
         tabs.push({ key: "marketplace", label: "Marketplace" } as any);
         // Health tab with vaccination alert badge
         const alert = vaccinationAlerts[r.id];
+        const hasHealthAlert = alert?.hasIssues;
         tabs.push({
           key: "health",
           label: "Health",
-          badge: alert?.hasIssues ? (
+          badge: hasHealthAlert ? (
             <VaccinationAlertBadge
               expiredCount={alert.expiredCount}
               dueSoonCount={alert.dueSoonCount}
@@ -9139,6 +9149,7 @@ export default function AppAnimals() {
               dotOnly
             />
           ) : undefined,
+          hasAlert: hasHealthAlert,
         } as any);
         tabs.push({ key: "genetics", label: "Genetics" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
@@ -9192,6 +9203,11 @@ export default function AppAnimals() {
             tabs={detailsConfig.tabs(row)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
+            // Collapsible tabs configuration
+            useCollapsibleTabs
+            tabPreferences={tabPreferences}
+            onTabPreferencesChange={saveTabPreferences}
+            defaultPinnedTabs={getDefaultPinnedTabs(row.sex)}
             tabsRightContent={
               mode === "edit" ? (
                 <Popover

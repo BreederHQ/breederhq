@@ -69,6 +69,13 @@ export function TestingBenefitsStep({ species }: TestingBenefitsStepProps) {
                 availability dates to prospective buyers.
               </span>
             </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">•</span>
+              <span>
+                <strong className="text-primary">Tighter timelines:</strong> Breeding windows and
+                availability periods in your planner become much more precise.
+              </span>
+            </li>
           </ul>
         </div>
 

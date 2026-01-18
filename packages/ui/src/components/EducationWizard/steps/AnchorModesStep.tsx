@@ -59,6 +59,17 @@ export function AnchorModesStep({ species }: AnchorModesStepProps) {
                   </div>
                 </div>
 
+                {/* Show accuracy details if available (for CYCLE_START) */}
+                {"accuracyDetails" in option && option.accuracyDetails && (
+                  <div className="mt-2 pt-2 border-t border-hairline">
+                    <div className="text-[10px] text-secondary space-y-0.5">
+                      {(option.accuracyDetails as string).split("\n").map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Show confirmation methods if available */}
                 {option.testingAvailable && option.confirmationMethods && option.confirmationMethods.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-hairline">
